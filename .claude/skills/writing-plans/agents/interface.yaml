@@ -1,0 +1,24 @@
+interface:
+  display_name: "Writing Plans 实施计划"
+  short_description: "把设计文档或明确需求转成可执行的分步实施计划"
+  default_prompt: "使用 $writing-plans，基于已批准设计或明确需求生成可执行的实施计划，再决定是否开始编码。"
+compatibility:
+  canonical_format: "agent-skills"
+  adapter_targets:
+    - "openai"
+    - "claude"
+    - "generic"
+  activation:
+    mode: "manual"
+    paths: []
+  execution:
+    context: "inline"
+    shell: "bash"
+  trust:
+    source_tier: "local"
+    remote_inline_execution: "forbid"
+    remote_metadata_policy: "allow-metadata-only"
+  degradation:
+    openai: "metadata-adapter"
+    claude: "neutral-source-plus-adapter"
+    generic: "neutral-source"
