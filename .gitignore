@@ -1,6 +1,6 @@
 # OpenBMC workspace: source trees, builds, lockfiles
 workspace/*
 !workspace/.gitkeep
-tools/__pycache__
 .venv/
-tests/
+__pycache__/
+periodic_jobs/ai_heartbeat/state/heartbeat_status.json
