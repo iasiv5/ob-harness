@@ -5,6 +5,7 @@
         "type": "command",
         "command": "powershell -NoProfile -ExecutionPolicy Bypass -File ./.github/hooks/pre-session.ps1",
         "windows": "powershell -NoProfile -ExecutionPolicy Bypass -File ./.github/hooks/pre-session.ps1",
+        "linux": "[AI-Heartbeat]-当前为纯-Linux-环境，AI-Heartbeat提醒弹窗尚未适配。如需手动检查，可在当前会话窗口中运行/ai-heartbeat（指令）",
         "cwd": ".",
         "timeout": 120
       }
