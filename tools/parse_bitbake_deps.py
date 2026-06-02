@@ -148,6 +148,13 @@ def convert_to_https_url(git_uri):
 
     if url_part.startswith("git://"):
         rest = url_part[6:]
+        # Handle malformed git://git@host/path -> host/path
+        if rest.startswith("git@"):
+            rest = rest[4:].lstrip("/")
+        if ":" in rest and not rest.startswith("["):
+            # host:path format -> host/path
+            rest = rest.replace(":", "/", 1)
+        return "https://" + rest
     elif url_part.startswith("https://"):
         return url_part
     elif url_part.startswith("ssh://"):
@@ -157,8 +164,6 @@ def convert_to_https_url(git_uri):
         return "https://" + rest
     else:
         return url_part
-
-    return "https://" + rest
 
 
 def main():
@@ -191,13 +196,22 @@ def main():
                 continue
             seen_repos.add(repo_name)
 
+            # Extract branch from SRC_URI parameters
+            # Strip surrounding quotes: bitbake may emit branch=\"main\"
+            branch = ""
+            for param in git_uri.split(";")[1:]:
+                if param.startswith("branch="):
+                    branch = param.split("=", 1)[1].strip('"').strip("'")
+                    break
+
             results.append(
                 {
                     "name": repo_name,
                     "src_uri": git_uri,
-                    "srcrev": srcrev if srcrev != "AUTOINC" else "${AUTOREV}",
+                    "srcrev": srcrev if srcrev not in ("AUTOINC", "INVALID") else "${AUTOREV}",
                     "recipe": recipe,
                     "clone_url": convert_to_https_url(git_uri),
+                    "branch": branch,
                 }
             )
 

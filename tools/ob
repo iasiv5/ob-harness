@@ -11,10 +11,14 @@ OPENBMC_DIR=""
 BUILD_DIR=""
 SRC_DIR=""
 CONFIGS_DIR=""
+DEFAULT_OPENBMC_REPO_URL="https://github.com/openbmc/openbmc.git"
+OPENBMC_REPO_URL=""
 VERBOSE=0
 DRY_RUN=0
 SKIP_FETCH=0
 STATUS_SUCCESS=()
+STATUS_SHALLOW=()
+STATUS_UNPINNED=()
 STATUS_FAILED=()
 
 # === Colors ===
@@ -42,6 +46,7 @@ Commands:
 Options:
   --skip-fetch          Skip git clone/fetch of sub-repos
   --dry-run             Print actions without executing
+  --openbmc-url <url>   Use a custom OpenBMC repository URL
   --verbose             Verbose output
   -h, --help            Show this help
 
@@ -49,6 +54,13 @@ Examples:
   ob init romulus                  # Initialize romulus machine
   ob init romulus --dry-run        # Preview what would be done
   ob init romulus --skip-fetch     # Assume sub-repos already exist locally
+  ob init romulus --openbmc-url https://example.com/openbmc.git
+
+Re-running:
+  ob init is INCREMENTAL — existing repos under src/<machine>/ are automatically
+  skipped (or git-fetch'd). DO NOT delete src/<machine>/ before re-running.
+  Only delete the specific failed repos if you want to retry them.
+  Example: rm -rf src/romulus/linux src/romulus/mtd-utils  # only the failed ones
 EOF
 }
 
@@ -86,9 +98,76 @@ parse_args() {
         case "$1" in
             --skip-fetch)  SKIP_FETCH=1; shift ;;
             --dry-run)     DRY_RUN=1; shift ;;
+            --openbmc-url)
+                if [[ $# -lt 2 ]]; then
+                    error "Missing value for --openbmc-url"
+                    usage
+                    exit 1
+                fi
+                OPENBMC_REPO_URL="$2"
+                shift 2
+                ;;
             --verbose)     VERBOSE=1; shift ;;
             -h|--help)     usage; exit 0 ;;
             *)             error "Unknown option: $1"; usage; exit 1 ;;
+        esac
+    done
+}
+
+is_valid_repo_url() {
+    local repo_url="$1"
+    [[ "$repo_url" =~ ^https?:// ]] || [[ "$repo_url" =~ ^ssh:// ]] || [[ "$repo_url" =~ ^git:// ]] || [[ "$repo_url" =~ ^git@ ]]
+}
+
+select_openbmc_repo_url() {
+    if [[ -n "$OPENBMC_REPO_URL" ]]; then
+        if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
+            error "Invalid OpenBMC repository URL: $OPENBMC_REPO_URL"
+            error "Supported formats: https://, http://, ssh://, git://, git@"
+            exit 1
+        fi
+        return 0
+    fi
+
+    if [[ -n "${OB_OPENBMC_URL:-}" ]]; then
+        OPENBMC_REPO_URL="$OB_OPENBMC_URL"
+        if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
+            error "Invalid OpenBMC repository URL from OB_OPENBMC_URL: $OPENBMC_REPO_URL"
+            exit 1
+        fi
+        return 0
+    fi
+
+    while true; do
+        echo ""
+        echo "Select the OpenBMC repository to download:"
+        echo "  1) Community OpenBMC (GitHub.com)"
+        echo "  2) Custom OpenBMC repository URL"
+        if ! read -r -p "Choose [1-2]: " selection; then
+            error "Unable to read repository source selection from stdin."
+            error "Use --openbmc-url <url> or set OB_OPENBMC_URL in non-interactive mode."
+            exit 1
+        fi
+
+        case "$selection" in
+            1|"")
+                OPENBMC_REPO_URL="$DEFAULT_OPENBMC_REPO_URL"
+                return 0
+                ;;
+            2)
+                if ! read -r -p "Enter the full repository URL: " OPENBMC_REPO_URL; then
+                    error "Unable to read custom repository URL from stdin."
+                    error "Use --openbmc-url <url> or set OB_OPENBMC_URL in non-interactive mode."
+                    exit 1
+                fi
+                if is_valid_repo_url "$OPENBMC_REPO_URL"; then
+                    return 0
+                fi
+                warn "Invalid repository URL. Please enter a full URL such as https://example.com/openbmc.git"
+                ;;
+            *)
+                warn "Invalid selection: $selection"
+                ;;
         esac
     done
 }
@@ -137,6 +216,16 @@ prerequisites_check() {
         fi
     fi
 
+    # Disk space check (rough estimate: ~200 MB per repo × ~110 repos + main repo + build)
+    if [[ -d "$WORKSPACE_DIR" ]]; then
+        local avail_mb
+        avail_mb=$(df -BM "$WORKSPACE_DIR" 2>/dev/null | tail -1 | awk '{print $4}' | tr -d 'M')
+        if [[ -n "$avail_mb" ]] && [[ "$avail_mb" -lt 25000 ]]; then
+            warn "Only ${avail_mb}MB free disk space. ob init typically needs 20-30 GB."
+            warn "If download fails due to disk space, free up space and re-run."
+        fi
+    fi
+
     info "Prerequisites OK."
 }
 
@@ -145,18 +234,20 @@ clone_openbmc() {
 
     if [[ -d "$OPENBMC_DIR/.git" ]]; then
         warn "Main repository already exists at $OPENBMC_DIR"
-        warn "Skipping clone. To update, run: cd $OPENBMC_DIR && git pull"
+        warn "Skipping clone. To update:"
+        warn "  cd $OPENBMC_DIR && git pull && git submodule update --init --recursive"
         return 0
     fi
 
-    info "Cloning https://github.com/openbmc/openbmc.git -> $OPENBMC_DIR"
+    select_openbmc_repo_url
+    info "Cloning $OPENBMC_REPO_URL -> $OPENBMC_DIR"
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        info "[DRY-RUN] Would run: git clone https://github.com/openbmc/openbmc.git $OPENBMC_DIR"
+        info "[DRY-RUN] Would run: git clone $OPENBMC_REPO_URL $OPENBMC_DIR"
         return 0
     fi
 
     mkdir -p "$WORKSPACE_DIR"
-    if ! git clone https://github.com/openbmc/openbmc.git "$OPENBMC_DIR"; then
+    if ! git clone "$OPENBMC_REPO_URL" "$OPENBMC_DIR"; then
         error "Failed to clone openbmc main repository."
         exit 1
     fi
@@ -189,6 +280,41 @@ init_bitbake_env() {
         exit 1
     fi
 
+    # Pre-create DL_DIR and SSTATE_DIR so bitbake sanity checks don't fail
+    # when externalsrc-*.inc references them (injected later in Step 7)
+    if [[ -f "$BUILD_DIR/conf/externalsrc-$MACHINE.inc" ]]; then
+        mkdir -p "$WORKSPACE_DIR/downloads" "$WORKSPACE_DIR/sstate-cache"
+
+        # Fix legacy .inc files that use ${TOPDIR}/../../../.. relative paths.
+        # Bitbake internally prepends '\/' to these resolved paths, causing mkdir
+        # to create a spurious '\' directory under the build dir (e.g. build/romulus/\/).
+        # Replace with absolute paths to prevent this.
+        local inc_file="$BUILD_DIR/conf/externalsrc-$MACHINE.inc"
+        if grep -q '\${TOPDIR}/\.\./\.\./\.\./downloads' "$inc_file" 2>/dev/null; then
+            verbose "Fixing DL_DIR/SSTATE_DIR in existing $inc_file (relative -> absolute)"
+            python3 -c "
+import sys
+content = open('$inc_file').read()
+content = content.replace(
+    'DL_DIR = \"\\\${TOPDIR}/../../../downloads\"',
+    'DL_DIR = \"$WORKSPACE_DIR/downloads\"'
+)
+content = content.replace(
+    'SSTATE_DIR = \"\\\${TOPDIR}/../../../sstate-cache\"',
+    'SSTATE_DIR = \"$WORKSPACE_DIR/sstate-cache\"'
+)
+open('$inc_file', 'w').write(content)
+"
+        fi
+
+        # Clean up spurious '\' directory that may have been created by a previous
+        # run with relative-path DL_DIR/SSTATE_DIR (bitbake '\/' escaping bug)
+        if [[ -d "$BUILD_DIR/"'\\' ]]; then
+            warn "Removing spurious escaped directory under $BUILD_DIR"
+            rm -rf "$BUILD_DIR/"'\\'
+        fi
+    fi
+
     info "Bitbake environment initialized. Build dir: $BUILD_DIR"
 }
 
@@ -212,7 +338,8 @@ generate_dep_graph() {
     eval "$prev_opts"
 
     # Generate dependency graph to get pn-buildlist
-    info "Running bitbake -g obmc-phosphor-image (this may take a while)..."
+    info "Running bitbake -g obmc-phosphor-image"
+    info "This step takes 5-10 minutes (bitbake -g + per-recipe metadata queries)..."
     if ! bitbake -g obmc-phosphor-image; then
         error "bitbake -g failed. Check machine name and bitbake environment."
         exit 1
@@ -235,6 +362,12 @@ generate_dep_graph() {
 }
 
 clone_sub_repos() {
+    # SAFETY: This function is incremental.
+    #   - If a repo dir exists with .git, it does 'git fetch' instead of clone.
+    #   - If --skip-fetch is set and dir exists, it's completely skipped.
+    #   DO NOT delete src/<machine>/ before re-running ob init.
+    #   Only delete the specific failed repo dirs you want to retry.
+    #   Deleting all repos wastes hours of download time.
     info "Step 5/8: Cloning sub-repositories..."
 
     local deps_json="$BUILD_DIR/deps.json"
@@ -258,11 +391,13 @@ clone_sub_repos() {
 
     while IFS= read -r entry; do
         current=$((current + 1))
-        local name src_uri srcrev clone_url
+        local name src_uri srcrev clone_url branch
         name=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
         src_uri=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['src_uri'])")
         srcrev=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['srcrev'])")
         clone_url=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['clone_url'])")
+        # Strip surrounding quotes from branch (bitbake may emit branch=\"main\")
+        branch=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin).get('branch',''))" | tr -d '\"' | tr -d "'")
 
         local local_path="$SRC_DIR/$name"
         info "[$current/$total] Processing: $name"
@@ -275,17 +410,59 @@ clone_sub_repos() {
                 warn "Failed to fetch $name, continuing with existing state."
             fi
         else
+            # Build clone flags: use --single-branch when branch is known
+            local clone_flags=()
+            if [[ -n "$branch" ]]; then
+                clone_flags+=(--single-branch --branch "$branch")
+            fi
+
             verbose "Cloning $clone_url -> $local_path"
-            if ! git clone "$clone_url" "$local_path" 2>/dev/null; then
-                error "Failed to clone $name from $clone_url"
-                STATUS_FAILED+=("$name (clone failed)")
-                failed=$((failed + 1))
-                continue
+            if ! git clone "${clone_flags[@]}" "$clone_url" "$local_path" 2>/dev/null; then
+                # Retry 1: shallow clone (faster for large repos like linux, binutils)
+                warn "Full clone failed for $name, retrying with shallow clone..."
+                rm -rf "$local_path" 2>/dev/null
+                local shallow_flags=(--depth=1)
+                if [[ -n "$branch" ]]; then
+                    shallow_flags+=(--single-branch --branch "$branch")
+                fi
+                if ! git clone "${shallow_flags[@]}" "$clone_url" "$local_path" 2>/dev/null; then
+                    # Retry 2: branch may not exist (e.g. fmt renamed master→main),
+                    # try shallow clone without --single-branch constraint
+                    if [[ -n "$branch" ]]; then
+                        warn "Branch '$branch' not found for $name, retrying without branch constraint..."
+                        rm -rf "$local_path" 2>/dev/null
+                        if ! git clone --depth=1 "$clone_url" "$local_path" 2>/dev/null; then
+                            error "Failed to clone $name from $clone_url"
+                            STATUS_FAILED+=("$name (clone failed — network error or server unreachable)")
+                            failed=$((failed + 1))
+                            continue
+                        fi
+                        warn "$name cloned shallow without branch constraint (full git history unavailable)"
+                        STATUS_SHALLOW+=("$name")
+                    else
+                        error "Failed to clone $name from $clone_url"
+                        STATUS_FAILED+=("$name (clone failed — network error or server unreachable)")
+                        failed=$((failed + 1))
+                        continue
+                    fi
+                fi
+                # Retry 1 succeeded — check if repo is actually shallow
+                if git -C "$local_path" rev-parse --is-shallow-repository 2>/dev/null | grep -q true; then
+                    STATUS_SHALLOW+=("$name")
+                fi
             fi
         fi
 
+        # Check if srcrev is usable (skip placeholder values)
+        # bitbake may return "INVALID" for named SRCREV components that weren't resolved
+        local skip_checkout=0
+        if [[ -z "$srcrev" || "$srcrev" == "\${AUTOREV}" || "$srcrev" == "AUTOINC" || "$srcrev" == "INVALID" ]]; then
+            skip_checkout=1
+            STATUS_UNPINNED+=("$name (srcrev=$srcrev)")
+        fi
+
         # Checkout to specified commit
-        if [[ "$srcrev" != "\${AUTOREV}" && "$srcrev" != "AUTOINC" && -n "$srcrev" ]]; then
+        if [[ "$skip_checkout" -eq 0 ]]; then
             verbose "Checking out $name to $srcrev"
             if ! git -C "$local_path" checkout "$srcrev" 2>/dev/null; then
                 # Try fetching all remotes first
@@ -293,11 +470,13 @@ clone_sub_repos() {
                 git -C "$local_path" fetch --all 2>/dev/null || true
                 if ! git -C "$local_path" checkout "$srcrev" 2>/dev/null; then
                     warn "Could not checkout $name to $srcrev. Skipping."
-                    STATUS_FAILED+=("$name (checkout failed)")
+                    STATUS_FAILED+=("$name (checkout failed — commit lost to upstream force-push, try latest HEAD)")
                     failed=$((failed + 1))
                     continue
                 fi
             fi
+        else
+            verbose "Skipping checkout for $name (srcrev=$srcrev, using branch HEAD)"
         fi
 
         STATUS_SUCCESS+=("$name")
@@ -350,6 +529,10 @@ with open('$lockfile', 'w') as f:
     f.write('\n')
 "
 
+    if [[ -f "$lockfile" ]]; then
+        info "Overwriting existing lockfile: $lockfile"
+    fi
+
     info "Lockfile written to $lockfile"
 }
 
@@ -369,9 +552,12 @@ inject_externalsrc() {
     local timestamp
     timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
-    # Backup existing .inc file
+    # Backup existing .inc file (keep only the most recent backup)
     if [[ -f "$inc_file" ]]; then
+        # Remove old backups before creating new one
+        rm -f "${inc_file}".bak.* 2>/dev/null || true
         cp "$inc_file" "${inc_file}.bak.$(date +%Y%m%d%H%M%S)"
+        info "Previous .inc backed up (old backups cleaned up)"
     fi
 
     # Generate .inc file
@@ -381,10 +567,16 @@ inject_externalsrc() {
         echo ""
 
         # Shared download and sstate cache across all machines
+        # NOTE: Must use absolute paths, not ${TOPDIR}/../../../.. relative paths.
+        # Bitbake internally prepends '\/' to relative-resolved paths, which causes
+        # mkdir to create a spurious '\' directory under the build dir.
         echo "# Shared across machines to avoid re-downloading/re-building"
-        echo 'DL_DIR = "\${TOPDIR}/../../../downloads"'
-        echo 'SSTATE_DIR = "\${TOPDIR}/../../../sstate-cache"'
+        echo "DL_DIR = \"$WORKSPACE_DIR/downloads\""
+        echo "SSTATE_DIR = \"$WORKSPACE_DIR/sstate-cache\""
         echo ""
+
+        # Ensure DL_DIR and SSTATE_DIR directories exist (bitbake sanity check requires them)
+        mkdir -p "$WORKSPACE_DIR/downloads" "$WORKSPACE_DIR/sstate-cache"
 
         # Read deps to generate EXTERNALSRC lines
         python3 -c "
@@ -418,35 +610,121 @@ for dep in deps:
 
 print_report() {
     info "Step 8/8: Status Report"
-    echo "============================================"
-    echo "Machine:    $MACHINE"
-    echo "Main repo:  $OPENBMC_DIR"
-    echo "Build dir:  $BUILD_DIR"
-    echo "Source dir: $SRC_DIR"
-    echo "Lockfile:   $CONFIGS_DIR/$MACHINE.lock"
-    echo "Ext. conf:  $BUILD_DIR/conf/externalsrc-$MACHINE.inc"
+
+    local report_file="$CONFIGS_DIR/$MACHINE.report.txt"
+
+    # Emit report to both terminal and file via tee
+    {
+        echo "============================================"
+        echo "Machine:    $MACHINE"
+        echo "Main repo:  $OPENBMC_DIR"
+        echo "Build dir:  $BUILD_DIR"
+        echo "Source dir: $SRC_DIR"
+        echo "Lockfile:   $CONFIGS_DIR/$MACHINE.lock"
+        echo "Ext. conf:  $BUILD_DIR/conf/externalsrc-$MACHINE.inc"
+        echo ""
+
+        # --- Success ---
+        echo "Sub-repos cloned: ${#STATUS_SUCCESS[@]}"
+        for name in "${STATUS_SUCCESS[@]}"; do
+            echo "  [OK] $name"
+        done
+        echo ""
+
+        # --- Shallow repos ---
+        if [[ ${#STATUS_SHALLOW[@]} -gt 0 ]]; then
+            echo "Shallow-cloned repos (limited git history):"
+            for entry in "${STATUS_SHALLOW[@]}"; do
+                echo "  [SHALLOW] $entry"
+            done
+            echo ""
+            echo "[WARN] Shallow repos have limited git history. To get full history:"
+            echo "  git -C src/$MACHINE/<repo> fetch --unshallow"
+            echo ""
+        fi
+
+        # --- Unpinned repos ---
+        if [[ ${#STATUS_UNPINNED[@]} -gt 0 ]]; then
+            echo "Unpinned repos (using branch HEAD, version may drift):"
+            for entry in "${STATUS_UNPINNED[@]}"; do
+                echo "  [UNPINNED] $entry"
+            done
+            echo ""
+            echo "[WARN] Unpinned repos are NOT locked to a specific commit."
+            echo "[WARN] Re-running ob init may change their version."
+            echo ""
+        fi
+
+        # --- Failed repos ---
+        if [[ ${#STATUS_FAILED[@]} -gt 0 ]]; then
+            echo "Failed repos: ${#STATUS_FAILED[@]}"
+            for entry in "${STATUS_FAILED[@]}"; do
+                echo "  [FAIL] $entry"
+            done
+            echo ""
+            echo "[WARN] Troubleshooting guide:"
+            echo "  A) Network flakiness      -> retry: rm -rf src/$MACHINE/<repo> && ob init $MACHINE"
+            echo "  B) Branch not found       -> upstream renamed branch; ob will auto-retry without branch"
+            echo "  C) Commit lost            -> upstream force-push; use latest HEAD manually"
+            echo "  D) Server network block   -> specific domains (e.g. infradead.org) may be unreachable"
+            echo "  E) srcrev placeholder     -> AUTOREV/INVALID; will use branch HEAD (expected)"
+            echo ""
+        fi
+
+        # --- Elapsed time ---
+        local elapsed_seconds=$SECONDS
+        local elapsed_min=$((elapsed_seconds / 60))
+        local elapsed_sec=$((elapsed_seconds % 60))
+        echo "Total time: ${elapsed_min}m ${elapsed_sec}s"
+        echo "============================================"
+    } | tee "$report_file"
+
     echo ""
-    echo "Sub-repos cloned: ${#STATUS_SUCCESS[@]}"
-    for name in "${STATUS_SUCCESS[@]}"; do
-        echo "  [OK] $name"
-    done
-    echo ""
-    echo "Sub-repos failed: ${#STATUS_FAILED[@]}"
-    for entry in "${STATUS_FAILED[@]}"; do
-        echo "  [FAIL] $entry"
-    done
-    echo "============================================"
-    echo ""
+    info "Report saved to: $report_file"
     info "Next steps:"
     echo "  cd $OPENBMC_DIR"
-    echo "  source oe-init-build-env build/$MACHINE"
+    echo "  source setup $MACHINE"
     echo "  bitbake obmc-phosphor-image"
+    echo ""
+    info "Re-running ob init is safe — it is incremental and idempotent."
+    echo "Safe to Ctrl+C at any time; re-run will resume from where it left off."
 }
 
 # === Main ===
 main() {
+    SECONDS=0
     parse_args "$@"
     detect_harness_root
+
+    # --- Detect fresh run vs incremental re-run ---
+    local is_rerun=0
+    if [[ -d "$SRC_DIR" ]] && [[ $(ls -d "$SRC_DIR"/*/ 2>/dev/null | wc -l) -gt 0 ]]; then
+        is_rerun=1
+    fi
+    if [[ -d "$BUILD_DIR/conf" ]] && [[ -f "$BUILD_DIR/conf/local.conf" ]]; then
+        is_rerun=1
+    fi
+
+    if [[ "$is_rerun" -eq 1 ]]; then
+        local existing_repos=0
+        existing_repos=$(find "$SRC_DIR" -maxdepth 2 -name ".git" -type d 2>/dev/null | wc -l)
+        echo ""
+        info "INCREMENTAL RUN DETECTED for machine=$MACHINE"
+        if [[ "$existing_repos" -gt 0 ]]; then
+            info "  Existing repos: $existing_repos under $SRC_DIR"
+        fi
+        if [[ -f "$BUILD_DIR/conf/local.conf" ]]; then
+            info "  Build config: $BUILD_DIR/conf/ already exists"
+        fi
+        info "  Actions: fetch updates for existing repos, clone missing ones, regenerate config"
+        echo ""
+    else
+        echo ""
+        info "FRESH RUN — initializing OpenBMC environment for machine=$MACHINE"
+        warn "This will download ~20-30 GB of source code. Estimated time: 20-60 minutes."
+        echo ""
+    fi
+
     prerequisites_check
     clone_openbmc
     init_bitbake_env
