@@ -223,6 +223,52 @@ created_at=$timestamp
 EOF
 }
 
+ensure_bootstrap_local_conf() {
+    local local_conf="$BUILD_DIR/conf/local.conf"
+    local connectivity_value="${OB_CONNECTIVITY_CHECK_URIS-}"
+
+    if [[ ! -f "$local_conf" ]]; then
+        error "local.conf not found at $local_conf"
+        exit 1
+    fi
+
+    if [[ -n "$connectivity_value" ]]; then
+        connectivity_value=${connectivity_value//\"/\\\"}
+    fi
+
+    python3 - "$local_conf" "$connectivity_value" <<'PY'
+import pathlib
+import sys
+
+local_conf = pathlib.Path(sys.argv[1])
+connectivity_value = sys.argv[2]
+managed_start = "# BEGIN ob init managed settings"
+managed_end = "# END ob init managed settings"
+managed_block = [
+    managed_start,
+    "# Disable OE connectivity probes by default; github fetches already validate network reachability.",
+    f'CONNECTIVITY_CHECK_URIS = "{connectivity_value}"',
+    managed_end,
+]
+
+content = local_conf.read_text()
+lines = content.splitlines()
+
+try:
+    start = lines.index(managed_start)
+    end = lines.index(managed_end, start)
+    lines[start:end + 1] = managed_block
+except ValueError:
+    if lines and lines[-1] != "":
+        lines.append("")
+    lines.extend(managed_block)
+
+local_conf.write_text("\n".join(lines) + "\n")
+PY
+
+    verbose "Ensured ob init managed local.conf settings in $local_conf"
+}
+
 read_lock_field() {
     local key="$1"
 
@@ -658,6 +704,8 @@ init_bitbake_env() {
         error "local.conf not found after source setup. Something went wrong."
         exit 1
     fi
+
+    ensure_bootstrap_local_conf
 
     # Pre-create DL_DIR and SSTATE_DIR so bitbake sanity checks don't fail
     # when externalsrc-*.inc references them (injected later in Step 7)

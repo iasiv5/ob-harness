@@ -94,6 +94,7 @@ EXTERNALSRC_BUILD_pn-<recipe> = "<absolute-path-to-local-source>"
 - **操作系统**：必须 Linux（bitbake 依赖）
 - **前置工具**：git, python3
 - **网络**：首次运行需访问 github.com；`--skip-fetch` 可离线运行
+- **连通性探针**：`ob init` 会在 `local.conf` 注入 `CONNECTIVITY_CHECK_URIS = ""`，避免受限网络下被 `https://yoctoproject.org/connectivity.html` 的 sanity probe 误拦截；如需保留探针，可在运行前设置 `OB_CONNECTIVITY_CHECK_URIS=https://www.example.com/ ./ob init <machine>`
 - **磁盘空间**：≥ 30GB（主仓库 + 子仓库 + 编译输出）
 - **幂等性**：重复运行 `ob init <machine>` 是安全的——已存在的仓库不会重新 clone，配置文件会备份后覆盖
 - **不要手动编辑** externalsrc inc 文件，需要变更时重新运行 `ob init`
