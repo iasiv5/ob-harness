@@ -7,7 +7,7 @@
 ### 项目与代码
 - 写代码 / 跑脚本 / 一次性项目：`adhoc_jobs/<project>/`
 - 工具脚本（邮件、语义搜索、分享报告等）：`tools/`
-- OpenBMC 环境初始化工具：`tools/ob`（`ob init <machine>` 一键初始化）
+- OpenBMC 环境初始化工具：根目录 `ob`（`./ob init [<machine>]` 一键初始化）
 - OpenBMC 工作区（主仓库、子仓库源码、lockfile）：`workspace/`（整体 gitignore，仅保留 `.gitkeep`）
 
 ### 系统与规则

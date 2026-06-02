@@ -5,13 +5,13 @@
 - **类型**: Workflow
 - **适用场景**: 初始化 OpenBMC 本地开发环境（clone 子仓库、注入 externalsrc、生成 lockfile）
 - **创建日期**: 2026-05-31
-- **最后更新**: 2026-06-01
+- **最后更新**: 2026-06-02
 
 ---
 
 ## 目标
 
-运行 `tools/ob init <machine>` 后，目标 machine 的 OpenBMC 开发环境处于就绪状态：bitbake 能用本地源码编译 `obmc-phosphor-image`，子仓库版本与 lockfile 一致。
+运行 `./ob init [<machine>]` 后，目标 machine 的 OpenBMC 开发环境处于就绪状态：bitbake 能用本地源码编译 `obmc-phosphor-image`，子仓库版本与 lockfile 一致。machine 在主仓库就绪后按 `source setup` 列表校验，无效或缺省时交互选择（无 TTY 报错退出）。
 
 ## 边界
 
@@ -46,16 +46,17 @@
 ## 可用资源
 
 **工具**：
-- `tools/ob` — 主入口 bash 脚本，编排 8 阶段流程（前置检查 → clone → init → 依赖图 → 子仓库 → lockfile → externalsrc → 报告）
+- 根目录 `ob` — 主入口 bash 脚本，编排 8 阶段流程（前置检查 → clone → 校验 machine → init → 依赖图 → 子仓库 → lockfile → externalsrc → 报告）
 - `tools/parse_bitbake_deps.py` — Python 脚本，解析 `bitbake -g` 和 `bitbake -e` 输出为 JSON
 
 **命令行选项**：
 
 ```bash
-./tools/ob init <machine>              # 基本用法
-./tools/ob init <machine> --dry-run    # 预览模式，不实际执行
-./tools/ob init <machine> --skip-fetch # 跳过 git clone/fetch
-./tools/ob init <machine> --verbose    # 详细输出
+./ob init                          # 列出可用 machine 并交互选择
+./ob init <machine>              # 基本用法
+./ob init <machine> --dry-run    # 预览模式，不实际执行
+./ob init <machine> --skip-fetch # 跳过 git clone/fetch
+./ob init <machine> --verbose    # 详细输出
 ```
 
 **锁文件 schema**（`workspace/configs/<machine>.lock`）：
@@ -101,8 +102,8 @@ EXTERNALSRC_BUILD_pn-<recipe> = "<absolute-path-to-local-source>"
 
 ## 已知陷阱
 
-- **重跑前不要清空 `workspace/src/<machine>/`**：`tools/ob` 的子仓库阶段是增量的，已有 `.git` 的仓库会走 fetch/skip 路径。网络中断或少量仓库失败时，只删除明确失败的子仓库目录再重跑；清空整个 `workspace/src/<machine>/` 会丢失已下载的大量源码，重新 clone 可能耗费数小时。
-- **失败目录要按实际失败列表处理**：优先根据 `tools/ob` 的最终报告或当前 clone 失败输出定位目录，例如只处理 `workspace/src/romulus/linux` 这类失败仓库，不要把成功仓库当成临时产物清理。
+- **重跑前不要清空 `workspace/src/<machine>/`**：`ob` 的子仓库阶段是增量的，已有 `.git` 的仓库会走 fetch/skip 路径。网络中断或少量仓库失败时，只删除明确失败的子仓库目录再重跑；清空整个 `workspace/src/<machine>/` 会丢失已下载的大量源码，重新 clone 可能耗费数小时。
+- **失败目录要按实际失败列表处理**：优先根据 `ob` 的最终报告或当前 clone 失败输出定位目录，例如只处理 `workspace/src/romulus/linux` 这类失败仓库，不要把成功仓库当成临时产物清理。
 
 ---
 

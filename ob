@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ob - OpenBMC development environment initializer
-# Usage: ob init <machine> [options]
+# Usage: ob init [<machine>] [options]
 set -euo pipefail
 
 # === Global Variables ===
@@ -43,22 +43,23 @@ usage() {
 Usage: ob <command> [options] [arguments]
 
 Commands:
-  init <machine>        One-click initialize OpenBMC dev environment
-    status [<machine>]    Show current OpenBMC source binding status
+  init [<machine>]      One-click initialize OpenBMC dev environment
+  status [<machine>]    Show current OpenBMC source binding status
 
 Options:
   --skip-fetch          Skip git clone/fetch of sub-repos
   --dry-run             Print actions without executing
-  --openbmc-url <url>   Use a custom OpenBMC repository URL
+  --obmc-url <url>      Use a custom OpenBMC repository URL
   --verbose             Verbose output
   -h, --help            Show this help
 
 Examples:
+  ob init                         # List machines and choose interactively
   ob init romulus                  # Initialize romulus machine
   ob init romulus --dry-run        # Preview what would be done
   ob init romulus --skip-fetch     # Assume sub-repos already exist locally
-  ob init romulus --openbmc-url https://example.com/openbmc.git
-    ob status                        # Show current source binding status
+  ob init romulus --obmc-url https://example.com/openbmc.git
+  ob status                        # Show current source binding status
 
 Re-running:
   ob init is INCREMENTAL — existing repos under src/<machine>/ are automatically
@@ -85,14 +86,10 @@ parse_args() {
 
     case "$COMMAND" in
         init)
-            if [[ $# -lt 1 ]] || [[ "$1" == --* ]]; then
-                error "Missing <machine> argument for 'init'"
-                usage
-                exit 1
+            if [[ $# -gt 0 ]] && [[ "$1" != --* ]]; then
+                MACHINE="$1"
+                shift
             fi
-
-            MACHINE="$1"
-            shift
             ;;
         status)
             if [[ $# -gt 0 ]] && [[ "$1" != --* ]]; then
@@ -111,9 +108,9 @@ parse_args() {
         case "$1" in
             --skip-fetch)  SKIP_FETCH=1; shift ;;
             --dry-run)     DRY_RUN=1; shift ;;
-            --openbmc-url)
+            --obmc-url)
                 if [[ $# -lt 2 ]]; then
-                    error "Missing value for --openbmc-url"
+                    error "Missing value for --obmc-url"
                     usage
                     exit 1
                 fi
@@ -388,10 +385,12 @@ select_openbmc_repo_url() {
         echo ""
         echo "Select the OpenBMC repository to download:"
         echo "  1) Community OpenBMC (GitHub.com)"
+        echo "       equivalent: ob init --obmc-url $DEFAULT_OPENBMC_REPO_URL"
         echo "  2) Custom OpenBMC repository URL"
+        echo "       equivalent: ob init --obmc-url <your-repo-url>"
         if ! read -r -p "Choose [1-2]: " selection; then
             error "Unable to read repository source selection from stdin."
-            error "Use --openbmc-url <url> or set OB_OPENBMC_URL in non-interactive mode."
+            error "Use --obmc-url <url> or set OB_OPENBMC_URL in non-interactive mode."
             exit 1
         fi
 
@@ -404,7 +403,7 @@ select_openbmc_repo_url() {
             2)
                 if ! read -r -p "Enter the full repository URL: " OPENBMC_REPO_URL; then
                     error "Unable to read custom repository URL from stdin."
-                    error "Use --openbmc-url <url> or set OB_OPENBMC_URL in non-interactive mode."
+                    error "Use --obmc-url <url> or set OB_OPENBMC_URL in non-interactive mode."
                     exit 1
                 fi
                 if is_valid_repo_url "$OPENBMC_REPO_URL"; then
@@ -423,7 +422,7 @@ select_openbmc_repo_url() {
 detect_harness_root() {
     local script_dir
     script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    HARNESS_ROOT="$(cd "$script_dir/.." && pwd)"
+    HARNESS_ROOT="$script_dir"
     WORKSPACE_DIR="$HARNESS_ROOT/workspace"
     OPENBMC_DIR="$WORKSPACE_DIR/openbmc"
     BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
@@ -433,6 +432,78 @@ detect_harness_root() {
     verbose "HARNESS_ROOT=$HARNESS_ROOT"
     verbose "WORKSPACE_DIR=$WORKSPACE_DIR"
     verbose "MACHINE=$MACHINE"
+}
+
+# Capture `source setup` (no args) output, extract available machine names
+list_available_machines() {
+    [[ -d "$OPENBMC_DIR/.git" ]] || return 0
+    local raw
+    raw=$(cd "$OPENBMC_DIR" && set +u; source setup 2>&1 || true)
+    # setup prints "Use one of:" followed by multi-column machine names
+    echo "$raw" \
+      | sed -n '/Use one of:/,$p' \
+      | tail -n +2 \
+      | tr -s ' \t' '\n' \
+      | sed '/^$/d' \
+      | sort -u
+}
+
+# Print supported machine list (passthrough for readability)
+print_available_machines() {
+    local machines
+    machines=$(list_available_machines)
+    if [[ -z "$machines" ]]; then
+        warn "No machines found. The OpenBMC main repository may be incomplete."
+        warn "Try updating it: cd $OPENBMC_DIR && git pull"
+        return 0
+    fi
+    info "Available machines in this repository:"
+    echo "$machines" | column -c 80 2>/dev/null || echo "$machines"
+}
+
+require_openbmc_repo() {
+    if [[ -d "$OPENBMC_DIR/.git" ]]; then
+        return 0
+    fi
+    info "No OpenBMC main repository found at $OPENBMC_DIR."
+    info "A small main repository must be cloned first to list/validate machines (a few minutes)."
+    clone_openbmc
+}
+
+resolve_machine() {
+    local machines
+    machines=$(list_available_machines)
+    print_available_machines
+
+    if [[ -n "$MACHINE" ]] && echo "$machines" | grep -qx -- "$MACHINE"; then
+        info "Machine '$MACHINE' confirmed."
+        return 0
+    fi
+
+    if [[ -n "$MACHINE" ]]; then
+        warn "Machine '$MACHINE' is not in the available list."
+    else
+        warn "No machine specified."
+    fi
+
+    if [[ ! -t 0 ]]; then
+        error "No valid machine and no interactive terminal. Pass a valid machine: ob init <machine>"
+        exit 1
+    fi
+
+    local selected
+    while true; do
+        if ! read -r -p "Enter a machine name from the list above: " selected; then
+            error "Unable to read machine selection from stdin."
+            exit 1
+        fi
+        if echo "$machines" | grep -qx -- "$selected"; then
+            MACHINE="$selected"
+            info "Machine '$MACHINE' confirmed."
+            return 0
+        fi
+        warn "Invalid machine: $selected"
+    done
 }
 
 prerequisites_check() {
@@ -491,6 +562,7 @@ clone_openbmc() {
     fi
 
     select_openbmc_repo_url
+    info "Downloading the small OpenBMC main repository (used to list machines, ~a few minutes)."
     info "Cloning $OPENBMC_REPO_URL -> $OPENBMC_DIR"
     if [[ "$DRY_RUN" -eq 1 ]]; then
         info "[DRY-RUN] Would run: git clone $OPENBMC_REPO_URL $OPENBMC_DIR"
@@ -953,6 +1025,14 @@ main() {
         return 0
     fi
 
+    prerequisites_check
+    require_openbmc_repo
+    resolve_machine
+
+    # Re-derive paths (machine may have changed via interactive resolve_machine)
+    BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
+    SRC_DIR="$WORKSPACE_DIR/src/$MACHINE"
+
     # --- Detect fresh run vs incremental re-run ---
     local is_rerun=0
     if [[ -d "$SRC_DIR" ]] && [[ $(ls -d "$SRC_DIR"/*/ 2>/dev/null | wc -l) -gt 0 ]]; then
@@ -978,12 +1058,16 @@ main() {
     else
         echo ""
         info "FRESH RUN — initializing OpenBMC environment for machine=$MACHINE"
-        warn "This will download ~20-30 GB of source code. Estimated time: 20-60 minutes."
+        echo ""
+        warn "============================================================"
+        warn " Machine '$MACHINE' confirmed — about to fetch its sub-repos."
+        warn " Download size : ~20-30 GB"
+        warn " Estimated time: 20-60 minutes"
+        warn " Resumable     : safe to Ctrl+C; re-run resumes incrementally."
+        warn "============================================================"
         echo ""
     fi
 
-    prerequisites_check
-    clone_openbmc
     init_bitbake_env
     generate_dep_graph
     clone_sub_repos
