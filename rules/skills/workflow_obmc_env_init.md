@@ -121,3 +121,87 @@ workspace/
 └── configs/
     └── <machine>.lock                    # 版本锁定快照
 ```
+
+---
+
+## 故障排除（Troubleshooting）
+
+`ob init` 完成后，按以下流程处理失败仓库：
+
+### 1. 确认失败清单
+
+查看 `ob init` 最终报告中的 `[FAIL]` 列表，或运行：
+
+```bash
+# 快速检查哪些目录缺 .git/HEAD
+for d in workspace/src/<machine/*/; do
+  [ ! -f "$d/.git/HEAD" ] && echo "MISSING: $(basename $d)"
+done
+```
+
+### 2. 按类别处理
+
+#### A. 网络波动（GitHub 临时不可达）
+
+**症状**：`clone failed`，但该 repo 在 github.com 上正常存在
+**处理**：手动重试
+
+```bash
+SRC=workspace/src/<machine>
+rm -rf $SRC/<failed-repo>
+git clone --single-branch --branch <branch> --depth=50 https://github.com/.../$REPO $SRC/<repo>
+cd $SRC/<repo> && git fetch --unshallow && git checkout <srcrev>
+```
+
+#### B. 分支不存在（上游重命名默认分支）
+
+**症状**：`remote branch <branch> not found`（如 fmt 的 master → main）
+**处理**：
+
+```bash
+git ls-remote --heads <clone_url>   # 查看可用分支
+git clone --single-branch --branch <correct-branch> --depth=50 <url> <path>
+cd <path> && git fetch --unshallow && git checkout <srcrev>
+```
+
+`ob` 脚本 v2 已内置自动 fallback：branch 不存在时会去掉 `--single-branch` 重试。
+
+#### C. Commit 丢失（上游 force push / rewrite history）
+
+**症状**：`引用不是一个树：<sha>` 或 `not our ref`
+**处理**：用最新 HEAD 替代（仅测试数据 repo 安全，如 `json_test_data`）
+
+```bash
+cd workspace/src/<machine>/<repo>
+git checkout <default-branch>   # 用最新版本替代丢失的 commit
+```
+
+#### D. 服务器网络限制（特定域名不可达）
+
+**症状**：`could not determine hash algorithm`（如 infradead.org）
+**处理**：无法从本机解决。可选方案：
+1. 从可访问的机器打 tarball 拷过来
+2. 找 mirror 仓库（如 GitHub fork）
+3. 如果不影响编译（如 mtd-utils 是工具），可暂时忽略
+
+#### E. srcrev 为占位符（AUTOREV / INVALID / AUTOINC）
+
+**症状**：lockfile 中 srcrev 为 `${AUTOREV}` 或 checkout 被跳过
+**处理**：正常——这些 repo 使用分支最新版本，无需 checkout 到特定 commit
+
+### 3. 同步 lockfile
+
+手动补 repo 后，lockfile 不需要更新（它记录的是 bitbake 解析时的期望版本）。
+如果需要重新生成：`rm workspace/configs/<machine>.lock && ob init <machine> --skip-fetch`
+
+---
+
+## 已知限制
+
+| 限制 | 原因 | Workaround |
+|------|------|-----------|
+| `mtd-utils` 不可克隆 | infradead.org 从部分构建服务器不可达 | tarball 拷贝 / GitHub mirror |
+| `json_test_data` commit 丢失 | 上游 force push 重写历史 | 使用最新 master HEAD |
+| `--single-branch` 的 repo 无法 fetch 其他分支 | 只克隆了单个分支 | 修改 `.git/config` 或重新全量 clone |
+| branch 值带引号（`\"main\"`） | bitbake SRC_URI 中 branch 参数含 shell 转义引号 | `ob` v2 已自动剥离引号 |
+| 浅 clone（`--depth=1`）的 repo 历史 不完整 | fallback 机制为节省时间 | 手动 `git fetch --unshallow` |
