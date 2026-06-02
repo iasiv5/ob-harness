@@ -18,7 +18,6 @@ OPENBMC_REPO_URL=""
 SOURCE_LABEL=""
 VERBOSE=0
 DRY_RUN=0
-SKIP_FETCH=0
 STATUS_SUCCESS=()
 STATUS_SHALLOW=()
 STATUS_UNPINNED=()
@@ -76,7 +75,6 @@ Commands:
   status [<machine>]    Show current OpenBMC source binding status
 
 Options:
-  --skip-fetch          Skip git clone/fetch of sub-repos
   --dry-run             Print actions without executing
   --obmc-url <url>      Use a custom OpenBMC repository URL
   -v, --verbose         Verbose output
@@ -86,7 +84,6 @@ Examples:
   ob init                          # List machines and choose interactively
   ob init romulus                  # Initialize romulus machine
   ob init romulus --dry-run        # Preview what would be done
-  ob init romulus --skip-fetch     # Assume sub-repos already exist locally
   ob init romulus --obmc-url https://example.com/openbmc.git
 EOF
 }
@@ -128,7 +125,6 @@ parse_args() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --skip-fetch)  SKIP_FETCH=1; shift ;;
             --dry-run)     DRY_RUN=1; shift ;;
             --obmc-url)
                 if [[ $# -lt 2 ]]; then
@@ -747,7 +743,6 @@ generate_dep_graph() {
 clone_sub_repos() {
     # SAFETY: This function is incremental.
     #   - If a repo dir exists with .git, it does 'git fetch' instead of clone.
-    #   - If --skip-fetch is set and dir exists, it's completely skipped.
     #   DO NOT delete src/<machine>/ before re-running ob init.
     #   Only delete the specific failed repo dirs you want to retry.
     #   Deleting all repos wastes hours of download time.
@@ -784,9 +779,7 @@ clone_sub_repos() {
         local local_path="$SRC_DIR/$name"
         info "[$current/$total] Processing: $name"
 
-        if [[ "$SKIP_FETCH" -eq 1 ]] && [[ -d "$local_path" ]]; then
-            verbose "Skip fetch: $name already exists at $local_path"
-        elif [[ -d "$local_path/.git" ]]; then
+        if [[ -d "$local_path/.git" ]]; then
             verbose "Fetching updates for $name..."
             if ! git -C "$local_path" fetch --all 2>/dev/null; then
                 warn "Failed to fetch $name, continuing with existing state."
