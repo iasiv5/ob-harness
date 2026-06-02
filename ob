@@ -36,6 +36,25 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 verbose() { if [[ "$VERBOSE" -eq 1 ]]; then echo -e "[DEBUG] $*"; fi; }
 
+show_logo() {
+    echo -e ""
+    echo -e "\033[38;2;255;216;106m      ██████╗ ██████╗ ███████╗ ███╗   ██╗ ██████╗ ███╗   ███╗ ██████╗\033[0m"
+    echo -e "\033[38;2;220;220;90m     ██╔═══██╗██╔══██╗██╔════╝ ████╗  ██║ ██╔══██╗████╗ ████║██╔════╝ \033[0m"
+    echo -e "\033[38;2;180;215;100m     ██║   ██║██████╔╝█████╗   ██╔██╗ ██║ ██████╔╝██╔████╔██║██║      \033[0m"
+    echo -e "\033[38;2;160;210;115m     ██║   ██║██╔═══╝ ██╔══╝   ██║╚██╗██║ ██╔══██╗██║╚██╔╝██║██║      \033[0m"
+    echo -e "\033[38;2;140;200;150m     ╚██████╔╝██║     ███████╗ ██║ ╚████║ ██████╔╝██║ ╚═╝ ██║╚██████╗ \033[0m"
+    echo -e "\033[38;2;125;195;185m      ╚═════╝ ╚═╝     ╚══════╝ ╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝ ╚═════╝ \033[0m"
+    echo -e "\033[38;2;115;195;215m     ██╗  ██╗  █████╗  █████╗   ███╗   ██╗ ███████╗ ███████╗ ███████╗ \033[0m"
+    echo -e "\033[38;2;115;195;235m     ██║  ██║ ██╔══██╗ ██╔══██╗ ████╗  ██║ ██╔════╝ ██╔════╝ ██╔════╝ \033[0m"
+    echo -e "\033[38;2;135;190;240m     ███████║ ███████║ ██████╔╝ ██╔██╗ ██║ █████╗   ███████╗ ███████╗ \033[0m"
+    echo -e "\033[38;2;165;185;240m     ██╔══██║ ██╔══██║ ██╔══██╗ ██║╚██╗██║ ██╔══╝   ╚════██║ ╚════██║ \033[0m"
+    echo -e "\033[38;2;195;180;240m     ██║  ██║ ██║  ██║ ██║  ██║ ██║ ╚████║ ███████╗ ███████║ ███████║ \033[0m"
+    echo -e "\033[38;2;208;184;240m     ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═══╝ ╚══════╝ ╚══════╝ ╚══════╝ \033[0m"
+    echo    "    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+    echo -e "    ┃     OpenBMC Dev. Environment Initializer · \\033[38;2;255;210;80mob init\033[0m · 𝓲𝓪𝓼𝓲     ┃"
+    echo    "    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+}
+
 # === Functions ===
 
 usage() {
@@ -43,7 +62,7 @@ usage() {
 Usage: ob <command> [options] [arguments]
 
 Commands:
-  init [<machine>]      One-click initialize OpenBMC dev environment
+  init   [<machine>]    One-click initialize OpenBMC dev environment
   status [<machine>]    Show current OpenBMC source binding status
 
 Options:
@@ -54,18 +73,11 @@ Options:
   -h, --help            Show this help
 
 Examples:
-  ob init                         # List machines and choose interactively
+  ob init                          # List machines and choose interactively
   ob init romulus                  # Initialize romulus machine
   ob init romulus --dry-run        # Preview what would be done
   ob init romulus --skip-fetch     # Assume sub-repos already exist locally
   ob init romulus --obmc-url https://example.com/openbmc.git
-  ob status                        # Show current source binding status
-
-Re-running:
-  ob init is INCREMENTAL — existing repos under src/<machine>/ are automatically
-  skipped (or git-fetch'd). DO NOT delete src/<machine>/ before re-running.
-  Only delete the specific failed repos if you want to retry them.
-  Example: rm -rf src/romulus/linux src/romulus/mtd-utils  # only the failed ones
 EOF
 }
 
@@ -751,9 +763,8 @@ clone_sub_repos() {
 
     while IFS= read -r entry; do
         current=$((current + 1))
-        local name src_uri srcrev clone_url branch
+        local name srcrev clone_url branch
         name=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
-        src_uri=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['src_uri'])")
         srcrev=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['srcrev'])")
         clone_url=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['clone_url'])")
         # Strip surrounding quotes from branch (bitbake may emit branch=\"main\")
@@ -1053,6 +1064,7 @@ print_report() {
 # === Main ===
 main() {
     SECONDS=0
+    show_logo
     parse_args "$@"
     detect_harness_root
 
