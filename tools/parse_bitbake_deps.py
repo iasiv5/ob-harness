@@ -19,6 +19,7 @@ import argparse
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 
@@ -168,6 +169,11 @@ def convert_to_https_url(git_uri):
 
 def main():
     args = parse_args()
+
+    # On SIGINT (ctrl+C), exit silently without writing partial output.
+    # The caller (ob) writes to a .tmp file and renames on success,
+    # so a signal here просто means the .tmp gets discarded.
+    signal.signal(signal.SIGINT, lambda _sig, _frame: sys.exit(130))
 
     if not os.path.isfile(args.pn_buildlist):
         print(f"Error: pn-buildlist not found: {args.pn_buildlist}", file=sys.stderr)

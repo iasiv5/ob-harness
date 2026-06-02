@@ -772,16 +772,21 @@ generate_dep_graph() {
         exit 1
     fi
 
-    # Parse dependencies: Python script queries bitbake -e per recipe
+    # Parse dependencies: Python script queries bitbake -e per recipe.
+    # Write to a temp file first, then atomically rename on success.
+    # This prevents ctrl+C from leaving deps.json empty (shell `>` truncates immediately).
     local deps_json="$BUILD_DIR/deps.json"
+    local deps_json_tmp="$BUILD_DIR/deps.json.tmp"
     info "Parsing dependency graph (querying per-recipe SRC_URI/SRCREV)..."
     if ! python3 "$HARNESS_ROOT/tools/parse_bitbake_deps.py" \
         --pn-buildlist "$BUILD_DIR/pn-buildlist" \
         --machine "$MACHINE" \
-        > "$deps_json"; then
+        > "$deps_json_tmp"; then
+        rm -f "$deps_json_tmp"
         error "Failed to parse bitbake dependency graph."
         exit 1
     fi
+    mv "$deps_json_tmp" "$deps_json"
 
     local dep_count
     dep_count=$(python3 -c "import json; print(len(json.load(open('$deps_json'))))")
