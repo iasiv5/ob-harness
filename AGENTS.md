@@ -20,36 +20,15 @@ Don't ask permission. Just do it.
 
 ## Skills
 
-**Skills** 是 AI 可复用的能力，包括工作流、API 指南、最佳实践等。
+**Skills** 是 AI 可复用的能力，包括工作流和最佳实践。
 
-**重要：遇到"怎么做 X"时，先查 skill 再查系统工具。** 搜索顺序：(1) 下方速查表 → (2) `rules/05_SKILLS_INDEX.md` → (3) 系统工具。
+**重要：遇到"怎么做 X"时，先查 skill 再查系统工具。** 搜索顺序：(1) `rules/05_SKILLS_INDEX.md` → (2) 系统工具。
 
-**需要执行某项任务** → 先查 `rules/05_SKILLS_INDEX.md` 找到对应的 skill
-**想添加新能力** → 参考现有 skill 格式，更新 SKILLS_INDEX.md
-
-### 常用 Skill 速查（以 INDEX.md 为准）
-
-**多 Agent 并行分析** → `rules/skills/bestpractice_multi_agent_analysis.md`  
-- 上下文窗口隔离、Topic 分割 50% 重叠、交叉验证  
-- 配合 `rules/skills/workflow_parallel_subagents.md` 的执行框架
-
-**调用后台 Agent / 并行 Subagent** → `rules/skills/workflow_parallel_subagents.md`  
-- 何时拆分任务、如何并行派出多个 subagent  
-- 准备使用并行 subagent 前，先把这个 skill 读一遍
-- 派出 agent 后等系统通知即可，不需要轮询
+**想添加新能力** → 参考 `rules/skills/bestpractice_skill_writing.md`，写完后更新 `rules/05_SKILLS_INDEX.md`
 
 ## Axioms（公理）
 
 从个人经历提炼的决策原则，用于启发深度思考。分类索引、使用指南和触发词见 `rules/06_AXIOMS_INDEX.md`。
-
-## Sub-agent 模型路由
-
-不同工具有各自的 subagent 机制和模型选择策略。当前主用 GitHub Copilot，偶尔用 Claude Code：
-
-- **GitHub Copilot**：subagent 由 Copilot 自动调度，无需手动配置路由
-- **Claude Code**：如需指定模型或并行 subagent，参考自身配置文件
-
-创意性工作（brainstorm、文章结构、观点碰撞）可考虑在后台跑一个独立 agent，与主线程并行推进。
 
 ## Working Mode
 
