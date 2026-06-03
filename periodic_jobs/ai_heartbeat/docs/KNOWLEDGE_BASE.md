@@ -73,7 +73,7 @@ Observer 扫描以下路径，检测有意义的变更：
   2. **Skills 索引与新增规范**: 当晋升目标落在 `rules/skills/` 下的真实 skill 文档时，必须遵循以下规则：
      - 新增或重写 skill 前，先读 `rules/skills/bestpractice_skill_writing.md`，按目标、验收标准、可用资源和输出规格定义 skill，不要把 skill 写成机械步骤清单。
      - 文件命名建议采用 `<category>_<name>.md`，例如 `workflow_my_process.md`、`bestpractice_my_insight.md`。
-     - 修改或新增后，必须同步更新 `rules/skills/INDEX.md`，确保后续 agent 能找到。
+     - 修改或新增后，必须同步更新 `rules/SKILLS_INDEX.md`，确保后续 agent 能找到。
   3. **记忆层 (L1/L2)**: 重写 `contexts/memory/OBSERVATIONS.md`。执行垃圾回收，删除已被固化进 rules 的内容以及过期的 🟢 记录。
 - **职责**: 确保 `rules/` 始终代表系统的最新“进化状态”。
 

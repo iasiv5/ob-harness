@@ -10,7 +10,7 @@ Before doing anything else:
 2. Read `rules/USER.md` — this is who you're helping
 3. Read `rules/WORKSPACE.md` — file routing table, check before searching for files
 4. Read `rules/COMMUNICATION.md` — how to think and communicate
-5. Read `rules/skills/INDEX.md` — understand available skills
+5. Read `rules/SKILLS_INDEX.md` — understand available skills
 
 Don't ask permission. Just do it.
 
@@ -22,10 +22,10 @@ Don't ask permission. Just do it.
 
 **Skills** 是 AI 可复用的能力，包括工作流、API 指南、最佳实践等。
 
-**重要：遇到"怎么做 X"时，先查 skill 再查系统工具。** 搜索顺序：(1) 下方速查表 → (2) `rules/skills/INDEX.md` → (3) 系统工具。
+**重要：遇到"怎么做 X"时，先查 skill 再查系统工具。** 搜索顺序：(1) 下方速查表 → (2) `rules/SKILLS_INDEX.md` → (3) 系统工具。
 
-**需要执行某项任务** → 先查 `rules/skills/INDEX.md` 找到对应的 skill  
-**想添加新能力** → 参考现有 skill 格式，更新 INDEX.md
+**需要执行某项任务** → 先查 `rules/SKILLS_INDEX.md` 找到对应的 skill
+**想添加新能力** → 参考现有 skill 格式，更新 SKILLS_INDEX.md
 
 ### 常用 Skill 速查（以 INDEX.md 为准）
 
@@ -40,7 +40,7 @@ Don't ask permission. Just do it.
 
 ## Axioms（公理）
 
-从个人经历提炼的决策原则，用于启发深度思考。分类索引、使用指南和触发词见 `rules/axioms/INDEX.md`。
+从个人经历提炼的决策原则，用于启发深度思考。分类索引、使用指南和触发词见 `rules/AXIOMS_INDEX.md`。
 
 ## Sub-agent 模型路由
 

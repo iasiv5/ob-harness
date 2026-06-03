@@ -20,7 +20,7 @@
 
 ## 底层逻辑：Axioms（公理）
 
-从用户团队经历中提炼的决策原则。分类索引、核心公理群和触发词见 `rules/axioms/INDEX.md`。
+从用户团队经历中提炼的决策原则。分类索引、核心公理群和触发词见 `rules/AXIOMS_INDEX.md`。
 
 ## Agent 交互原则
 

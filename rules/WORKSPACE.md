@@ -10,8 +10,8 @@
 - OpenBMC 工作区（主仓库、子仓库源码、lockfile）：`workspace/`（整体 gitignore，仅保留 `.gitkeep`）
 
 ### 系统与规则
-- 可复用技术方案 / Skill：`rules/skills/`
-- 核心公理（Axioms）：`rules/axioms/`
+- 可复用技术方案 / Skill：`rules/skills/`（索引见 `rules/SKILLS_INDEX.md`）
+- 核心公理（Axioms）：`rules/axioms/`（索引见 `rules/AXIOMS_INDEX.md`）
 - 记忆系统：`contexts/memory/`
 - AI Heartbeat 心跳子系统（PRD、源码、测试、配置）：`periodic_jobs/ai_heartbeat/`
 - GitHub Copilot 入口与 hooks：`.github/`
