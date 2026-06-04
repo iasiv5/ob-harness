@@ -75,16 +75,16 @@ Commands:
   status                Show current OpenBMC source binding status
 
 Options:
-  --dry-run             Print actions without executing
-  --obmc-url <url>      Use a custom OpenBMC repository URL
+  -d, --dry-run         Print actions without executing
+  -u, --url <url>       Use a custom OpenBMC repository URL
   -v, --verbose         Verbose output
   -h, --help            Show this help
 
 Examples:
   ob init                          # List machines and choose interactively
   ob init romulus                  # Initialize romulus machine
-  ob init romulus --dry-run        # Preview what would be done
-  ob init romulus --obmc-url https://example.com/openbmc.git
+  ob init romulus -d               # Preview what would be done
+  ob init romulus --url https://example.com/openbmc.git
 EOF
 }
 
@@ -125,10 +125,10 @@ parse_args() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --dry-run)     DRY_RUN=1; shift ;;
-            --obmc-url)
+            -d|-D|--dry-run)  DRY_RUN=1; shift ;;
+            -u|-U|--url)
                 if [[ $# -lt 2 ]]; then
-                    error "Missing value for --obmc-url"
+                    error "Missing value for --url"
                     usage
                     exit 1
                 fi
@@ -136,7 +136,7 @@ parse_args() {
                 shift 2
                 ;;
             -v|-V|--verbose)  VERBOSE=1; shift ;;
-            -h|--help)     usage; exit 0 ;;
+            -h|-H|--help)     usage; exit 0 ;;
             *)             error "Unknown option: $1"; usage; exit 1 ;;
         esac
     done
@@ -449,12 +449,12 @@ select_openbmc_repo_url() {
         echo ""
         echo "Select the OpenBMC repository to download:"
         echo "  1) Community OpenBMC (GitHub.com)"
-        echo "       equivalent: ob init --obmc-url $DEFAULT_OPENBMC_REPO_URL"
+        echo "       equivalent: ob init --url $DEFAULT_OPENBMC_REPO_URL"
         echo "  2) Custom OpenBMC repository URL"
-        echo "       equivalent: ob init --obmc-url <your-repo-url>"
+        echo "       equivalent: ob init --url <your-repo-url>"
         if ! read -r -p "Choose [1-2]: " selection; then
             error "Unable to read repository source selection from stdin."
-            error "Use --obmc-url <url> or set OB_OPENBMC_URL in non-interactive mode."
+            error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
             exit 1
         fi
 
@@ -467,7 +467,7 @@ select_openbmc_repo_url() {
             2)
                 if ! read -r -p "Enter the full repository URL: " OPENBMC_REPO_URL; then
                     error "Unable to read custom repository URL from stdin."
-                    error "Use --obmc-url <url> or set OB_OPENBMC_URL in non-interactive mode."
+                    error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
                     exit 1
                 fi
                 if is_valid_repo_url "$OPENBMC_REPO_URL"; then
