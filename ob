@@ -1391,8 +1391,15 @@ generate_build_config() {
         fi
     } > "$inc_file"
 
-    # Ensure cache directories exist (harmless if already present)
-    mkdir -p "$WORKSPACE_DIR/downloads" "$WORKSPACE_DIR/sstate-cache"
+    # Ensure cache directories exist only when we actually set them.
+    # If local.conf already defines DL_DIR/SSTATE_DIR (e.g., OEM NFS cache),
+    # creating workspace-local directories is pointless — they'd be empty unused shells.
+    if [[ "$has_dl_dir" -eq 0 ]]; then
+        mkdir -p "$WORKSPACE_DIR/downloads"
+    fi
+    if [[ "$has_sstate_dir" -eq 0 ]]; then
+        mkdir -p "$WORKSPACE_DIR/sstate-cache"
+    fi
 
     info "Generated $inc_file"
     if [[ "$has_dl_dir" -eq 1 ]]; then
