@@ -19,9 +19,6 @@ SOURCE_LABEL=""
 VERBOSE=0
 DRY_RUN=0
 SKIP_DEPS=0
-STATUS_SUCCESS=()
-STATUS_SHALLOW=()
-STATUS_UNPINNED=()
 STATUS_FAILED=()
 STATUS_MIRROR_NEW=()
 STATUS_MIRROR_EXISTING=()
@@ -1045,7 +1042,7 @@ init_bitbake_env() {
     ensure_bootstrap_local_conf
 
     # Pre-create DL_DIR and SSTATE_DIR so bitbake sanity checks don't fail
-    # when externalsrc-*.inc references them (injected later in Step 7)
+    # when the .inc file (generated later in Step 7) references them.
     if [[ -f "$BUILD_DIR/conf/externalsrc-$MACHINE.inc" ]]; then
         mkdir -p "$WORKSPACE_DIR/downloads" "$WORKSPACE_DIR/sstate-cache"
 
@@ -1132,79 +1129,16 @@ generate_dep_graph() {
     info "Found $dep_count git-based sub-repositories."
 }
 
-_clone_from_remote() {
-    local clone_url="$1"
-    local local_path="$2"
-    local branch="$3"
-    local clone_err="$4"
-
-    local full_flags=()
-    if [[ -n "$branch" ]]; then
-        full_flags+=(--single-branch --branch "$branch")
-    fi
-
-    if is_private_url "$clone_url"; then
-        verbose "Full cloning (internal) $clone_url -> $local_path"
-    else
-        verbose "Full cloning (external) $clone_url -> $local_path"
-    fi
-
-    if ! git clone "${full_flags[@]}" "$clone_url" "$local_path" 2>>"$clone_err"; then
-        rm -rf "$local_path" 2>/dev/null
-        warn "Full clone failed, retrying shallow..."
-        sleep 2
-        local shallow_flags=(--depth=1)
-        if [[ -n "$branch" ]]; then
-            shallow_flags+=(--single-branch --branch "$branch")
-        fi
-        if ! git clone "${shallow_flags[@]}" "$clone_url" "$local_path" 2>>"$clone_err"; then
-            rm -rf "$local_path" 2>/dev/null
-            # Last resort: shallow without branch constraint
-            if [[ -n "$branch" ]]; then
-                warn "Shallow clone with branch '$branch' failed, retrying without branch constraint..."
-                sleep 2
-                local no_branch_flags=(--depth=1)
-                if ! git clone "${no_branch_flags[@]}" "$clone_url" "$local_path" 2>>"$clone_err"; then
-                    rm -rf "$local_path" 2>/dev/null
-                    error "Failed to clone from $clone_url"
-                    local _last_err
-                    _last_err=$(grep -iE 'fatal|error|could not' "$clone_err" 2>/dev/null | tail -1 | sed 's/^[[:space:]]*//')
-                    if [[ -n "$_last_err" ]]; then
-                        error "  git: $_last_err"
-                    fi
-                    return 1
-                else
-                    warn "$(basename "$local_path") cloned shallow without branch constraint (full git history unavailable)"
-                    STATUS_SHALLOW+=("$(basename "$local_path")")
-                fi
-            else
-                error "Failed to clone from $clone_url"
-                local _last_err
-                _last_err=$(grep -iE 'fatal|error|could not' "$clone_err" 2>/dev/null | tail -1 | sed 's/^[[:space:]]*//')
-                if [[ -n "$_last_err" ]]; then
-                    error "  git: $_last_err"
-                fi
-                return 1
-            fi
-        else
-            STATUS_SHALLOW+=("$(basename "$local_path")")
-        fi
-    fi
-    return 0
-}
-
 clone_sub_repos() {
     # SAFETY: This function is incremental.
-    #   - If a repo dir exists with .git, it does 'git fetch' instead of clone.
-    #   DO NOT delete src/<machine>/ before re-running ob init.
-    #   Only delete the specific failed repo dirs you want to retry.
-    #   Deleting all repos wastes hours of download time.
-    step_header "Step 5/8: Cloning sub-repositories..."
+    #   - If a bare mirror already exists, it is skipped.
+    #   - BitBake's do_fetch maintains mirrors during builds.
+    step_header "Step 5/8: Populating bare mirrors..."
 
     local deps_json="$BUILD_DIR/deps.json"
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        info "[DRY-RUN] Would clone/fetch repositories listed in $deps_json"
+        info "[DRY-RUN] Would populate bare mirrors listed in $deps_json"
         return 0
     fi
 
@@ -1213,12 +1147,11 @@ clone_sub_repos() {
         exit 1
     fi
 
-    mkdir -p "$SRC_DIR"
-
     local effective_dl_dir=""
     effective_dl_dir=$(resolve_effective_dl_dir)
     MIRROR_BASE="$effective_dl_dir/git2"
-    info "Step 5 - Mirror Cache: $MIRROR_BASE"
+    mkdir -p "$MIRROR_BASE"
+    info "Mirror cache: $MIRROR_BASE"
 
     # Read each repo from deps.json
     local total failed=0
@@ -1227,15 +1160,10 @@ clone_sub_repos() {
 
     while IFS= read -r entry; do
         current=$((current + 1))
-        local name srcrev clone_url branch src_uri
+        local name clone_url src_uri
         name=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
-        srcrev=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['srcrev'])")
         clone_url=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['clone_url'])")
         src_uri=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin).get('src_uri',''))")
-        # Strip surrounding quotes from branch (bitbake may emit branch=\"main\")
-        branch=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin).get('branch',''))" | tr -d '\"' | tr -d "'")
-
-        local local_path="$SRC_DIR/$name"
         info "[$current/$total] Processing: $name"
 
         # Expand any remaining ${VAR} references in clone_url.
@@ -1321,10 +1249,10 @@ clone_sub_repos() {
         mirror_path=$(derive_bitbake_git_mirror_path "$MIRROR_BASE" "$src_uri" 2>/dev/null || true)
 
         if [[ -z "$mirror_path" ]]; then
-            # Cannot derive mirror path (malformed SRC_URI) — skip mirror phase
-            verbose "Cannot derive mirror path for $name, will clone working tree directly"
+            # Cannot derive mirror path (malformed SRC_URI) — skip, BitBake will fetch from remote.
+            verbose "Cannot derive mirror path for $name, skipping (BitBake will fetch from remote)"
         elif [[ -d "$mirror_path" ]]; then
-            # Mirror exists — skip fetch; BitBake maintains DL_DIR/git2/ during builds.
+            # Mirror exists — skip; BitBake maintains DL_DIR/git2/ during builds.
             verbose "Mirror already exists: $mirror_path"
             STATUS_MIRROR_EXISTING+=("$name")
         else
@@ -1335,83 +1263,12 @@ clone_sub_repos() {
                 STATUS_MIRROR_NEW+=("$name")
             else
                 rm -rf "$mirror_path" 2>/dev/null
-                warn "Failed to create bare mirror for $name, will clone working tree directly"
-                mirror_path=""
-            fi
-        fi
-
-        # --- Phase B: Ensure working tree exists ---
-        if [[ -d "$local_path/.git" ]]; then
-            # Working tree exists — skip bulk fetch; Phase C does targeted fetch if srcrev is missing.
-            verbose "Working tree already exists: $local_path"
-        elif [[ -n "$mirror_path" && -d "$mirror_path" ]]; then
-            # No working tree, but mirror exists — clone from mirror (local, fast)
-            verbose "Cloning working tree from mirror: $mirror_path -> $local_path"
-            local wt_clone_flags=()
-            if [[ -n "$branch" ]]; then
-                wt_clone_flags+=(--single-branch --branch "$branch")
-            fi
-            if ! git clone "${wt_clone_flags[@]}" "$mirror_path" "$local_path" 2>/dev/null; then
-                rm -rf "$local_path" 2>/dev/null
-                warn "Clone from mirror failed for $name, falling back to remote..."
-                if ! _clone_from_remote "$clone_url" "$local_path" "$branch" "$_clone_err"; then
-                    STATUS_FAILED+=("$name (clone failed — network error or server unreachable)")
-                    failed=$((failed + 1))
-                    continue
-                fi
-            fi
-        else
-            # No mirror — clone directly from remote
-            if ! _clone_from_remote "$clone_url" "$local_path" "$branch" "$_clone_err"; then
-                STATUS_FAILED+=("$name (clone failed — network error or server unreachable)")
+                warn "Failed to create bare mirror for $name (BitBake will fetch from remote during build)"
+                STATUS_FAILED+=("$name (bare mirror clone failed)")
                 failed=$((failed + 1))
                 continue
             fi
         fi
-
-        # --- Phase C: Checkout srcrev ---
-        # Check if srcrev is usable (skip placeholder values)
-        # bitbake may return "INVALID" for named SRCREV components that weren't resolved
-        local skip_checkout=0
-        if [[ -z "$srcrev" || "$srcrev" == "\${AUTOREV}" || "$srcrev" == "AUTOINC" || "$srcrev" == "INVALID" ]]; then
-            skip_checkout=1
-            STATUS_UNPINNED+=("$name (srcrev=$srcrev)")
-        fi
-
-        # Checkout to specified commit
-        if [[ "$skip_checkout" -eq 0 ]]; then
-            verbose "Checking out $name to $srcrev"
-            if ! git -C "$local_path" checkout "$srcrev" 2>/dev/null; then
-                # Commit not in local history (common for --depth=1 shallow clones).
-                # Fetch strategies, lightest first:
-                #   1. Fetch the exact commit from origin (O(1) on most Git servers)
-                #   2. Unshallow to get full branch history
-                #   3. Fetch --all as final catch-all
-                warn "Commit $srcrev not found locally for $name, fetching..."
-                if git -C "$local_path" fetch origin "$srcrev" 2>/dev/null; then
-                    verbose "Fetched specific commit $srcrev for $name"
-                elif git -C "$local_path" rev-parse --is-shallow-repository 2>/dev/null | grep -q true; then
-                    verbose "Fetching specific commit failed, unshallowing $name..."
-                    git -C "$local_path" fetch --unshallow 2>>"$_clone_err" || true
-                fi
-                git -C "$local_path" fetch --all 2>/dev/null || true
-                if ! git -C "$local_path" checkout "$srcrev" 2>/dev/null; then
-                    warn "Could not checkout $name to $srcrev. Skipping."
-                    STATUS_FAILED+=("$name (checkout failed — commit lost to upstream force-push, try latest HEAD)")
-                    failed=$((failed + 1))
-                    continue
-                fi
-            fi
-        else
-            verbose "Skipping checkout for $name (srcrev=$srcrev, using branch HEAD)"
-        fi
-
-        # Track shallow status (must be after checkout, which may unshallow)
-        if git -C "$local_path" rev-parse --is-shallow-repository 2>/dev/null | grep -q true; then
-            STATUS_SHALLOW+=("$name")
-        fi
-
-        STATUS_SUCCESS+=("$name")
     done < <(python3 -c "
 import json, sys
 for item in json.load(open('$deps_json')):
@@ -1419,8 +1276,10 @@ for item in json.load(open('$deps_json')):
     print()
 ")
 
-    info "Sub-repos: ${#STATUS_SUCCESS[@]} succeeded, $failed failed."
     info "Mirrors: ${#STATUS_MIRROR_NEW[@]} new, ${#STATUS_MIRROR_EXISTING[@]} existing in $MIRROR_BASE"
+    if [[ "$failed" -gt 0 ]]; then
+        warn "$failed mirrors failed. See $BUILD_DIR/clone-errors.log"
+    fi
 }
 
 generate_lockfile() {
@@ -1469,8 +1328,8 @@ with open('$lockfile', 'w') as f:
     info "Lockfile written to $lockfile"
 }
 
-inject_externalsrc() {
-    step_header "Step 7/8: Injecting externalsrc configuration..."
+generate_build_config() {
+    step_header "Step 7/8: Generating build cache configuration (and externalsrc placeholder for future dev)..."
 
     local conf_dir="$BUILD_DIR/conf"
     local inc_file="$conf_dir/externalsrc-$MACHINE.inc"
@@ -1495,7 +1354,7 @@ inject_externalsrc() {
 
     # Check if DL_DIR and SSTATE_DIR are already defined in local.conf.
     # If the OpenBMC repo already has these set (e.g., pointing to a shared NFS cache),
-    # respect the existing configuration — don't override it from the externalsrc .inc file.
+    # respect the existing configuration — don't override it from this .inc file.
     # This also keeps DL_DIR consistent with the mirror cache path used by clone_sub_repos().
     local has_dl_dir=0
     local has_sstate_dir=0
@@ -1511,46 +1370,29 @@ inject_externalsrc() {
         has_sstate_dir=1
     fi
 
-    # Generate .inc file
+    # Generate .inc file — build cache config + externalsrc placeholder for future dev.
+    # No per-recipe EXTERNALSRC lines are generated during init.
+    # Use 'ob dev <recipe>' to add externalsrc entries for specific recipes.
     {
         echo "# Auto-generated by ob init $MACHINE at $timestamp"
         echo "# Do not edit manually. Re-run 'ob init $MACHINE' to regenerate."
         echo ""
-
-        # Required: inherit externalsrc class so EXTERNALSRC_* variables take effect.
-        # Without this, BitBake ignores EXTERNALSRC and runs do_fetch from SRC_URI normally.
-        echo "INHERIT += \"externalsrc\""
+        echo "# Enable externalsrc class (no-op when no EXTERNALSRC_pn-* is set)."
+        echo "# Use 'ob dev <recipe>' to add externalsrc entries for specific recipes."
+        echo 'INHERIT += "externalsrc"'
         echo ""
 
         # Conditionally set DL_DIR and SSTATE_DIR only if not already defined in local.conf.
-        # When local.conf already has these (e.g., from OEM template or manual config),
-        # overriding here would:
-        #   1. Discard an existing populated download cache
-        #   2. Break consistency with the mirror cache path used by clone_sub_repos()
         if [[ "$has_dl_dir" -eq 0 ]]; then
             echo "DL_DIR = \"$WORKSPACE_DIR/downloads\""
         fi
         if [[ "$has_sstate_dir" -eq 0 ]]; then
             echo "SSTATE_DIR = \"$WORKSPACE_DIR/sstate-cache\""
         fi
-        echo ""
-
-        # Ensure cache directories exist (harmless if already present)
-        mkdir -p "$WORKSPACE_DIR/downloads" "$WORKSPACE_DIR/sstate-cache"
-
-        # Read deps to generate EXTERNALSRC lines
-        python3 -c "
-import json
-deps = json.load(open('$BUILD_DIR/deps.json'))
-for dep in deps:
-    name = dep['name']
-    recipe = dep['recipe']
-    local_path = '$SRC_DIR/' + name
-    print(f'EXTERNALSRC_pn-{recipe} = \"{local_path}\"')
-    print(f'EXTERNALSRC_BUILD_pn-{recipe} = \"{local_path}\"')
-    print()
-"
     } > "$inc_file"
+
+    # Ensure cache directories exist (harmless if already present)
+    mkdir -p "$WORKSPACE_DIR/downloads" "$WORKSPACE_DIR/sstate-cache"
 
     info "Generated $inc_file"
     if [[ "$has_dl_dir" -eq 1 ]]; then
@@ -1582,65 +1424,32 @@ print_report() {
     # Emit report to both terminal and file via tee
     {
         echo "============================================"
-        echo "Machine:    $MACHINE"
-        echo "Main repo:  $OPENBMC_DIR"
-        echo "Build dir:  $BUILD_DIR"
-        echo "Source dir: $SRC_DIR"
-        echo "Lockfile:   $CONFIGS_DIR/$MACHINE.lock"
-        echo "Ext. conf:  $BUILD_DIR/conf/externalsrc-$MACHINE.inc"
-        echo ""
-
-        # --- Success ---
-        echo "Sub-repos cloned: ${#STATUS_SUCCESS[@]}"
-        for name in "${STATUS_SUCCESS[@]}"; do
-            echo "  [OK] $name"
-        done
+        echo "Machine:     $MACHINE"
+        echo "Main repo:   $OPENBMC_DIR"
+        echo "Build dir:   $BUILD_DIR"
+        echo "Mirror dir:  $MIRROR_BASE"
+        echo "Lockfile:    $CONFIGS_DIR/$MACHINE.lock"
+        echo "Build conf:  $BUILD_DIR/conf/externalsrc-$MACHINE.inc"
         echo ""
 
         # --- Mirror stats ---
         if [[ -n "$MIRROR_BASE" ]]; then
-            echo "Mirrors: ${#STATUS_MIRROR_NEW[@]} new, ${#STATUS_MIRROR_EXISTING[@]} existing"
+            echo "Mirrors populated: ${#STATUS_MIRROR_NEW[@]} new, ${#STATUS_MIRROR_EXISTING[@]} existing"
             echo "  Mirror cache: $MIRROR_BASE"
             echo ""
         fi
 
-        # --- Shallow repos ---
-        if [[ ${#STATUS_SHALLOW[@]} -gt 0 ]]; then
-            echo "Shallow-cloned repos (limited git history):"
-            for entry in "${STATUS_SHALLOW[@]}"; do
-                echo "  [SHALLOW] $entry"
-            done
-            echo ""
-            echo "[WARN] Shallow repos have limited git history. To get full history:"
-            echo "  git -C src/$MACHINE/<repo> fetch --unshallow"
-            echo ""
-        fi
-
-        # --- Unpinned repos ---
-        if [[ ${#STATUS_UNPINNED[@]} -gt 0 ]]; then
-            echo "Unpinned repos (using branch HEAD, version may drift):"
-            for entry in "${STATUS_UNPINNED[@]}"; do
-                echo "  [UNPINNED] $entry"
-            done
-            echo ""
-            echo "[WARN] Unpinned repos are NOT locked to a specific commit."
-            echo "[WARN] Re-running ob init may change their version."
-            echo ""
-        fi
-
-        # --- Failed repos ---
+        # --- Failed mirrors ---
         if [[ ${#STATUS_FAILED[@]} -gt 0 ]]; then
-            echo "Failed repos: ${#STATUS_FAILED[@]}"
+            echo "Failed mirrors: ${#STATUS_FAILED[@]}"
             for entry in "${STATUS_FAILED[@]}"; do
                 echo "  [FAIL] $entry"
             done
             echo ""
             echo "[WARN] Troubleshooting guide:"
-            echo "  A) Network flakiness      -> retry: rm -rf src/$MACHINE/<repo> && ob init $MACHINE"
-            echo "  B) Branch not found       -> upstream renamed branch; ob will auto-retry without branch"
-            echo "  C) Commit lost            -> upstream force-push; use latest HEAD manually"
-            echo "  D) Server network block   -> specific domains (e.g. infradead.org) may be unreachable"
-            echo "  E) srcrev placeholder     -> AUTOREV/INVALID; will use branch HEAD (expected)"
+            echo "  A) Network flakiness      -> retry: ob init $MACHINE"
+            echo "  B) Server network block   -> specific domains (e.g. infradead.org) may be unreachable"
+            echo "  C) BitBake will fetch from remote during build if mirror is missing"
             echo ""
         fi
 
@@ -1750,8 +1559,8 @@ main() {
     # README Step 7/8: 生成 lockfile。
     generate_lockfile
 
-    # README Step 8/8: 注入 externalsrc。
-    inject_externalsrc
+    # README Step 8/8: 生成构建缓存配置。
+    generate_build_config
 
     # 收尾：打印并落盘最终状态报告。
     print_report
