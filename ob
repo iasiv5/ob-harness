@@ -1530,7 +1530,7 @@ main() {
 
     if [[ "$is_rerun" -eq 1 ]]; then
         local existing_repos=0
-        existing_repos=$(find "$SRC_DIR" -maxdepth 2 -name ".git" -type d 2>/dev/null | wc -l)
+        existing_repos=$(find "$SRC_DIR" -maxdepth 2 -name ".git" -type d 2>/dev/null | wc -l || true)
         echo ""
         info "INCREMENTAL RUN DETECTED for machine=$MACHINE"
         if [[ "$existing_repos" -gt 0 ]]; then
