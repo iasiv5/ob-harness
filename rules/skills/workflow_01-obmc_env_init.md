@@ -20,7 +20,7 @@
 - 通过 bitbake 依赖图自动发现需要的子仓库并 clone
 - 生成 lockfile 记录版本快照
 - 注入 externalsrc 让 bitbake 使用本地源码
-- 支持 `--dry-run`、`--skip-fetch`、`--verbose` 选项
+- 支持 `--dry-run`、`--skip-deps`、`--verbose` 选项
 
 **不做**：
 - 不做编译（初始化完成后用户自行 `bitbake`）
@@ -54,10 +54,10 @@
 ```bash
 ./ob init                          # 列出可用 machine 并交互选择
 ./ob init <machine>              # 基本用法
-./ob init <machine> -n            # 预览模式（dry-run），不实际执行
+./ob init <machine> -d            # 预览模式（dry-run），不实际执行
 ./ob init <machine> -s            # 跳过依赖解析（skip-deps，应急选项）
 ./ob init <machine> -v            # 详细输出
-./ob init -m <machine> -u <url>  # 指定 machine 和 OpenBMC 仓库 URL
+./ob init <machine> -u <url>  # 指定 machine 和 OpenBMC 仓库 URL
 ```
 
 **锁文件 schema**（`workspace/configs/<machine>.lock`）：
@@ -94,7 +94,7 @@ EXTERNALSRC_BUILD_pn-<recipe> = "<absolute-path-to-local-source>"
 
 - **操作系统**：必须 Linux（bitbake 依赖）
 - **前置工具**：git, python3
-- **网络**：首次运行需访问 github.com；`--skip-fetch` 可离线运行
+- **网络**：首次运行需访问 github.com；`--skip-deps` 仅复用已有 `deps.json` 跳过依赖解析，子仓库 clone 阶段仍需网络
 - **连通性探针**：`ob init` 会在 `local.conf` 注入 `CONNECTIVITY_CHECK_URIS = ""`，避免受限网络下被 `https://yoctoproject.org/connectivity.html` 的 sanity probe 误拦截；如需保留探针，可在运行前设置 `OB_CONNECTIVITY_CHECK_URIS=https://www.example.com/ ./ob init <machine>`
 - **git reference 自动回填**：第四步执行 `source setup <machine>` 后，`ob` 会检查 `workspace/openbmc/build/<machine>/conf/local.conf`。如果其中已有非空 `DL_DIR`，且 `OB_GIT_REFERENCE_DIR` 缺失或为空，就自动把该值回填到 `OB_GIT_REFERENCE_DIR`。你也可以手动设置 `OB_GIT_REFERENCE_DIR = "/path/to/download-cache"` 覆盖自动值。这个变量只影响第六步子仓库 clone/fetch 的 reference 选择，不会被第八步生成的 `externalsrc-<machine>.inc` 覆盖。
 - **磁盘空间**：≥ 30GB（主仓库 + 子仓库 + 编译输出）
@@ -196,7 +196,7 @@ git checkout <default-branch>   # 用最新版本替代丢失的 commit
 ### 3. 同步 lockfile
 
 手动补 repo 后，lockfile 不需要更新（它记录的是 bitbake 解析时的期望版本）。
-如果需要重新生成：`rm workspace/configs/<machine>.lock && ob init <machine> --skip-fetch`
+如果需要重新生成：`rm workspace/configs/<machine>.lock && ob init <machine> --skip-deps`
 
 ---
 

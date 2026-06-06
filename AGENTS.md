@@ -39,7 +39,7 @@ Don't ask permission. Just do it.
 ## Memory System
 
 三层记忆架构：
-- **L3（全局约束）**：`rules/` 下的所有文件，每次 session 被动加载
+- **L3（全局约束）**：`rules/` 核心规则（`01_SOUL`~`05_SKILLS_INDEX`）每次 session 启动读取；`06_AXIOMS_INDEX` 及 `axioms/`、`skills/` 按需检索
 - **L1/L2（动态记忆）**：`contexts/memory/OBSERVATIONS.md`，agent 主动检索
 - **手动积累**：通过 `/ai-heartbeat` slash command（[实现](.github/prompts/ai-heartbeat.prompt.md)）手动触发 observer（L1，当天观测）和 reflector（L2，每周反思）。
 

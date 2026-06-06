@@ -1,6 +1,6 @@
 # openbmc-aware-harness
 
-```
+```raw
       ██████╗ ██████╗ ███████╗ ███╗   ██╗ ██████╗ ███╗   ███╗ ██████╗
      ██╔═══██╗██╔══██╗██╔════╝ ████╗  ██║ ██╔══██╗████╗ ████║██╔════╝ 
      ██║   ██║██████╔╝█████╗   ██╔██╗ ██║ ██████╔╝██╔████╔██║██║      
@@ -14,7 +14,7 @@
      ██║  ██║ ██║  ██║ ██║  ██║ ██║ ╚████║ ███████╗ ███████║ ███████║ 
      ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═══╝ ╚══════╝ ╚══════╝ ╚══════╝ 
     ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-    ┃     OpenBMC Dev. Environment Initializer · ob init · 𝓲𝓪𝓼𝓲     ┃
+    ┃      OpenBMC Development Environment · ob harness · 𝓲𝓪𝓼𝓲      ┃
     ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 
@@ -26,7 +26,7 @@
 
 - Linux 环境
 - `git`、`python3`
-- 25 GB+ 可用磁盘空间
+- 30 GB+ 可用磁盘空间
 - 网络能访问 [GitHub](https://github.com/openbmc/openbmc.git)（或自定义 OpenBMC Git 服务器）
 
 ### 第一步：克隆仓库
@@ -49,10 +49,10 @@ cd openbmc-aware-harness
 ./ob init romulus --dry-run
 
 # 使用自定义 OpenBMC 仓库 URL，并指定 romulus machine
-./ob init romulus --obmc-url https://git.example.com/openbmc.git
+./ob init romulus --url https://git.example.com/openbmc.git
 
 # 只指定自定义 OpenBMC 仓库 URL，machine 在后续交互时选择
-./ob init --obmc-url https://git.example.com/openbmc.git
+./ob init --url https://git.example.com/openbmc.git
 ```
 
 `ob init` 会自动执行以下 8 步：
@@ -97,7 +97,7 @@ bitbake <recipe>
 
 ## 命令参考
 
-```
+```raw
 ob <command> [options] [arguments]
 
 Commands:
@@ -105,8 +105,8 @@ Commands:
   status                查看当前 OpenBMC 源绑定状态
 
 Options:
-  --dry-run             预览操作但不执行
-  --obmc-url <url>      使用自定义 OpenBMC 仓库 URL
+  -d, --dry-run         预览操作但不执行
+  -u, --url <url>       使用自定义 OpenBMC 仓库 URL
   -v, --verbose         详细输出
   -h, --help            显示帮助
 
@@ -116,24 +116,28 @@ Options:
 
 ## 仓库结构
 
-```
+```raw
 openbmc-aware-harness/
 ├── ob                          # OpenBMC 开发环境初始化脚本
 ├── tools/                      # 工具脚本（依赖解析等）
 ├── CLAUDE.md                   # Claude Code 入口（指向 AGENTS.md）
 ├── AGENTS.md                   # AI agent 主入口，定义 session 启动读取链
 ├── rules/                      # AI 协作规则（agent 自动加载）
-│   ├── SOUL.md                 # AI 身份与行为准则
-│   ├── USER.md                 # 服务对象画像
-│   ├── WORKSPACE.md            # 目录路由表
-│   ├── COMMUNICATION.md        # 沟通规范
+│   ├── 01_SOUL.md              # AI 身份与行为准则
+│   ├── 02_USER.md              # 服务对象画像
+│   ├── 03_WORKSPACE.md         # 目录路由表
+│   ├── 04_COMMUNICATION.md     # 沟通规范
+│   ├── 05_SKILLS_INDEX.md      # Skills 索引
+│   ├── 06_AXIOMS_INDEX.md      # Axioms 索引
 │   ├── axioms/                 # 决策公理（43 条）
 │   └── skills/                 # 可复用能力（工作流、最佳实践）
 ├── docs/
 │   ├── specs/                  # 设计文档
 │   └── plans/                  # 实施计划
 ├── contexts/memory/            # AI 记忆观测日志
-├── .claude/skills/             # Claude Code 自定义 skill
+├── .claude/
+│   ├── skills/                 # Claude Code/Copilot 自定义 skill
+│   └── commands/               # Claude Code 自定义命令（/ai-heartbeat 入口）
 ├── .github/
 │   ├── copilot-instructions.md # GitHub Copilot 入口（指向 AGENTS.md）
 │   ├── hooks/                  # Session 启动 hook（AI Heartbeat 提醒）
