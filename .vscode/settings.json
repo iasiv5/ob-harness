@@ -1,0 +1,11 @@
+{
+  // docs/ 是设计文档与实施计划的历史冻结快照（详见 rules/03_WORKSPACE.md）。
+  // 用 files.exclude 将根级 docs/ 排除出资源管理器、文本搜索与语义索引，
+  // 同时达成两个目的：保持工作区目录整洁；避免历史文档干扰 agent 的
+  // semantic_search / #codebase / grep_search。文件仍在 git 与磁盘中，未删除。
+  // - agent：按 rules/03_WORKSPACE.md 的路由，用 read_file 走绝对路径主动读取，不受本排除影响。
+  // - 人类：临时查看可注释掉本条，或用「文件 > 打开…」直接打开 docs/ 下文件。
+  "files.exclude": {
+    "docs": true
+  }
+}

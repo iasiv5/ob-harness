@@ -17,8 +17,14 @@
 - GitHub Copilot 入口与 hooks：`.github/`
 - GitHub Copilot/Claude Code 仓库级自定义 skills：`.claude/skills/`
 - Claude Code 仓库级自定义命令：`.claude/commands/`（如 `/ai-heartbeat` 入口）
-- 设计文档：`docs/specs/`（通过 `/brainstorming` skill 触发后自动落盘；已批准的文档为冻结快照，一般不修改）
-- 实施计划：`docs/plans/`（通过 `/writing-plans` skill 触发后自动落盘；已完成的文档为冻结快照，一般不修改）
+- 设计文档：`docs/specs/`（`/brainstorming` skill 落盘，命名 `<YYYY-MM-DD>-<topic>-design.md`；已批准文档为冻结快照，一般不修改）
+- 实施计划：`docs/plans/`（`/writing-plans` skill 落盘，命名 `<YYYY-MM-DD>-<feature>-implementation-plan.md`；已完成文档为冻结快照，一般不修改）
+
+> **如何对待 `docs/` 历史文档（设计文档 + 实施计划）：**
+> 1. **定位**：它们是**历史决策记录**，说明“当时为什么这么设计/计划”，不保证与当前代码一致。文档越旧，与现状漂移的概率越高（已出现顶部状态标注过时的实例）。
+> 2. **加载方式**：它们**不随 session 自动加载**，且已通过 `.vscode/settings.json` 的 `files.exclude` 排除出资源管理器、文本搜索与语义索引（`semantic_search`/`#codebase`/`grep_search` 默认不命中）。要访问时：先用 `list_dir` 列 `docs/specs/`、`docs/plans/` 枚举文件（`list_dir` 不受 `files.exclude` 影响），再用 `read_file` 按路径主动读取；不要预先通读整个目录。
+> 3. **事实优先级**：判断**当前实现或行为**时，以代码、recipe、service、配置、日志为准；`docs/` 只用于回溯设计意图和决策背景。不要因为语义检索命中某篇历史文档，就把其中方案当成现状。
+> 4. **定位某主题的最新设计**：同一主题可能有多篇演进文档，优先按文件名日期取最新，并用代码现状交叉验证。
 
 ## 命名规则
 - 目录和文件名：小写 + 下划线 (snake_case)
