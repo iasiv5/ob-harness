@@ -1294,9 +1294,11 @@ generate_build_config() {
             echo ""
             echo "# WSL parallelism auto-tuning (WSL swap is slower than bare-metal, prone to OOM)."
             echo "# Formula: N = max(1, min(nproc, (MemTotal_GB + SwapTotal_GB) / 4))"
-            echo "# Override in local.conf if needed: PARALLEL_MAKE = \"-j 8\""
-            echo "BB_NUMBER_THREADS ??= \"$parallel_n\""
-            echo "PARALLEL_MAKE ??= \"-j ${parallel_n}\""
+            echo "# Note: uses ?= (not ??=) because OE-core sets BB_NUMBER_THREADS/PARALLEL_MAKE"
+            echo "# with ?= in bitbake.conf, and ??= would be too weak to override."
+            echo "# Override in local.conf with plain = if needed: PARALLEL_MAKE = \"-j 8\""
+            echo "BB_NUMBER_THREADS ?= \"$parallel_n\""
+            echo "PARALLEL_MAKE ?= \"-j ${parallel_n}\""
         fi
     } > "$inc_file"
 
