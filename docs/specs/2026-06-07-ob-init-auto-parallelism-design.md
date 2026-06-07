@@ -65,14 +65,14 @@
 | `CONNECTIVITY_CHECK_URIS = ""` | `=` | 必须覆盖 OE-core 的 `?=` 默认值，`??=` 优先级不够 |
 | `DL_DIR` | `??=` | 弱默认，用户在 `local.conf` 中用 `=` 即可覆盖 |
 | `SSTATE_DIR` | `??=` | 同上 |
-| `BB_NUMBER_THREADS`（仅 WSL） | `??=` | 同上 |
-| `PARALLEL_MAKE`（仅 WSL） | `??=` | 同上 |
+| `BB_NUMBER_THREADS`（仅 WSL） | `?=` | OE-core 用 `?=` 设默认值，`??=` 优先级更低会失效；用户用 `=` 可覆盖 |
+| `PARALLEL_MAKE`（仅 WSL） | `?=` | 同上 |
 
 ### `local.conf`（用户领地）
 
 `ob init` 只做一件事：确保 `include externalsrc-$MACHINE.inc` 行存在。不再写入任何变量值。
 
-用户覆盖 `.inc` 默认值的方式：在 `local.conf` 任意位置用 `=` 赋值即可，因为 `??=` 是最弱操作符，位置无关。
+用户覆盖 `.inc` 默认值的方式：在 `local.conf` 中用 `=` 赋值即可。`??=` 和 `?=` 都弱于 `=`，用户的 `=` 始终优先。
 
 ### `ob` 脚本改动
 
@@ -134,8 +134,8 @@ N = max(1, min(nproc, floor((mem_gb + swap_gb) / 4)))
 | `/proc/meminfo` 不可读 | warn 并跳过并行度注入，不阻断 init |
 | `nproc` 失败 | 回退到 `N=1` |
 | 用户手动删除 `.inc` 中并行度行 | 下次 `ob init` 重跑会重新生成 |
-| 用户在 `local.conf` 覆盖 | `??=` 让路，用户 `=` 始终生效 |
-| 已有 `local.conf` 含 managed block（存量用户） | `ob init` 不再写入 managed block，但也不主动删除已有的；存量 block 和 `.inc` 中的同名变量共存时，managed block 的 `=` 优先于 `.inc` 的 `??=`，行为正确（等于用户显式设置） |
+| 用户在 `local.conf` 覆盖 | `?=` / `??=` 均弱于 `=`，用户 `=` 始终生效 |
+| 已有 `local.conf` 含 managed block（存量用户） | `ob init` 不再写入 managed block，但也不主动删除已有的；存量 block 的 `=` 优先于 `.inc` 的 `??=`/`?=`，行为正确（等于用户显式设置） |
 
 ## 测试策略
 

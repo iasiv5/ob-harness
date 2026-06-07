@@ -9,7 +9,7 @@
 - 非原生 Linux 环境不受影响
 - `local.conf` 不再包含 `# BEGIN/END ob init managed settings` block
 - `CONNECTIVITY_CHECK_URIS` 从 managed block 迁入 `.inc`
-- 用户在 `local.conf` 中用 `=` 覆盖 `.inc` 中的 `??=` 变量时，覆盖生效
+- 用户在 `local.conf` 中用 `=` 覆盖 `.inc` 中的 `?=`/`??=` 变量时，覆盖生效
 
 ## 输入工件
 
@@ -74,7 +74,7 @@ calc_parallelism() {
 
 ### Task 2: 改造 generate_build_config() 生成完整 .inc
 
-- 目标：让 `generate_build_config()` 在 `.inc` 中写入完整配置：INHERIT、CONNECTIVITY_CHECK_URIS、DL_DIR/SSTATE_DIR（??=）、WSL 并行度（??=）
+- 目标：让 `generate_build_config()` 在 `.inc` 中写入完整配置：INHERIT、CONNECTIVITY_CHECK_URIS、DL_DIR/SSTATE_DIR（??=）、WSL 并行度（?=）
 - 涉及文件：`ob`（`generate_build_config()` 函数体，`ob:1332-1425`）
 - 验证范围：WSL 环境下 `ob init` 后 `.inc` 包含所有预期变量
 
@@ -132,8 +132,8 @@ calc_parallelism() {
             echo "# WSL parallelism auto-tuning (WSL swap is slower than bare-metal, prone to OOM)."
             echo "# Formula: N = max(1, min(nproc, (MemTotal_GB + SwapTotal_GB) / 4))"
             echo "# Override in local.conf if needed: PARALLEL_MAKE = \"-j 8\""
-            echo "BB_NUMBER_THREADS ??= \"$parallel_n\""
-            echo "PARALLEL_MAKE ??= \"-j${parallel_n}\""
+            echo "BB_NUMBER_THREADS ?= \"$parallel_n\""
+            echo "PARALLEL_MAKE ?= \"-j ${parallel_n}\""
         fi
     } > "$inc_file"
 
@@ -211,7 +211,7 @@ calc_parallelism() {
 
 - [ ] Step 2: 检查 .inc 内容
   - Run: `cat /home/iasi/ob-harness/workspace/openbmc/build/gb200nvl-obmc/conf/externalsrc-gb200nvl-obmc.inc`
-  - Expected: 包含 `INHERIT += "externalsrc"`、`CONNECTIVITY_CHECK_URIS = ""`、`DL_DIR ??=`、`SSTATE_DIR ??=`、`BB_NUMBER_THREADS ??=`、`PARALLEL_MAKE ??=`
+  - Expected: 包含 `INHERIT += "externalsrc"`、`CONNECTIVITY_CHECK_URIS = ""`、`DL_DIR ??=`、`SSTATE_DIR ??=`、`BB_NUMBER_THREADS ?=`、`PARALLEL_MAKE ?=`
 
 - [ ] Step 3: 检查 local.conf 不含 managed block
   - Run: `grep "BEGIN ob init\|END ob init\|CONNECTIVITY_CHECK_URIS" /home/iasi/ob-harness/workspace/openbmc/build/gb200nvl-obmc/conf/local.conf`
@@ -247,7 +247,7 @@ calc_parallelism() {
 
 1. `bash -n ob` — 脚本语法无错误
 2. `./ob init gb200nvl-obmc -v` — 正常完成，输出包含 WSL 检测提示
-3. `.inc` 包含所有预期变量，操作符正确（`+=` / `=` / `??=`）
+3. `.inc` 包含所有预期变量，操作符正确（`+=` / `=` / `?=` / `??=`）
 4. `local.conf` 不包含 managed block
 5. `bitbake -e` 中 `PARALLEL_MAKE` 值符合公式
 
