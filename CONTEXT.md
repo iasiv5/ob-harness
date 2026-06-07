@@ -1,6 +1,6 @@
 # ob-harness
 
-OpenBMC 开发环境的一键初始化和源码管理工具链。核心命令是 `ob init`，负责准备 BitBake 构建环境、解析依赖、克隆源码、注入构建配置。
+OpenBMC 开发环境的一键初始化、源码管理和编译工具链。核心命令是 `ob init`（准备 BitBake 构建环境、解析依赖、克隆源码、注入构建配置）和 `ob build`（交互选择已初始化的 machine，执行 bitbake 编译）。
 
 ## Language
 
@@ -19,3 +19,7 @@ _Avoid_: 源码目录, source directory
 **deps.json**:
 `parse_bitbake_deps.py` 产出的依赖解析结果，包含每个 recipe 的 SRC_URI、SRCREV 和 clone URL。
 _Avoid_: 依赖文件, dependency list
+
+**init-done marker**:
+`workspace/configs/<machine>.init-done` 文件，由 `ob init` 在全部 8 步完成后原子写入，重跑时先删除再重新写入。`ob build` 用它判定哪些 machine 可以编译。
+_Avoid_: 完成标记, completion flag
