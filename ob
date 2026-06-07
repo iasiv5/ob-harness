@@ -721,10 +721,32 @@ cmd_build() {
     info "Target  : obmc-phosphor-image"
     info "Estimated time: 1-4 hours depending on machine and cache state."
     echo ""
-    if ! read -r -p "Press Enter to start build, Ctrl+C to cancel... "; then
-        error "Unable to read confirmation from stdin."
-        exit 1
-    fi
+    echo "============================================================"
+    echo ""
+    warn "  You are about to build:  >>> $MACHINE <<<"
+    warn "  You are about to build:  >>> $MACHINE <<<"
+    warn "  You are about to build:  >>> $MACHINE <<<"
+    echo ""
+    echo "============================================================"
+    echo ""
+    while true; do
+        if ! read -r -p "Type Y to confirm and start build, N to cancel: " confirm; then
+            error "Unable to read confirmation from stdin."
+            exit 1
+        fi
+        case "$confirm" in
+            [yY])
+                break
+                ;;
+            [nN])
+                warn "Build cancelled by user."
+                exit 0
+                ;;
+            *)
+                warn "Invalid input. Please type Y or N."
+                ;;
+        esac
+    done
 
     # === Re-enter bitbake environment ===
     cd "$OPENBMC_DIR"
