@@ -396,16 +396,10 @@ EOF
 
 ensure_bootstrap_local_conf() {
     local local_conf="$BUILD_DIR/conf/local.conf"
-    local connectivity_value="${OB_CONNECTIVITY_CHECK_URIS-}"
-    local bootstrap_output=""
 
     if [[ ! -f "$local_conf" ]]; then
         error "local.conf not found at $local_conf"
         exit 1
-    fi
-
-    if [[ -n "$connectivity_value" ]]; then
-        connectivity_value=${connectivity_value//\"/\\\"}
     fi
 
     # Detect GitLab IP for recipes that use ${GITLAB_IP} in SRC_URI.
@@ -445,127 +439,20 @@ ensure_bootstrap_local_conf() {
         fi
     fi
 
-    bootstrap_output=$(python3 - "$local_conf" "$connectivity_value" "$gitlab_ip" <<'PY'
-import pathlib
-import re
-import sys
+    # Add include to local.conf if not already present.
+    # The .inc file (managed by generate_build_config) contains all ob init settings.
+    local include_line="include externalsrc-$MACHINE.inc"
 
-local_conf = pathlib.Path(sys.argv[1])
-connectivity_value = sys.argv[2]
-gitlab_ip = sys.argv[3]
-managed_start = "# BEGIN ob init managed settings"
-managed_end = "# END ob init managed settings"
-assignment_pattern = re.compile(r'^\s*([A-Za-z0-9_]+)\s*(?:\?\?=|\?=|:=|=)\s*(.*)$')
-managed_block = [
-    managed_start,
-    "# Disable OE connectivity probes by default; github fetches already validate network reachability.",
-    f'CONNECTIVITY_CHECK_URIS = "{connectivity_value}"',
-    managed_end,
-]
-
-
-def parse_assignment(line):
-    match = assignment_pattern.match(line)
-    if not match:
-        return None, None
-
-    key = match.group(1)
-    value = match.group(2).strip()
-    if "#" in value:
-        value = value.split("#", 1)[0].rstrip()
-    if len(value) >= 2 and value[0] == value[-1] and value[0] in ('"', "'"):
-        value = value[1:-1]
-    return key, value
-
-content = local_conf.read_text()
-lines = content.splitlines()
-
-dl_dir_value = ""
-gitlab_ip_value = None
-gitlab_ip_line = None
-gitlab_ip_action = None
-gitlab_ip_log_value = ""
-
-for index, raw_line in enumerate(lines):
-    stripped = raw_line.strip()
-    # Detect "#GITLAB_IP = ..." (commented out)
-    if stripped.startswith("#") and "GITLAB_IP" in stripped:
-        rest = stripped.lstrip("#").strip()
-        key, value = parse_assignment(rest)
-        if key == "GITLAB_IP":
-            gitlab_ip_value = value  # may be ""
-            gitlab_ip_line = index
-        continue
-    if not stripped:
-        continue
-
-    key, value = parse_assignment(raw_line)
-    if key == "DL_DIR":
-        dl_dir_value = value
-    elif key == "GITLAB_IP":
-        gitlab_ip_value = value
-        gitlab_ip_line = index
-
-# GITLAB_IP: auto-fill from detected git remote if the field is empty/commented-out.
-# Preserve any existing non-empty value set by the user.
-if gitlab_ip:
-    if gitlab_ip_value is None:
-        # No GITLAB_IP line at all — skip (no known insertion anchor)
-        pass
-    elif gitlab_ip_value == "":
-        # Commented-out empty assignment: "#GITLAB_IP = """ → uncomment and fill
-        lines[gitlab_ip_line] = f'GITLAB_IP = "{gitlab_ip}"'
-        gitlab_ip_action = "set"
-        gitlab_ip_log_value = gitlab_ip
-    elif gitlab_ip_value != gitlab_ip:
-        # Existing value differs from detected — preserve user's choice
-        gitlab_ip_action = "preserved"
-        gitlab_ip_log_value = gitlab_ip_value
-    else:
-        # Already correct
-        gitlab_ip_action = "preserved"
-        gitlab_ip_log_value = gitlab_ip_value
-
-try:
-    start = lines.index(managed_start)
-    end = lines.index(managed_end, start)
-    lines[start:end + 1] = managed_block
-except ValueError:
-    if lines and lines[-1] != "":
-        lines.append("")
-    lines.extend(managed_block)
-
-local_conf.write_text("\n".join(lines) + "\n")
-
-if gitlab_ip_action:
-    print(
-        f"GITLAB_IP\t{gitlab_ip_action}\t"
-        f"{gitlab_ip_log_value}\t"
-    )
-PY
-)
-
-    if [[ -n "$bootstrap_output" ]]; then
-        while IFS= read -r bline; do
-            [[ -z "$bline" ]] && continue
-            local marker action value detail
-            IFS=$'\t' read -r marker action value detail <<< "$bline"
-            case "$marker" in
-                GITLAB_IP)
-                    case "$action" in
-                        set)
-                            info "Auto-set GITLAB_IP from git remote: $value"
-                            ;;
-                        preserved)
-                            info "Keeping existing GITLAB_IP: $value"
-                            ;;
-                    esac
-                    ;;
-            esac
-        done <<< "$bootstrap_output"
+    if grep -qF "$include_line" "$local_conf"; then
+        verbose "Include line already exists in local.conf, skipping."
+    else
+        cp "$local_conf" "${local_conf}.bak.$(date +%Y%m%d%H%M%S)"
+        echo "" >> "$local_conf"
+        echo "$include_line" >> "$local_conf"
+        info "Added '$include_line' to local.conf"
     fi
 
-    verbose "Ensured ob init managed local.conf settings in $local_conf"
+    verbose "Ensured ob init local.conf settings in $local_conf"
 }
 
 read_lock_field() {
@@ -795,6 +682,25 @@ detect_harness_root() {
     verbose "HARNESS_ROOT=$HARNESS_ROOT"
     verbose "WORKSPACE_DIR=$WORKSPACE_DIR"
     verbose "MACHINE=$MACHINE"
+}
+
+detect_wsl() {
+    grep -qi microsoft /proc/version 2>/dev/null
+}
+
+calc_parallelism() {
+    local mem_total_kb swap_total_kb mem_gb swap_gb total_gb cores budget
+    mem_total_kb=$(grep -oP '^MemTotal:\s+\K\d+' /proc/meminfo 2>/dev/null || echo 0)
+    swap_total_kb=$(grep -oP '^SwapTotal:\s+\K\d+' /proc/meminfo 2>/dev/null || echo 0)
+    mem_gb=$((mem_total_kb / 1048576))
+    swap_gb=$((swap_total_kb / 1048576))
+    total_gb=$((mem_gb + swap_gb))
+    cores=$(nproc 2>/dev/null || echo 1)
+    # Each gcc process budgeted ~4 GB; cap at physical core count; minimum 1
+    budget=$((total_gb / 4))
+    if [[ "$budget" -lt 1 ]]; then budget=1; fi
+    if [[ "$budget" -gt "$cores" ]]; then budget=$cores; fi
+    echo "$budget"
 }
 
 # Capture `source setup` (no args) output, extract available machine names
@@ -1353,27 +1259,18 @@ generate_build_config() {
         info "Previous .inc backed up (old backups cleaned up)"
     fi
 
-    # Check if DL_DIR and SSTATE_DIR are already defined in local.conf.
-    # If the OpenBMC repo already has these set (e.g., pointing to a shared NFS cache),
-    # respect the existing configuration — don't override it from this .inc file.
-    # This also keeps DL_DIR consistent with the mirror cache path used by clone_sub_repos().
-    local has_dl_dir=0
-    local has_sstate_dir=0
-    local dl_dir_existing=""
-    local sstate_dir_existing=""
-
-    dl_dir_existing=$(read_local_conf_var "$local_conf" "DL_DIR" 2>/dev/null || true)
-    if [[ -n "$dl_dir_existing" ]]; then
-        has_dl_dir=1
-    fi
-    sstate_dir_existing=$(read_local_conf_var "$local_conf" "SSTATE_DIR" 2>/dev/null || true)
-    if [[ -n "$sstate_dir_existing" ]]; then
-        has_sstate_dir=1
+    # WSL parallelism detection
+    local is_wsl=0
+    local parallel_n=""
+    if detect_wsl; then
+        is_wsl=1
+        parallel_n=$(calc_parallelism)
+        info "WSL detected — parallelism limited to -j${parallel_n} (memory budget)"
     fi
 
-    # Generate .inc file — build cache config + externalsrc placeholder for future dev.
-    # No per-recipe EXTERNALSRC lines are generated during init.
-    # Use 'ob dev <recipe>' to add externalsrc entries for specific recipes.
+    # Generate .inc file — ob init managed configuration.
+    # All variables use ??= (weak default) unless a stronger operator is required.
+    # User can override any ??= variable in local.conf with a plain = assignment.
     {
         echo "# Auto-generated by ob init $MACHINE at $timestamp"
         echo "# Do not edit manually. Re-run 'ob init $MACHINE' to regenerate."
@@ -1383,45 +1280,29 @@ generate_build_config() {
         echo 'INHERIT += "externalsrc"'
         echo ""
 
-        # Conditionally set DL_DIR and SSTATE_DIR only if not already defined in local.conf.
-        if [[ "$has_dl_dir" -eq 0 ]]; then
-            echo "DL_DIR = \"$WORKSPACE_DIR/downloads\""
-        fi
-        if [[ "$has_sstate_dir" -eq 0 ]]; then
-            echo "SSTATE_DIR = \"$WORKSPACE_DIR/sstate-cache\""
+        echo "# Disable OE connectivity probes by default; github fetches already validate network reachability."
+        echo '# Note: uses = (not ??=) because OE-core sets CONNECTIVITY_CHECK_URIS ?= in default-distrovars.inc'
+        echo '# and ??= would be too weak to override it.'
+        echo 'CONNECTIVITY_CHECK_URIS = ""'
+        echo ""
+
+        echo "# Build cache directories. User can override in local.conf if needed (e.g., NFS shared cache)."
+        echo "DL_DIR ??= \"$WORKSPACE_DIR/downloads\""
+        echo "SSTATE_DIR ??= \"$WORKSPACE_DIR/sstate-cache\""
+
+        if [[ "$is_wsl" -eq 1 ]] && [[ -n "$parallel_n" ]]; then
+            echo ""
+            echo "# WSL parallelism auto-tuning (WSL swap is slower than bare-metal, prone to OOM)."
+            echo "# Formula: N = max(1, min(nproc, (MemTotal_GB + SwapTotal_GB) / 4))"
+            echo "# Override in local.conf if needed: PARALLEL_MAKE = \"-j 8\""
+            echo "BB_NUMBER_THREADS ??= \"$parallel_n\""
+            echo "PARALLEL_MAKE ??= \"-j ${parallel_n}\""
         fi
     } > "$inc_file"
 
-    # Ensure cache directories exist only when we actually set them.
-    # If local.conf already defines DL_DIR/SSTATE_DIR (e.g., OEM NFS cache),
-    # creating workspace-local directories is pointless — they'd be empty unused shells.
-    if [[ "$has_dl_dir" -eq 0 ]]; then
-        mkdir -p "$WORKSPACE_DIR/downloads"
-    fi
-    if [[ "$has_sstate_dir" -eq 0 ]]; then
-        mkdir -p "$WORKSPACE_DIR/sstate-cache"
-    fi
+    mkdir -p "$WORKSPACE_DIR/downloads" "$WORKSPACE_DIR/sstate-cache"
 
     info "Generated $inc_file"
-    if [[ "$has_dl_dir" -eq 1 ]]; then
-        info "DL_DIR already set in local.conf ($dl_dir_existing) — not overriding in .inc"
-    fi
-    if [[ "$has_sstate_dir" -eq 1 ]]; then
-        info "SSTATE_DIR already set in local.conf ($sstate_dir_existing) — not overriding in .inc"
-    fi
-
-    # Add include to local.conf if not already present
-    local include_line="include externalsrc-$MACHINE.inc"
-
-    if grep -qF "$include_line" "$local_conf"; then
-        verbose "Include line already exists in local.conf, skipping."
-    else
-        # Backup local.conf
-        cp "$local_conf" "${local_conf}.bak.$(date +%Y%m%d%H%M%S)"
-        echo "" >> "$local_conf"
-        echo "$include_line" >> "$local_conf"
-        info "Added '$include_line' to local.conf"
-    fi
 }
 
 print_report() {
