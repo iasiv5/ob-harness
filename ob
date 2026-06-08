@@ -1006,23 +1006,28 @@ select_openbmc_repo_url() {
         echo "Select the OpenBMC source repository:"
         echo "  1) Community (https://github.com/openbmc/openbmc.git)"
         echo "  2) Custom repository URL"
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Choose [1-2]: ")" selection; then
+        echo "  Q) Quit source selection (q/Q)"
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Choose [1/2/Q]: ")" selection; then
             error "Unable to read repository source selection from stdin."
             error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
             exit 1
         fi
 
         case "$selection" in
-            1|"")
+            1)
                 OPENBMC_REPO_URL="$DEFAULT_OPENBMC_REPO_URL"
                 SOURCE_LABEL="community"
                 return 0
                 ;;
             2)
-                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter the full repository URL: ")" OPENBMC_REPO_URL; then
+                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter the full repository URL (or press Enter to go back): ")" OPENBMC_REPO_URL; then
                     error "Unable to read custom repository URL from stdin."
                     error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
                     exit 1
+                fi
+                if [[ -z "$OPENBMC_REPO_URL" ]]; then
+                    info "Returning to source selection."
+                    continue
                 fi
                 if is_valid_repo_url "$OPENBMC_REPO_URL"; then
                     SOURCE_LABEL="custom"
@@ -1030,8 +1035,12 @@ select_openbmc_repo_url() {
                 fi
                 warn "Invalid repository URL. Please enter a full URL such as https://example.com/openbmc.git"
                 ;;
+            [qQ])
+                warn "Source selection cancelled by user."
+                exit 0
+                ;;
             *)
-                warn "Invalid selection: $selection"
+                warn "Invalid selection: $selection. Please choose 1, 2, or Q."
                 ;;
         esac
     done
