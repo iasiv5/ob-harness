@@ -677,9 +677,10 @@ status_section_machines() {
             m_repos["$m"]="—"
         fi
 
-        # Build status
-        local image_path="$OPENBMC_DIR/build/$m/tmp/deploy/images/$m/obmc-phosphor-image-$m.static.mtd"
-        if [[ -f "$image_path" ]]; then
+        # Build status — glob for *.static.mtd to handle custom image names
+        local image_path=""
+        image_path=$(ls "$OPENBMC_DIR/build/$m/tmp/deploy/images/$m/"*.static.mtd 2>/dev/null | head -1)
+        if [[ -n "$image_path" && -f "$image_path" ]]; then
             m_build["$m"]="🔨 succeeded"
             m_image["$m"]="$image_path"
         elif [[ -d "$OPENBMC_DIR/build/$m" ]]; then
@@ -767,8 +768,9 @@ cmd_status() {
         has_init_done=1
         local mname
         mname=$(basename "$f" .init-done)
-        local image_path="$OPENBMC_DIR/build/$mname/tmp/deploy/images/$mname/obmc-phosphor-image-$mname.static.mtd"
-        if [[ ! -f "$image_path" ]]; then
+        local image_path=""
+        image_path=$(ls "$OPENBMC_DIR/build/$mname/tmp/deploy/images/$mname/"*.static.mtd 2>/dev/null | head -1)
+        if [[ -z "$image_path" ]]; then
             has_never_built=1
         fi
         break
@@ -932,11 +934,12 @@ cmd_build() {
         step_header "Build Succeeded"
 
         local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
-        local image_file="$deploy_dir/obmc-phosphor-image-$MACHINE.static.mtd"
+        local image_file=""
+        image_file=$(ls "$deploy_dir/"*.static.mtd 2>/dev/null | head -1)
 
         echo "  Machine : $MACHINE"
-        echo "  Image   : $image_file"
-        if [[ -f "$image_file" ]]; then
+        echo "  Image   : ${image_file:-<not found>}"
+        if [[ -n "$image_file" && -f "$image_file" ]]; then
             local image_size
             image_size=$(python3 - "$image_file" <<'PY'
 import os
