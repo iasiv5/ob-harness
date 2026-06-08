@@ -782,13 +782,13 @@ cmd_build() {
     if [[ ! -d "$OPENBMC_DIR/.git" ]]; then
         error "OpenBMC main repository not found at $OPENBMC_DIR"
         error "Run 'ob init' first."
-        exit 1
+        exit 3
     fi
 
     if [[ ! -f "$SOURCE_LOCK_FILE" ]]; then
         error "Source lock not found at $SOURCE_LOCK_FILE"
         error "Run 'ob init' first."
-        exit 1
+        exit 3
     fi
 
     # === Discover init-done machines ===
@@ -825,7 +825,7 @@ cmd_build() {
         echo ""
         error "No machines are ready to build."
         error "Run 'ob init' first to initialize a machine."
-        exit 1
+        exit 3
     fi
 
     # === Read main repo info ===
@@ -856,7 +856,7 @@ cmd_build() {
     # === Interactive selection ===
     if [[ ! -t 0 ]]; then
         error "No interactive terminal. ob build requires interactive mode."
-        exit 1
+        exit 3
     fi
 
     local selected chosen=""
@@ -1928,6 +1928,8 @@ cmd_menu() {
                     : # Build succeeded — cmd_build already printed the report
                 elif [[ "$build_rc" -eq 2 ]]; then
                     : # User cancelled — cmd_build already printed the warning
+                elif [[ "$build_rc" -eq 3 ]]; then
+                    : # Prerequisite not met — cmd_build already printed the error
                 else
                     error "Build failed (exit code: $build_rc)."
                 fi
