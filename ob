@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# ob - OpenBMC development environment initializer
-# Usage: ob init [<machine>] [options]
+# OpenBMC Development Environment (ob-harness)
+# Usage: ob [command] [options]    (run without arguments for interactive menu)
 set -euo pipefail
 
 # === Global Variables ===
@@ -31,6 +31,7 @@ YELLOW='\033[0;33m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m' # No Color
+PROMPT_PREFIX='\033[38;2;255;210;80mob-harness>\033[0m'
 
 log()   { echo -e "$*"; }
 info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
@@ -234,11 +235,31 @@ show_logo() {
     echo    "    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
 }
 
+show_brand_line() {
+    echo -e "\n\033[38;2;255;210;80m━━━ >>> ob-harness <<< ━━━\033[0m\n"
+}
+
+fn_quit() {
+    echo ""
+    echo -e "${PROMPT_PREFIX} ...... Exit [ ob-harness · OpenBMC Development Environment ]"
+    echo ""
+    exit 0
+}
+
+fn_err_quit() {
+    echo ""
+    echo -e "${PROMPT_PREFIX} ...... \033[0;31mError Exit [ ob-harness · OpenBMC Development Environment ]\033[0m"
+    echo ""
+    exit 1
+}
+
 # === Functions ===
 
 usage() {
     cat <<EOF
-Usage: ob <command> [options] [arguments]
+Usage: ob [command] [options] [arguments]
+
+Run without arguments to enter interactive menu mode.
 
 Commands:
   init   [<machine>]    One-click initialize OpenBMC dev environment
@@ -261,8 +282,8 @@ EOF
 
 parse_args() {
     if [[ $# -lt 1 ]]; then
-        usage
-        exit 1
+        COMMAND=""
+        return 0
     fi
 
     # Handle global --help/-h before dispatching to subcommands
@@ -537,7 +558,7 @@ verify_source() {
             error "  Current harness source: $lock_source${lock_label:+  ($lock_label)}"
             error "  Requested source:       $requested_source"
             error "A harness may only bind to one OpenBMC main repository source."
-            error "To use a different source, copy openbmc-aware-harness and run ob init in the new copy."
+            error "To use a different source, copy ob-harness and run ob init in the new copy."
             exit 1
         fi
     fi
@@ -578,14 +599,14 @@ cmd_status() {
 
     if [[ "$lock_exists" -eq 0 ]] && [[ "$repo_exists" -eq 0 ]]; then
         echo "  Status:          Not initialized"
-        echo "  Hint:            Run ob init <machine>"
+        echo "  Tip:             Run ob init <machine>"
         return 0
     fi
 
     if [[ "$lock_exists" -eq 0 ]] && [[ "$repo_exists" -eq 1 ]]; then
         echo "  Status:          Repository present without source lock"
         echo "  Current origin:  ${current_source:-<missing origin>}"
-        echo "  Hint:            Re-run ob init to bootstrap openbmc-source.lock"
+        echo "  Tip:             Re-run ob init to bootstrap openbmc-source.lock"
         return 0
     fi
 
@@ -642,7 +663,9 @@ cmd_build() {
         machines+=("$mname")
 
         local init_time
-        init_time=$(cat "$init_done_file" 2>/dev/null || echo "<unknown>")
+        if ! IFS= read -r init_time < "$init_done_file"; then
+            init_time="<unknown>"
+        fi
         init_times+=("$init_time")
 
         local lockfile="$CONFIGS_DIR/$mname.lock"
@@ -661,7 +684,7 @@ cmd_build() {
         echo "  (none)"
         echo ""
         error "No machines are ready to build."
-        error "Run 'ob init' first to initialize a machine, then come back."
+        error "Run 'ob init' first to initialize a machine."
         exit 1
     fi
 
@@ -687,7 +710,7 @@ cmd_build() {
     done
 
     echo ""
-    info "If the machine you want is not listed, run 'ob init' first."
+    info "If the machine you want is not listed, run 'init' task or './ob init' first."
     echo ""
 
     # === Interactive selection ===
@@ -698,7 +721,7 @@ cmd_build() {
 
     local selected chosen=""
     while true; do
-        if ! read -r -p "Choose [1-${total}]: " selected; then
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine to build [1-${total}]: ")" selected; then
             error "Unable to read selection from stdin."
             exit 1
         fi
@@ -730,7 +753,7 @@ cmd_build() {
     echo "============================================================"
     echo ""
     while true; do
-        if ! read -r -p "Type Y to confirm and start build, N to cancel: " confirm; then
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start build, (N/n) to cancel: ")" confirm; then
             error "Unable to read confirmation from stdin."
             exit 1
         fi
@@ -740,7 +763,7 @@ cmd_build() {
                 ;;
             [nN])
                 warn "Build cancelled by user."
-                exit 0
+                exit 2
                 ;;
             *)
                 warn "Invalid input. Please type Y or N."
@@ -775,7 +798,26 @@ cmd_build() {
         echo "  Image   : $image_file"
         if [[ -f "$image_file" ]]; then
             local image_size
-            image_size=$(du -h "$image_file" | cut -f1)
+            image_size=$(python3 - "$image_file" <<'PY'
+import os
+import sys
+
+size = os.path.getsize(sys.argv[1])
+units = ["B", "KiB", "MiB", "GiB", "TiB"]
+value = float(size)
+
+for unit in units:
+    if value < 1024.0 or unit == units[-1]:
+        if unit == "B":
+            print(f"{int(value)} {unit}")
+        elif value >= 10:
+            print(f"{value:.0f} {unit}")
+        else:
+            print(f"{value:.1f} {unit}")
+        break
+    value /= 1024.0
+PY
+)
             echo "  Size    : $image_size"
         fi
         echo "  Deploy  : $deploy_dir"
@@ -791,7 +833,7 @@ cmd_build() {
         echo "  BitBake error details are shown above."
         echo ""
         echo "  Common fixes:"
-        echo "    1. Re-run:         ob build  → select same machine → retry"
+        echo "    1. Re-run:         ob build  -- select same machine -- retry"
         echo "    2. Clean & retry:  cd $OPENBMC_DIR && source setup $MACHINE"
         echo "                       bitbake -c cleansstate <failed-recipe>"
         echo "    3. Full log:       $BUILD_DIR/tmp/log/cooker/$MACHINE/"
@@ -821,12 +863,10 @@ select_openbmc_repo_url() {
 
     while true; do
         echo ""
-        echo "Select the OpenBMC repository to download:"
-        echo "  1) Community OpenBMC (GitHub.com)"
-        echo "       equivalent: ob init --url $DEFAULT_OPENBMC_REPO_URL"
-        echo "  2) Custom OpenBMC repository URL"
-        echo "       equivalent: ob init --url <your-repo-url>"
-        if ! read -r -p "Choose [1-2]: " selection; then
+        echo "Select the OpenBMC source repository:"
+        echo "  1) Community (https://github.com/openbmc/openbmc.git)"
+        echo "  2) Custom repository URL"
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Choose [1-2]: ")" selection; then
             error "Unable to read repository source selection from stdin."
             error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
             exit 1
@@ -839,7 +879,7 @@ select_openbmc_repo_url() {
                 return 0
                 ;;
             2)
-                if ! read -r -p "Enter the full repository URL: " OPENBMC_REPO_URL; then
+                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter the full repository URL: ")" OPENBMC_REPO_URL; then
                     error "Unable to read custom repository URL from stdin."
                     error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
                     exit 1
@@ -977,7 +1017,7 @@ resolve_machine() {
     local selected
     local chosen=""
     while true; do
-        if ! read -r -p "Enter number or machine name: " selected; then
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine [1-${#machine_arr[@]}] or type machine name: ")" selected; then
             error "Unable to read machine selection from stdin."
             exit 1
         fi
@@ -1552,22 +1592,7 @@ print_report() {
 }
 
 # === Main ===
-main() {
-    SECONDS=0
-    show_logo
-    parse_args "$@"
-    detect_harness_root
-
-    if [[ "$COMMAND" == "status" ]]; then
-        cmd_status
-        return 0
-    fi
-
-    if [[ "$COMMAND" == "build" ]]; then
-        cmd_build
-        return 0
-    fi
-
+cmd_init() {
     # Step 1/8: 前置检查。
     prerequisites_check
 
@@ -1665,7 +1690,120 @@ main() {
 
     # Write init-done marker (all 8 steps completed successfully).
     # ob build uses this to discover buildable machines.
-    date -u +"%Y-%m-%dT%H:%M:%SZ" > "$CONFIGS_DIR/$MACHINE.init-done"
+    {
+        date -u +"%Y-%m-%dT%H:%M:%SZ"
+        echo "source_label=${SOURCE_LABEL}"
+    } > "$CONFIGS_DIR/$MACHINE.init-done"
+}
+
+cmd_menu() {
+    # Non-interactive terminal guard
+    if [[ ! -t 0 ]]; then
+        echo -e "${PROMPT_PREFIX} Non-interactive terminal detected. Use CLI mode: ./ob <command> [args]"
+        exit 1
+    fi
+
+    local first_run=1
+
+    # First entry: clear + full logo
+    clear
+    show_logo
+
+    while true; do
+        # Print menu header
+        echo ""
+        if [[ "$first_run" -eq 0 ]]; then
+            show_brand_line
+        fi
+
+        echo "Please select a task (1/2/3/C/Q):"
+        echo "    1 - init   - Initialize OpenBMC development environment"
+        echo "    2 - build  - Build OpenBMC firmware image"
+        echo "    3 - status - Show current OpenBMC workspace status"
+        echo "    C - Clear terminal screen (c/C)"
+        echo "    Q - Quit this script (q/Q)"
+        echo ""
+        echo "Tip: CLI mode — ./ob init <machine> | ./ob build | ./ob --help"
+        echo ""
+
+        local choice
+        read -r -p "$(echo -e "${PROMPT_PREFIX} ")" choice
+
+        case "$choice" in
+            1)
+                if (cmd_init); then
+                    : # Init succeeded — cmd_init already printed the report
+                else
+                    echo ""
+                    error "Initialization failed."
+                fi
+                read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
+                ;;
+            2)
+                local build_rc=0
+                (cmd_build) || build_rc=$?
+                echo ""
+                if [[ "$build_rc" -eq 0 ]]; then
+                    : # Build succeeded — cmd_build already printed the report
+                elif [[ "$build_rc" -eq 2 ]]; then
+                    : # User cancelled — cmd_build already printed the warning
+                else
+                    error "Build failed (exit code: $build_rc)."
+                fi
+                read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
+                ;;
+            3)
+                if (cmd_status); then
+                    : # Status succeeded — cmd_status already printed the report
+                else
+                    echo ""
+                    error "Status query failed."
+                fi
+                read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
+                ;;
+            c|C)
+                clear
+                show_logo
+                first_run=1
+                continue
+                ;;
+            q|Q)
+                fn_quit
+                ;;
+            *)
+                echo -e "${YELLOW}ob-harness> Invalid input. Please choose 1/2/3/C/Q${NC}"
+                continue
+                ;;
+        esac
+
+        first_run=0
+    done
+}
+
+main() {
+    SECONDS=0
+    parse_args "$@"
+    detect_harness_root
+
+    if [[ -z "$COMMAND" ]]; then
+        cmd_menu
+        return $?
+    fi
+
+    # CLI mode
+    show_logo
+
+    if [[ "$COMMAND" == "status" ]]; then
+        cmd_status
+        return 0
+    fi
+
+    if [[ "$COMMAND" == "build" ]]; then
+        cmd_build
+        return 0
+    fi
+
+    cmd_init
 }
 
 if [[ -z "${OB_NO_MAIN:-}" ]]; then
