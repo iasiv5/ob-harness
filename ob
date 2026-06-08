@@ -1020,7 +1020,7 @@ select_openbmc_repo_url() {
                 return 0
                 ;;
             2)
-                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter the full repository URL (or press Enter to go back): ")" OPENBMC_REPO_URL; then
+                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter the full repository URL: ")" OPENBMC_REPO_URL; then
                     error "Unable to read custom repository URL from stdin."
                     error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
                     exit 1
@@ -1942,13 +1942,13 @@ cmd_menu() {
                 fi
                 read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
                 ;;
-            c|C)
+            [cC])
                 clear
                 show_logo
                 first_run=1
                 continue
                 ;;
-            q|Q)
+            [qQ])
                 fn_quit
                 ;;
             *)
