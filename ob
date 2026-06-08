@@ -599,9 +599,9 @@ status_section_main_repo() {
         if [[ "$ahead" -eq 0 && "$behind" -eq 0 ]]; then
             upstream_display="✅ up-to-date"
         elif [[ "$behind" -gt 0 ]]; then
-            upstream_display="⬇️ behind ${behind}${ahead:+, ⬆️ ahead ${ahead}}"
+            upstream_display="⬇️  behind ${behind}${ahead:+, ⬆️  ahead ${ahead}}"
         else
-            upstream_display="⬆️ ahead ${ahead}"
+            upstream_display="⬆️  ahead ${ahead}"
         fi
     fi
 
@@ -722,6 +722,9 @@ status_section_machines() {
 
         # Image details (only when build succeeded)
         if [[ -n "${m_image[$m]:-}" ]]; then
+            local build_time=""
+            build_time=$(stat -c '%Y' "${m_image[$m]}" 2>/dev/null | xargs -I{} date -u -d @{} '+%Y-%m-%d %H:%M UTC' 2>/dev/null || echo "-")
+            echo "    Build time   : $build_time"
             echo "    Image name   : $(basename "${m_image[$m]}")"
             echo "    Image path   : $(dirname "${m_image[$m]}")/"
         fi
