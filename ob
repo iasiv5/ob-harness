@@ -1166,8 +1166,7 @@ resolve_machine() {
             if [[ "$selected" -ge 1 && "$selected" -le "${#machine_arr[@]}" ]]; then
                 chosen="${machine_arr[$((selected - 1))]}"
                 MACHINE="$chosen"
-                info "Machine '$MACHINE' confirmed."
-                return 0
+                break
             fi
             warn "Number out of range (1-${#machine_arr[@]}): $selected"
             continue
@@ -1175,10 +1174,43 @@ resolve_machine() {
         # Try as name
         if echo "$machines" | grep -qx -- "$selected"; then
             MACHINE="$selected"
-            info "Machine '$MACHINE' confirmed."
-            return 0
+            break
         fi
         warn "Invalid machine: $selected"
+    done
+
+    # === Post-selection confirmation (same pattern as cmd_build) ===
+    echo ""
+    info "Machine '$MACHINE' selected."
+    echo ""
+    echo "============================================================"
+    echo ""
+    warn "  You are about to init:  >>> $MACHINE <<<"
+    warn "  You are about to init:  >>> $MACHINE <<<"
+    warn "  You are about to init:  >>> $MACHINE <<<"
+    echo ""
+    echo "============================================================"
+    echo ""
+    while true; do
+        local confirm
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start init, (N/n) to cancel: ")" confirm; then
+            error "Unable to read confirmation from stdin."
+            exit 1
+        fi
+        case "$confirm" in
+            [yY])
+                echo ""
+                info "Init confirmed for machine '$MACHINE'."
+                return 0
+                ;;
+            [nN])
+                warn "Init cancelled by user."
+                exit 0
+                ;;
+            *)
+                warn "Invalid input. Please type Y or N."
+                ;;
+        esac
     done
 }
 
