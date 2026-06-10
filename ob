@@ -24,6 +24,20 @@ STATUS_MIRROR_NEW=()
 STATUS_MIRROR_EXISTING=()
 MIRROR_BASE=""
 
+# QEMU-related (start-qemu / stop-qemu)
+QEMU_SSH_PORT=""
+QEMU_REDFISH_PORT=""
+QEMU_IPMI_PORT=""
+QEMU_HTTP_PORT=""
+QEMU_SERIAL_LOG=""
+QEMU_NO_WAIT=0
+QEMU_FORCE=0
+QEMU_STOP_ALL=0
+QEMU_BIN_DIR=""       # derived: workspace/qemu-bin/<source>
+QEMU_BIN_FILE=""      # derived: workspace/qemu-bin/<source>/qemu-system-arm
+QEMU_PIDS_DIR=""      # derived: workspace/qemu-bin/.pids
+QEMU_PID_FILE=""      # derived: workspace/qemu-bin/.pids/<machine>.pid
+
 # === Colors ===
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -262,21 +276,48 @@ Usage: ob [command] [options] [arguments]
 Run without arguments to enter interactive menu mode.
 
 Commands:
-  init   [<machine>]    One-click initialize OpenBMC dev environment
-  build                 Select an initialized machine and build its image
-  status                Show current OpenBMC source binding status
+  init         [<machine>]    One-click initialize OpenBMC dev environment
+  build                        Select an initialized machine and build its image
+  status                       Show current OpenBMC source binding status
+  start-qemu   [<machine>]    Launch QEMU with built BMC image
+  stop-qemu    [<machine>]    Stop a running QEMU instance
 
-Options:
+Global Options:
   -d, --dry-run         Print actions without executing
   -u, --url <url>       Use a custom OpenBMC repository URL
   -v, --verbose         Verbose output
   -h, --help            Show this help
+
+start-qemu Options:
+  --ssh-port <port>       SSH port forwarding    (default: 2222)
+  --redfish-port <port>   Redfish port forwarding (default: 2443)
+  --ipmi-port <port>      IPMI port forwarding    (default: 2623, UDP)
+  --http-port <port>      HTTP port forwarding    (no default; set to enable)
+  --serial-log <path>     Serial log file path    (default: /tmp/qemu-<machine>-serial.log)
+  --no-wait               Don't wait for BMC to become ready
+  --force                 Kill existing instance without confirmation
+
+stop-qemu Options:
+  --force                 Stop without confirmation
+  --all                   Stop all running QEMU instances
+
+Environment Variables (lower priority than command-line options):
+  OB_QEMU_SSH_PORT        SSH port override
+  OB_QEMU_REDFISH_PORT    Redfish port override
+  OB_QEMU_IPMI_PORT       IPMI port override
+  OB_QEMU_HTTP_PORT       HTTP port override
+  OB_QEMU_SERIAL_LOG      Serial log path override
+  OB_QEMU_BINARY_URL      Custom QEMU binary download URL
 
 Examples:
   ob init                          # List machines and choose interactively
   ob init romulus                  # Initialize romulus machine
   ob init romulus -d               # Preview what would be done
   ob init romulus --url https://example.com/openbmc.git
+  ob start-qemu romulus            # Launch romulus in QEMU
+  ob start-qemu romulus --ssh-port 22223
+  ob stop-qemu romulus             # Stop romulus QEMU instance
+  ob stop-qemu --all               # Stop all running instances
 EOF
 }
 
@@ -311,6 +352,18 @@ parse_args() {
         build)
             # No arguments accepted for build
             ;;
+        start-qemu)
+            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+                MACHINE="$1"
+                shift
+            fi
+            ;;
+        stop-qemu)
+            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+                MACHINE="$1"
+                shift
+            fi
+            ;;
         *)
             error "Unknown command: $COMMAND"
             usage
@@ -333,10 +386,383 @@ parse_args() {
                 ;;
             -v|-V|--verbose)  VERBOSE=1; shift ;;
             -h|-H|--help)     usage; exit 0 ;;
+            --ssh-port)
+                if [[ $# -lt 2 ]]; then error "Missing value for --ssh-port"; exit 1; fi
+                QEMU_SSH_PORT="$2"; shift 2 ;;
+            --redfish-port)
+                if [[ $# -lt 2 ]]; then error "Missing value for --redfish-port"; exit 1; fi
+                QEMU_REDFISH_PORT="$2"; shift 2 ;;
+            --ipmi-port)
+                if [[ $# -lt 2 ]]; then error "Missing value for --ipmi-port"; exit 1; fi
+                QEMU_IPMI_PORT="$2"; shift 2 ;;
+            --http-port)
+                if [[ $# -lt 2 ]]; then error "Missing value for --http-port"; exit 1; fi
+                QEMU_HTTP_PORT="$2"; shift 2 ;;
+            --serial-log)
+                if [[ $# -lt 2 ]]; then error "Missing value for --serial-log"; exit 1; fi
+                QEMU_SERIAL_LOG="$2"; shift 2 ;;
+            --no-wait)  QEMU_NO_WAIT=1; shift ;;
+            --force)    QEMU_FORCE=1; shift ;;
+            --all)      QEMU_STOP_ALL=1; shift ;;
             *)             error "Unknown option: $1"; usage; exit 1 ;;
         esac
     done
 }
+
+# ──────────────────────────────────────────────
+# QEMU Helper Functions
+# ──────────────────────────────────────────────
+
+read_source_label() {
+    local label=""
+    if [[ -f "$SOURCE_LOCK_FILE" ]]; then
+        label=$(read_lock_field source_label 2>/dev/null || true)
+        label=$(trim_whitespace "$label")
+    fi
+    if [[ -z "$label" ]]; then
+        label="community"
+    fi
+    echo "$label"
+}
+
+derive_qemu_paths() {
+    local label
+    label=$(read_source_label)
+    QEMU_BIN_DIR="$WORKSPACE_DIR/qemu-bin/$label"
+    QEMU_BIN_FILE="$QEMU_BIN_DIR/qemu-system-arm"
+    QEMU_PIDS_DIR="$WORKSPACE_DIR/qemu-bin/.pids"
+    QEMU_PID_FILE="$QEMU_PIDS_DIR/${MACHINE}.pid"
+}
+
+ensure_qemu_binary() {
+    derive_qemu_paths
+
+    # Already downloaded and executable?
+    if [[ -x "$QEMU_BIN_FILE" ]]; then
+        verbose "QEMU binary already exists: $QEMU_BIN_FILE"
+        return 0
+    fi
+
+    local label
+    label=$(read_source_label)
+    local manifest="$QEMU_BIN_DIR/.manifest"
+
+    mkdir -p "$QEMU_BIN_DIR"
+
+    if [[ "$label" == "community" ]]; then
+        # ── Community: download from OpenBMC Jenkins ──
+        local jenkins_url="https://jenkins.openbmc.org/job/latest-qemu-x86/lastSuccessfulBuild/artifact/qemu/build/qemu-system-arm"
+        local build_number=""
+
+        info "Downloading QEMU binary from OpenBMC Jenkins..."
+        verbose "  URL: $jenkins_url"
+
+        # Fetch build number for manifest
+        build_number=$(curl -sf "https://jenkins.openbmc.org/job/latest-qemu-x86/lastSuccessfulBuild/api/json?tree=number" 2>/dev/null \
+            | python3 -c "import sys,json; print(json.load(sys.stdin).get('number',''))" 2>/dev/null || echo "unknown")
+
+        if ! curl -fSL -o "$QEMU_BIN_FILE" "$jenkins_url" 2>/dev/null; then
+            error "Failed to download QEMU binary from Jenkins."
+            error "  URL: $jenkins_url"
+            rm -f "$QEMU_BIN_FILE"
+            exit 1
+        fi
+
+        chmod +x "$QEMU_BIN_FILE"
+
+        local sha256=""
+        sha256=$(sha256sum "$QEMU_BIN_FILE" | awk '{print $1}')
+
+        cat > "$manifest" <<MANIFEST_EOF
+source=community
+url=${jenkins_url}
+jenkins_build=${build_number}
+downloaded_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+sha256=${sha256}
+MANIFEST_EOF
+
+        info "QEMU binary downloaded: $QEMU_BIN_FILE"
+        verbose "  Jenkins build: $build_number"
+        verbose "  SHA256: $sha256"
+
+    else
+        # ── Custom: download from configured URL ──
+        local custom_url=""
+        custom_url="${OB_QEMU_BINARY_URL:-}"
+
+        # Fallback: look for enterprise meta layer config
+        if [[ -z "$custom_url" ]]; then
+            for _candidate in "$WORKSPACE_DIR/openbmc"/meta-*/qemu-binary-url.sh; do
+                if [[ -f "$_candidate" ]]; then
+                    # shellcheck source=/dev/null
+                    source "$_candidate"
+                    custom_url="${QEMU_BINARY_URL:-}"
+                    break
+                fi
+            done
+        fi
+
+        if [[ -z "$custom_url" ]]; then
+            error "Custom QEMU binary URL not configured."
+            error "Set OB_QEMU_BINARY_URL environment variable or provide meta-*/qemu-binary-url.sh"
+            exit 1
+        fi
+
+        info "Downloading custom QEMU binary..."
+        verbose "  URL: $custom_url"
+
+        local tmp_download
+        tmp_download=$(mktemp /tmp/qemu-binary-XXXXXX)
+
+        if ! curl -fSL -o "$tmp_download" "$custom_url" 2>/dev/null; then
+            error "Failed to download QEMU binary from: $custom_url"
+            rm -f "$tmp_download"
+            exit 1
+        fi
+
+        # Detect file type: tarball or single binary
+        local file_type
+        file_type=$(file -b "$tmp_download" 2>/dev/null || echo "")
+
+        if echo "$file_type" | grep -qi "gzip\|xz"; then
+            # Tarball — extract
+            verbose "  Detected archive, extracting..."
+            tar xf "$tmp_download" -C "$QEMU_BIN_DIR/" --strip-components=1 2>/dev/null \
+                || tar xf "$tmp_download" -C "$QEMU_BIN_DIR/" 2>/dev/null
+            rm -f "$tmp_download"
+
+            # Locate the binary
+            local found_bin=""
+            for candidate in "$QEMU_BIN_DIR"/qemu-system-arm "$QEMU_BIN_DIR"/bin/qemu-system-arm \
+                             "$QEMU_BIN_DIR"/qemu-system-aarch64 "$QEMU_BIN_DIR"/bin/qemu-system-aarch64; do
+                if [[ -f "$candidate" ]]; then
+                    found_bin="$candidate"
+                    break
+                fi
+            done
+
+            if [[ -z "$found_bin" ]]; then
+                error "Could not find qemu-system-arm or qemu-system-aarch64 in extracted archive."
+                exit 1
+            fi
+
+            QEMU_BIN_FILE="$found_bin"
+            chmod +x "$QEMU_BIN_FILE"
+
+        else
+            # Single binary
+            mv "$tmp_download" "$QEMU_BIN_FILE"
+            chmod +x "$QEMU_BIN_FILE"
+        fi
+
+        local sha256=""
+        sha256=$(sha256sum "$QEMU_BIN_FILE" | awk '{print $1}')
+
+        cat > "$manifest" <<MANIFEST_EOF
+source=custom
+url=${custom_url}
+downloaded_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+sha256=${sha256}
+MANIFEST_EOF
+
+        info "Custom QEMU binary ready: $QEMU_BIN_FILE"
+        verbose "  SHA256: $sha256"
+    fi
+}
+
+resolve_qb_vars() {
+    # Validate build environment exists
+    if [[ ! -d "$BUILD_DIR" ]]; then
+        error "Build directory not found: $BUILD_DIR"
+        error "Run 'ob init $MACHINE' first."
+        exit 1
+    fi
+
+    if [[ ! -f "$OPENBMC_DIR/setup" ]]; then
+        error "OpenBMC setup script not found: $OPENBMC_DIR/setup"
+        exit 1
+    fi
+
+    info "Resolving QEMU variables via BitBake (this takes a few seconds)..."
+
+    local bitbake_output
+    bitbake_output=$(cd "$OPENBMC_DIR" && set +u; source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null && bitbake -e 2>/dev/null)
+
+    if [[ -z "$bitbake_output" ]]; then
+        error "Failed to run 'bitbake -e' for machine '$MACHINE'."
+        error "Ensure the build environment is healthy (try 'ob init $MACHINE' if unsure)."
+        exit 1
+    fi
+
+    QB_MACHINE_NAME=""
+    QB_MEM_SIZE_FLAG=""
+
+    # Extract QB_MACHINE
+    local qb_machine_raw
+    qb_machine_raw=$(echo "$bitbake_output" | grep '^QB_MACHINE=' | head -1 | cut -d= -f2-)
+    qb_machine_raw=$(trim_whitespace "$qb_machine_raw")
+    # Strip quotes
+    qb_machine_raw="${qb_machine_raw#\"}"
+    qb_machine_raw="${qb_machine_raw%\"}"
+    qb_machine_raw="${qb_machine_raw#\'}"
+    qb_machine_raw="${qb_machine_raw%\'}"
+
+    if [[ -z "$qb_machine_raw" ]]; then
+        error "QB_MACHINE not defined for machine '$MACHINE'."
+        error "Add 'QB_MACHINE:$MACHINE = \"-machine <qemu-machine-name>\"' to your machine conf."
+        exit 1
+    fi
+
+    # Extract the machine name from "-machine <name>"
+    QB_MACHINE_NAME=$(echo "$qb_machine_raw" | sed 's/^-machine[[:space:]]*//' | awk '{print $1}')
+    if [[ -z "$QB_MACHINE_NAME" ]]; then
+        error "Could not parse QEMU machine name from QB_MACHINE='$qb_machine_raw'."
+        exit 1
+    fi
+
+    # Extract QB_MEM
+    local qb_mem_raw
+    qb_mem_raw=$(echo "$bitbake_output" | grep '^QB_MEM=' | head -1 | cut -d= -f2-)
+    qb_mem_raw=$(trim_whitespace "$qb_mem_raw")
+    qb_mem_raw="${qb_mem_raw#\"}"
+    qb_mem_raw="${qb_mem_raw%\"}"
+    qb_mem_raw="${qb_mem_raw#\'}"
+    qb_mem_raw="${qb_mem_raw%\'}"
+
+    if [[ -z "$qb_mem_raw" ]]; then
+        error "QB_MEM not defined for machine '$MACHINE'."
+        error "Add 'QB_MEM:$MACHINE = \"-m <size>\"' to your machine conf."
+        exit 1
+    fi
+
+    QB_MEM_SIZE_FLAG="$qb_mem_raw"
+
+    verbose "  QB_MACHINE → -machine $QB_MACHINE_NAME"
+    verbose "  QB_MEM → $QB_MEM_SIZE_FLAG"
+}
+
+check_ports_available() {
+    local -a port_args=("$@")
+    local -a conflicts=()
+
+    local i
+    for (( i=0; i<${#port_args[@]}; i+=2 )); do
+        local proto="${port_args[$i]}"   # "tcp" or "udp"
+        local port="${port_args[$((i+1))]}"
+
+        local occupants=""
+        if [[ "$proto" == "tcp" ]]; then
+            occupants=$(ss -tlnpH "sport = :$port" 2>/dev/null | grep -v "^State" || true)
+        else
+            occupants=$(ss -ulnpH "sport = :$port" 2>/dev/null | grep -v "^State" || true)
+        fi
+
+        if [[ -n "$occupants" ]]; then
+            local pid_info
+            pid_info=$(echo "$occupants" | head -1 | grep -oP 'pid=\K[0-9]+' | head -1 || echo "?")
+            conflicts+=("$proto $port — used by process $pid_info")
+        fi
+    done
+
+    if [[ ${#conflicts[@]} -gt 0 ]]; then
+        echo ""
+        error "Port(s) already in use:"
+        local c
+        for c in "${conflicts[@]}"; do
+            echo -e "  ${RED}$c${NC}"
+        done
+        echo ""
+        echo "  Set a different port:"
+        echo "    ob start-qemu $MACHINE --ssh-port <port> --redfish-port <port> --ipmi-port <port>"
+        echo "  Or export:"
+        echo "    export OB_QEMU_SSH_PORT=<port>"
+        echo "    export OB_QEMU_REDFISH_PORT=<port>"
+        echo "    export OB_QEMU_IPMI_PORT=<port>"
+        exit 1
+    fi
+}
+
+write_pid_file() {
+    mkdir -p "$QEMU_PIDS_DIR"
+    local ssh_p="${1:-}"
+    local redfish_p="${2:-}"
+    local ipmi_p="${3:-}"
+    local http_p="${4:-}"
+    local serial_log_p="${5:-}"
+
+    cat > "$QEMU_PID_FILE" <<PIDFILE_EOF
+pid=$!
+user=$(whoami)
+machine=$MACHINE
+binary=$QEMU_BIN_FILE
+started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+ssh_port=$ssh_p
+redfish_port=$redfish_p
+ipmi_port=$ipmi_p
+http_port=$http_p
+serial_log=$serial_log_p
+PIDFILE_EOF
+
+    verbose "PID file written: $QEMU_PID_FILE"
+}
+
+read_pid_file() {
+    if [[ ! -f "$QEMU_PID_FILE" ]]; then
+        return 1
+    fi
+
+    PIDFILE_PID=""
+    PIDFILE_USER=""
+    PIDFILE_MACHINE=""
+    PIDFILE_BINARY=""
+    PIDFILE_STARTED_AT=""
+    PIDFILE_SSH_PORT=""
+    PIDFILE_REDFISH_PORT=""
+    PIDFILE_IPMI_PORT=""
+    PIDFILE_HTTP_PORT=""
+    PIDFILE_SERIAL_LOG=""
+
+    while IFS='=' read -r key value; do
+        case "$key" in
+            pid)          PIDFILE_PID="$value" ;;
+            user)         PIDFILE_USER="$value" ;;
+            machine)      PIDFILE_MACHINE="$value" ;;
+            binary)       PIDFILE_BINARY="$value" ;;
+            started_at)   PIDFILE_STARTED_AT="$value" ;;
+            ssh_port)     PIDFILE_SSH_PORT="$value" ;;
+            redfish_port) PIDFILE_REDFISH_PORT="$value" ;;
+            ipmi_port)    PIDFILE_IPMI_PORT="$value" ;;
+            http_port)    PIDFILE_HTTP_PORT="$value" ;;
+            serial_log)   PIDFILE_SERIAL_LOG="$value" ;;
+        esac
+    done < "$QEMU_PID_FILE"
+
+    return 0
+}
+
+validate_pid() {
+    # Returns: 0=running and matches, 1=process exited, 2=PID recycled
+    local pid="$1"
+    local expected_binary="$2"
+    local expected_machine="$3"
+
+    if [[ ! -d "/proc/$pid" ]]; then
+        return 1  # Process exited
+    fi
+
+    local cmdline
+    cmdline=$(cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ' || true)
+
+    if [[ "$cmdline" != *"$expected_binary"* ]] || [[ "$cmdline" != *"$expected_machine"* ]]; then
+        return 2  # PID recycled — different process
+    fi
+
+    return 0  # Running and matches
+}
+
+# ──────────────────────────────────────────────
+# End QEMU Helper Functions
+# ──────────────────────────────────────────────
 
 is_valid_repo_url() {
     local repo_url="$1"
@@ -783,6 +1209,44 @@ cmd_status() {
     done
 
     status_section_tips "$repo_exists" "$has_init_done" "$has_never_built"
+
+    # Section 4: QEMU instances (only shown when instances exist)
+    local _pids_dir="$WORKSPACE_DIR/qemu-bin/.pids"
+    local _has_qemu=0
+    local -a _qemu_lines=()
+
+    for _pf in "$_pids_dir"/*.pid; do
+        [[ -f "$_pf" ]] || continue
+
+        local _qm="" _qp="" _qbin="" _qstart="" _qsport="" _qrport="" _qiport=""
+        _qm=$(basename "$_pf" .pid)
+
+        # Read PID file fields
+        _qp=$(grep '^pid=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
+        _qbin=$(grep '^binary=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
+        _qstart=$(grep '^started_at=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
+        _qsport=$(grep '^ssh_port=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
+        _qrport=$(grep '^redfish_port=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
+        _qiport=$(grep '^ipmi_port=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
+
+        # Validate process is alive
+        if [[ -n "$_qp" ]] && [[ -d "/proc/$_qp" ]]; then
+            _has_qemu=1
+            _qemu_lines+=("  $_qm   PID $_qp   SSH($_qsport) Redfish($_qrport) IPMI($_qiport/UDP)   ✅ running")
+        else
+            # Stale PID file — clean up silently
+            rm -f "$_pf"
+        fi
+    done
+
+    if [[ "$_has_qemu" -eq 1 ]]; then
+        echo ""
+        step_header "QEMU Instances"
+        local _ql
+        for _ql in "${_qemu_lines[@]}"; do
+            echo "$_ql"
+        done
+    fi
 }
 
 cmd_build() {
@@ -1781,6 +2245,417 @@ print_report() {
     echo "Safe to Ctrl+C at any time; re-run will resume from where it left off."
 }
 
+# ──────────────────────────────────────────────
+# ob start-qemu
+# ──────────────────────────────────────────────
+
+cmd_start_qemu() {
+    detect_harness_root
+
+    # ── Resolve machine ──
+    if [[ -z "$MACHINE" ]]; then
+        # Discover init-done machines (reuse cmd_build pattern)
+        local -a machines=()
+        for init_done_file in "$CONFIGS_DIR"/*.init-done; do
+            [[ -f "$init_done_file" ]] || continue
+            machines+=("$(basename "$init_done_file" .init-done)")
+        done
+
+        if [[ ${#machines[@]} -eq 0 ]]; then
+            error "No machines initialized."
+            error "Run 'ob init <machine>' first."
+            exit 3
+        fi
+
+        if [[ ! -t 0 ]]; then
+            error "No interactive terminal. Specify machine: ob start-qemu <machine>"
+            exit 3
+        fi
+
+        echo ""
+        step_header "Select Machine"
+        local total=${#machines[@]}
+        local idx_width=${#total}
+        local i
+        for (( i=0; i<total; i++ )); do
+            printf "  %${idx_width}d) %s\n" "$((i + 1))" "${machines[$i]}"
+        done
+        echo ""
+
+        local selected
+        while true; do
+            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine [1-${total}]: ")" selected; then
+                error "Unable to read selection from stdin."
+                exit 1
+            fi
+            if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
+                MACHINE="${machines[$((selected - 1))]}"
+                break
+            fi
+            warn "Please enter a number (1-${total})"
+        done
+    fi
+
+    # Re-derive paths after machine resolution
+    BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
+    SOURCE_LOCK_FILE="$CONFIGS_DIR/openbmc-source.lock"
+
+    # ── Prerequisite 1: machine init-done ──
+    if [[ ! -f "$CONFIGS_DIR/$MACHINE.init-done" ]]; then
+        error "Machine '$MACHINE' has not been initialized."
+        error "Run 'ob init $MACHINE' first."
+        exit 3
+    fi
+
+    # ── Prerequisite 2-3: QB_MACHINE and QB_MEM ──
+    local QB_MACHINE_NAME=""
+    local QB_MEM_SIZE_FLAG=""
+    resolve_qb_vars
+
+    # ── Prerequisite 4: QEMU binary ──
+    ensure_qemu_binary
+
+    # ── Prerequisite 5: image file ──
+    local image_file=""
+    # Locate .static.mtd in deploy directory
+    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
+    if [[ ! -d "$deploy_dir" ]]; then
+        error "Image deploy directory not found: $deploy_dir"
+        error "Run 'ob build' for machine '$MACHINE' first."
+        exit 3
+    fi
+
+    # Look for the static MTD image
+    image_file=$(find "$deploy_dir" -maxdepth 1 -name "*.static.mtd" -type f 2>/dev/null | head -1 || true)
+    if [[ -z "$image_file" ]]; then
+        error "No .static.mtd image found in $deploy_dir"
+        error "Run 'ob build' for machine '$MACHINE' first."
+        exit 3
+    fi
+    verbose "Image file: $image_file"
+
+    # ── Resolve ports: CLI > env var > default ──
+    local ssh_port redfish_port ipmi_port http_port serial_log
+
+    ssh_port="${QEMU_SSH_PORT:-${OB_QEMU_SSH_PORT:-2222}}"
+    redfish_port="${QEMU_REDFISH_PORT:-${OB_QEMU_REDFISH_PORT:-2443}}"
+    ipmi_port="${QEMU_IPMI_PORT:-${OB_QEMU_IPMI_PORT:-2623}}"
+    http_port="${QEMU_HTTP_PORT:-${OB_QEMU_HTTP_PORT:-}}"
+    serial_log="${QEMU_SERIAL_LOG:-${OB_QEMU_SERIAL_LOG:-/tmp/qemu-${MACHINE}-serial.log}}"
+
+    # ── Prerequisite 6: port availability ──
+    local -a ports_to_check=("tcp" "$ssh_port" "tcp" "$redfish_port" "udp" "$ipmi_port")
+    if [[ -n "$http_port" ]]; then
+        ports_to_check+=("tcp" "$http_port")
+    fi
+    check_ports_available "${ports_to_check[@]}"
+
+    # ── Check for existing QEMU instance ──
+    derive_qemu_paths
+    if read_pid_file; then
+        local pid_status
+        validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$QB_MACHINE_NAME"
+        pid_status=$?
+
+        if [[ $pid_status -eq 0 ]]; then
+            # Instance is running and valid
+            if [[ "$QEMU_FORCE" -eq 1 ]]; then
+                warn "Killing existing QEMU instance (PID $PIDFILE_PID)..."
+                kill "$PIDFILE_PID" 2>/dev/null || true
+                sleep 2
+                rm -f "$QEMU_PID_FILE"
+            elif [[ -t 0 ]]; then
+                echo ""
+                warn "QEMU instance already running for '$MACHINE':"
+                echo "  PID       : $PIDFILE_PID"
+                echo "  Started   : $PIDFILE_STARTED_AT"
+                echo "  Ports     : SSH($PIDFILE_SSH_PORT) Redfish($PIDFILE_REDFISH_PORT) IPMI($PIDFILE_IPMI_PORT/UDP)"
+                echo "  Serial log: $PIDFILE_SERIAL_LOG"
+                echo ""
+                local answer
+                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Kill and restart? [y/N]: ")" answer; then
+                    exit 1
+                fi
+                if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
+                    info "Aborted."
+                    exit 0
+                fi
+                kill "$PIDFILE_PID" 2>/dev/null || true
+                sleep 2
+                rm -f "$QEMU_PID_FILE"
+            else
+                error "QEMU instance already running for '$MACHINE' (PID $PIDFILE_PID)."
+                error "Use --force to kill and restart, or 'ob stop-qemu $MACHINE' first."
+                exit 1
+            fi
+        else
+            # Stale PID file — clean up
+            rm -f "$QEMU_PID_FILE"
+        fi
+    fi
+
+    # ── Build QEMU command ──
+    local hostfwd_args=""
+    hostfwd_args+="hostfwd=tcp::${ssh_port}-:22,"
+    hostfwd_args+="hostfwd=tcp::${redfish_port}-:443,"
+    hostfwd_args+="hostfwd=udp::${ipmi_port}-:623"
+    if [[ -n "$http_port" ]]; then
+        hostfwd_args+=",hostfwd=tcp::${http_port}-:80"
+    fi
+
+    step_header "Starting QEMU for '$MACHINE'"
+    echo "  Machine   : $QB_MACHINE_NAME"
+    echo "  Memory    : $QB_MEM_SIZE_FLAG"
+    echo "  Image     : $image_file"
+    echo "  Serial log: $serial_log"
+    echo ""
+
+    # ── Launch QEMU ──
+    local qemu_cmd=(
+        "$QEMU_BIN_FILE"
+        -machine "$QB_MACHINE_NAME"
+        $QB_MEM_SIZE_FLAG
+        -drive file="$image_file",format=raw,if=mtd
+        -net nic,netdev=net0
+        -netdev user,id=net0,"$hostfwd_args"
+        -serial file:"$serial_log"
+        -serial null
+        -monitor none
+        -daemonize
+    )
+
+    verbose "Command: setsid ${qemu_cmd[*]}"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        info "[DRY-RUN] Would run: setsid ${qemu_cmd[*]}"
+        exit 0
+    fi
+
+    if ! setsid "${qemu_cmd[@]}" 2>/dev/null; then
+        error "QEMU failed to start."
+        error "Check serial log: $serial_log"
+        error "Verify QEMU binary: $QEMU_BIN_FILE"
+        exit 1
+    fi
+
+    # ── Write PID file ──
+    # Find the actual QEMU PID (setsid forks, so $! is the setsid child)
+    sleep 1
+    local qemu_pid=""
+    qemu_pid=$(pgrep -f "qemu-system.*-machine.*$QB_MACHINE_NAME" 2>/dev/null | head -1 || true)
+    if [[ -z "$qemu_pid" ]]; then
+        # Fallback: try broader search
+        qemu_pid=$(pgrep -f "$QEMU_BIN_FILE.*$MACHINE" 2>/dev/null | head -1 || true)
+    fi
+
+    mkdir -p "$QEMU_PIDS_DIR"
+    cat > "$QEMU_PID_FILE" <<PIDFILE_EOF
+pid=$qemu_pid
+user=$(whoami)
+machine=$MACHINE
+binary=$QEMU_BIN_FILE
+qemu_machine=$QB_MACHINE_NAME
+started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+ssh_port=$ssh_port
+redfish_port=$redfish_port
+ipmi_port=$ipmi_port
+http_port=${http_port:-none}
+serial_log=$serial_log
+PIDFILE_EOF
+
+    verbose "PID file written: $QEMU_PID_FILE (PID: $qemu_pid)"
+
+    # ── Wait for BMC ready (unless --no-wait) ──
+    if [[ "$QEMU_NO_WAIT" -eq 0 ]]; then
+        echo ""
+        info "Waiting for BMC to become ready (SSH on port $ssh_port)..."
+        local attempts=0
+        local max_attempts=30
+        local ready=0
+
+        while [[ $attempts -lt $max_attempts ]]; do
+            attempts=$((attempts + 1))
+            if sshpass -p 0penBmc ssh -o StrictHostKeyChecking=no -o ConnectTimeout=3 \
+                 -o UserKnownHostsFile=/dev/null -p "$ssh_port" root@localhost echo "OK" >/dev/null 2>&1; then
+                ready=1
+                break
+            fi
+            printf "\r  Waiting... attempt %d/%d" "$attempts" "$max_attempts"
+            sleep 5
+        done
+        echo ""
+
+        if [[ $ready -eq 0 ]]; then
+            warn "BMC did not become SSH-ready within $((max_attempts * 5)) seconds."
+            warn "It may still be booting. Check serial log: $serial_log"
+        else
+            info "BMC ready after attempt $attempts (~$((attempts * 5))s)"
+        fi
+    fi
+
+    # ── Print connection summary ──
+    echo ""
+    echo -e "${GREEN}✅ QEMU started for '$MACHINE'${NC} (PID $qemu_pid)"
+    echo ""
+    echo "Connect:"
+    echo "  SSH     : ssh root@localhost -p $ssh_port  (password: 0penBmc)"
+    echo "  WebUI   : https://localhost:$redfish_port  (root / 0penBmc)"
+    echo "  Redfish : curl -sk -u root:0penBmc https://localhost:$redfish_port/redfish/v1"
+    echo "  IPMI    : ipmitool -I lanplus -H localhost -p $ipmi_port -U root -P 0penBmc mc info"
+    echo ""
+    echo "Logs:"
+    echo "  Serial  : $serial_log"
+    echo "  PID file: $QEMU_PID_FILE"
+    echo ""
+    echo "Stop:"
+    echo "  ob stop-qemu $MACHINE"
+    echo ""
+}
+
+# ──────────────────────────────────────────────
+# ob stop-qemu
+# ──────────────────────────────────────────────
+
+cmd_stop_qemu() {
+    detect_harness_root
+
+    # ── Collect target machines ──
+    local -a targets=()
+
+    if [[ "$QEMU_STOP_ALL" -eq 1 ]]; then
+        # --all: stop every instance
+        for pid_file in "$WORKSPACE_DIR/qemu-bin/.pids/"*.pid; do
+            [[ -f "$pid_file" ]] || continue
+            targets+=("$(basename "$pid_file" .pid)")
+        done
+    elif [[ -n "$MACHINE" ]]; then
+        targets+=("$MACHINE")
+    else
+        # No machine specified: list all and let user choose
+        local -a available=()
+        for pid_file in "$WORKSPACE_DIR/qemu-bin/.pids/"*.pid; do
+            [[ -f "$pid_file" ]] || continue
+            available+=("$(basename "$pid_file" .pid)")
+        done
+
+        if [[ ${#available[@]} -eq 0 ]]; then
+            info "No QEMU instances found."
+            return 0
+        fi
+
+        if [[ ! -t 0 ]]; then
+            error "No interactive terminal. Specify machine: ob stop-qemu <machine>"
+            error "Or use --all: ob stop-qemu --all"
+            exit 3
+        fi
+
+        echo ""
+        step_header "Running QEMU Instances"
+        local total=${#available[@]}
+        local idx_width=${#total}
+        local i
+        for (( i=0; i<total; i++ )); do
+            local m="${available[$i]}"
+            MACHINE="$m"
+            QEMU_PID_FILE="$WORKSPACE_DIR/qemu-bin/.pids/$m.pid"
+            local status_str=""
+            if read_pid_file && validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
+                status_str="✅ running (PID $PIDFILE_PID)"
+            else
+                status_str="⚠️  stale"
+            fi
+            printf "  %${idx_width}d) %-20s %s\n" "$((i + 1))" "$m" "$status_str"
+        done
+        echo ""
+
+        local selected
+        while true; do
+            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select instance to stop [1-${total}]: ")" selected; then
+                exit 1
+            fi
+            if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
+                targets+=("${available[$((selected - 1))]}")
+                break
+            fi
+            warn "Please enter a number (1-${total})"
+        done
+    fi
+
+    if [[ ${#targets[@]} -eq 0 ]]; then
+        info "No QEMU instances to stop."
+        return 0
+    fi
+
+    # ── Stop each target ──
+    for target_machine in "${targets[@]}"; do
+        MACHINE="$target_machine"
+        QEMU_PID_FILE="$WORKSPACE_DIR/qemu-bin/.pids/$MACHINE.pid"
+
+        echo ""
+        if ! read_pid_file; then
+            info "No PID file for '$MACHINE' — not running."
+            continue
+        fi
+
+        local pid_status
+        validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"
+        pid_status=$?
+
+        if [[ $pid_status -eq 1 ]]; then
+            info "QEMU process for '$MACHINE' (PID $PIDFILE_PID) has already exited."
+            rm -f "$QEMU_PID_FILE"
+            continue
+        fi
+
+        if [[ $pid_status -eq 2 ]]; then
+            warn "PID $PIDFILE_PID no longer belongs to QEMU (recycled). Cleaning stale PID file."
+            rm -f "$QEMU_PID_FILE"
+            continue
+        fi
+
+        # Process is running — show info and confirm
+        echo -e "Running QEMU instance for '${BOLD}$MACHINE${NC}':"
+        echo "  PID       : $PIDFILE_PID"
+        echo "  Started   : $PIDFILE_STARTED_AT"
+        echo "  Ports     : SSH($PIDFILE_SSH_PORT) Redfish($PIDFILE_REDFISH_PORT) IPMI($PIDFILE_IPMI_PORT/UDP)"
+        echo "  Serial log: $PIDFILE_SERIAL_LOG"
+        echo ""
+
+        if [[ "$QEMU_FORCE" -ne 1 ]]; then
+            if [[ -t 0 ]]; then
+                local answer
+                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Stop this instance? [y/N]: ")" answer; then
+                    exit 1
+                fi
+                if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
+                    info "Skipped '$MACHINE'."
+                    continue
+                fi
+            else
+                error "Non-interactive mode. Use --force to stop without confirmation."
+                exit 1
+            fi
+        fi
+
+        # Kill and wait
+        kill "$PIDFILE_PID" 2>/dev/null || true
+        local wait_count=0
+        while [[ -d "/proc/$PIDFILE_PID" ]] && [[ $wait_count -lt 10 ]]; do
+            sleep 1
+            wait_count=$((wait_count + 1))
+        done
+
+        if [[ -d "/proc/$PIDFILE_PID" ]]; then
+            warn "Process $PIDFILE_PID did not exit gracefully, sending SIGKILL..."
+            kill -9 "$PIDFILE_PID" 2>/dev/null || true
+            sleep 1
+        fi
+
+        rm -f "$QEMU_PID_FILE"
+        info "QEMU instance for '$MACHINE' stopped."
+    done
+}
+
 # === Main ===
 cmd_init() {
     # Step 1/8: 前置检查。
@@ -1906,17 +2781,19 @@ cmd_menu() {
         fi
 
         echo "Please select a task:"
-        echo "    1 - init   - Initialize OpenBMC development environment"
-        echo "    2 - build  - Build OpenBMC firmware image"
-        echo "    3 - status - Show current OpenBMC workspace status"
+        echo "    1 - init        - Initialize OpenBMC development environment"
+        echo "    2 - build       - Build OpenBMC firmware image"
+        echo "    3 - status      - Show current OpenBMC workspace status"
+        echo "    4 - start-qemu  - Launch QEMU with built BMC image"
+        echo "    5 - stop-qemu   - Stop a running QEMU instance"
         echo "    C - Clear terminal screen  (c/C)"
         echo "    Q - Quit this 'ob' session (q/Q)"
         echo ""
-        echo "Tip: CLI mode — ./ob init <machine> | ./ob build | ./ob --help"
+        echo "Tip: CLI mode — ./ob init <machine> | ./ob build | ./ob start-qemu <machine> | ./ob --help"
         echo ""
 
         local choice
-        read -r -p "$(echo -e "${PROMPT_PREFIX} Choose [1/2/3/C/Q]: ")" choice
+        read -r -p "$(echo -e "${PROMPT_PREFIX} Choose [1/2/3/4/5/C/Q]: ")" choice
 
         case "$choice" in
             1)
@@ -1952,6 +2829,24 @@ cmd_menu() {
                 fi
                 read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
                 ;;
+            4)
+                local qemu_rc=0
+                (cmd_start_qemu) || qemu_rc=$?
+                echo ""
+                if [[ "$qemu_rc" -ne 0 && "$qemu_rc" -ne 3 ]]; then
+                    error "start-qemu failed (exit code: $qemu_rc)."
+                fi
+                read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
+                ;;
+            5)
+                local stop_rc=0
+                (cmd_stop_qemu) || stop_rc=$?
+                echo ""
+                if [[ "$stop_rc" -ne 0 && "$stop_rc" -ne 3 ]]; then
+                    error "stop-qemu failed (exit code: $stop_rc)."
+                fi
+                read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
+                ;;
             [cC])
                 clear
                 show_logo
@@ -1962,7 +2857,7 @@ cmd_menu() {
                 fn_quit
                 ;;
             *)
-                echo -e "${YELLOW}ob-harness> Invalid input. Please choose 1/2/3/C/Q${NC}"
+                echo -e "${YELLOW}ob-harness> Invalid input. Please choose 1/2/3/4/5/C/Q${NC}"
                 continue
                 ;;
         esac
@@ -1992,6 +2887,16 @@ main() {
     if [[ "$COMMAND" == "build" ]]; then
         cmd_build
         return 0
+    fi
+
+    if [[ "$COMMAND" == "start-qemu" ]]; then
+        cmd_start_qemu
+        return $?
+    fi
+
+    if [[ "$COMMAND" == "stop-qemu" ]]; then
+        cmd_stop_qemu
+        return $?
     fi
 
     cmd_init
