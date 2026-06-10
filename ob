@@ -308,6 +308,7 @@ Environment Variables (lower priority than command-line options):
   OB_QEMU_HTTP_PORT       HTTP port override
   OB_QEMU_SERIAL_LOG      Serial log path override
   OB_QEMU_BINARY_URL      Custom QEMU binary download URL
+  OB_NPM_REGISTRY         Override npm registry URL (set empty to disable auto-detection)
 
 Examples:
   ob init                          # List machines and choose interactively
@@ -1393,6 +1394,25 @@ cmd_build() {
     source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null
     eval "$prev_opts"
 
+    # === npm registry auto-detection ===
+    resolve_npm_registry
+    if [[ "$NPM_REGISTRY_RESOLVED" != "skip" ]]; then
+        export npm_config_registry="$NPM_REGISTRY_RESOLVED"
+        export npm_config_fetch_timeout=600000
+        export npm_config_fetch_retry_maxtimeout=120000
+        export npm_config_fetch_retry_mintimeout=30000
+        export npm_config_fetch_retry_factor=2
+        local _npm_vars="npm_config_registry npm_config_fetch_timeout npm_config_fetch_retry_maxtimeout npm_config_fetch_retry_mintimeout npm_config_fetch_retry_factor"
+        local _existing="${BB_ENV_PASSTHROUGH_ADDITIONS:-}"
+        BB_ENV_PASSTHROUGH_ADDITIONS="$_npm_vars"
+        if [[ -n "$_existing" ]]; then
+            BB_ENV_PASSTHROUGH_ADDITIONS="$_existing $BB_ENV_PASSTHROUGH_ADDITIONS"
+        fi
+        export BB_ENV_PASSTHROUGH_ADDITIONS
+        verbose "Exported npm config for bitbake passthrough"
+        verbose "  npm_config_registry=$npm_config_registry"
+    fi
+
     # === Run bitbake ===
     echo ""
     step_header "Building $MACHINE"
@@ -1551,6 +1571,152 @@ calc_parallelism() {
     if [[ "$budget" -lt 1 ]]; then budget=1; fi
     if [[ "$budget" -gt "$cores" ]]; then budget=$cores; fi
     echo "$budget"
+}
+
+# Probe both npm registries in parallel, return the URL of the faster one.
+# Default preference: npmmirror.com (Chinese mirror).
+# If npmjs.org is clearly faster (<3s AND <1.5× mirror time), prefer npmjs.org.
+# Returns: echoes registry URL, or empty string if both fail.
+probe_npm_registry() {
+    local npmjs_url="https://registry.npmjs.org/uuid/-/uuid-9.0.0.tgz"
+    local mirror_url="https://registry.npmmirror.com/uuid/-/uuid-9.0.0.tgz"
+    local tmp_npmjs tmp_mirror
+
+    if ! command -v curl &>/dev/null; then
+        verbose "curl not available, defaulting to npmmirror.com"
+        echo "https://registry.npmmirror.com/"
+        return 0
+    fi
+
+    tmp_npmjs=$(mktemp /tmp/ob-npm-probe-npmjs-XXXXXX)
+    tmp_mirror=$(mktemp /tmp/ob-npm-probe-mirror-XXXXXX)
+
+    # Parallel probes — each writes download time (seconds) to a temp file
+    { curl -s -o /dev/null -w '%{time_total}' --max-time 10 "$npmjs_url" > "$tmp_npmjs" 2>/dev/null; } &
+    local pid_npmjs=$!
+    { curl -s -o /dev/null -w '%{time_total}' --max-time 10 "$mirror_url" > "$tmp_mirror" 2>/dev/null; } &
+    local pid_mirror=$!
+
+    wait "$pid_npmjs" 2>/dev/null || true
+    wait "$pid_mirror" 2>/dev/null || true
+
+    local npmjs_time="" mirror_time=""
+    npmjs_time=$(cat "$tmp_npmjs" 2>/dev/null | tr -d '[:space:]')
+    mirror_time=$(cat "$tmp_mirror" 2>/dev/null | tr -d '[:space:]')
+    rm -f "$tmp_npmjs" "$tmp_mirror"
+
+    verbose "  npmjs.org: ${npmjs_time:-timeout}s | npmmirror.com: ${mirror_time:-timeout}s"
+
+    # Both failed
+    if [[ -z "$npmjs_time" ]] && [[ -z "$mirror_time" ]]; then
+        echo ""
+        return 0
+    fi
+
+    # Only one succeeded — use it
+    if [[ -z "$npmjs_time" ]]; then
+        echo "https://registry.npmmirror.com/"
+        return 0
+    fi
+    if [[ -z "$mirror_time" ]]; then
+        echo "https://registry.npmjs.org/"
+        return 0
+    fi
+
+    # Both succeeded — pick the better one.
+    # npmmirror.com is the safe default. Only switch to npmjs.org when
+    # the mirror is genuinely slow and npmjs.org is clearly fast.
+    local mirror_fast=0
+    if awk "BEGIN { exit !($mirror_time < 2) }" 2>/dev/null; then
+        mirror_fast=1
+    fi
+
+    if [[ "$mirror_fast" -eq 1 ]]; then
+        echo "https://registry.npmmirror.com/"
+    elif awk "BEGIN { exit !($npmjs_time < 1) }" 2>/dev/null; then
+        echo "https://registry.npmjs.org/"
+    else
+        echo "https://registry.npmmirror.com/"
+    fi
+}
+
+# Resolve which npm registry to use.
+# Decision order: OB_NPM_REGISTRY env > cache (<24h) > probe > error.
+# Sets NPM_REGISTRY_RESOLVED: the chosen URL, "" for npm default, or "skip".
+resolve_npm_registry() {
+    local cache_file="$CONFIGS_DIR/$MACHINE.npm-registry"
+    local cache_ttl=86400  # 24 hours
+    NPM_REGISTRY_RESOLVED=""
+
+    # 1. Environment variable override
+    if [[ -n "${OB_NPM_REGISTRY+x}" ]]; then
+        if [[ -z "$OB_NPM_REGISTRY" ]]; then
+            info "OB_NPM_REGISTRY is set (empty) — npm registry auto-detection disabled"
+            NPM_REGISTRY_RESOLVED="skip"
+            return 0
+        fi
+        info "OB_NPM_REGISTRY override: $OB_NPM_REGISTRY"
+        NPM_REGISTRY_RESOLVED="$OB_NPM_REGISTRY"
+        return 0
+    fi
+
+    # 2. Cache check
+    if [[ -f "$cache_file" ]]; then
+        local cache_epoch cache_url cache_age
+        cache_epoch=$(sed -n '1p' "$cache_file" 2>/dev/null | grep -oP '^\d+$' || echo "")
+        cache_url=$(sed -n '2p' "$cache_file" 2>/dev/null || true)
+        if [[ -n "$cache_epoch" && -n "$cache_url" ]]; then
+            cache_age=$(( $(date +%s) - cache_epoch ))
+            if [[ "$cache_age" -lt "$cache_ttl" ]]; then
+                local hours_ago=$(( cache_age / 3600 ))
+                info "npm registry: $cache_url (cached, probed ${hours_ago}h ago)"
+                NPM_REGISTRY_RESOLVED="$cache_url"
+                return 0
+            fi
+            verbose "npm registry cache stale (${cache_age}s > ${cache_ttl}s), re-probing"
+        fi
+    fi
+
+    # 3. Live probe
+    info "Probing npm registries (npmjs.org vs npmmirror.com, max 10s)..."
+    local chosen_url
+    chosen_url=$(probe_npm_registry)
+    if [[ -z "$chosen_url" ]]; then
+        # Both registries timed out — check if this was a real timeout or curl missing
+        if ! command -v curl &>/dev/null; then
+            warn "curl not available for npm registry probe, using npmjs.org default"
+            chosen_url="https://registry.npmjs.org/"
+        else
+            echo ""
+            error "Both npm registries are unreachable (10s timeout):"
+            error "  - registry.npmjs.org: timeout"
+            error "  - registry.npmmirror.com: timeout"
+            echo ""
+            echo "  Possible causes:"
+            echo "    1. No internet connectivity"
+            echo "    2. Firewall blocking HTTPS to registry hosts"
+            echo "    3. DNS resolution failure"
+            echo ""
+            echo "  To override manually:"
+            echo "    export OB_NPM_REGISTRY=https://registry.npmmirror.com/"
+            echo "    ob build"
+            echo ""
+            echo "  To skip npm configuration entirely:"
+            echo "    export OB_NPM_REGISTRY="
+            echo "    ob build"
+            echo ""
+            exit 1
+        fi
+    fi
+
+    # Write cache
+    {
+        date +%s
+        echo "$chosen_url"
+    } > "$cache_file" 2>/dev/null || warn "Failed to write npm registry cache to $cache_file"
+
+    info "npm registry: $chosen_url (auto-detected)"
+    NPM_REGISTRY_RESOLVED="$chosen_url"
 }
 
 # Capture `source setup` (no args) output, extract available machine names
@@ -2171,6 +2337,20 @@ generate_build_config() {
         echo "# Build cache directories. User can override in local.conf if needed (e.g., NFS shared cache)."
         echo "DL_DIR ??= \"$WORKSPACE_DIR/downloads\""
         echo "SSTATE_DIR ??= \"$WORKSPACE_DIR/sstate-cache\""
+
+        echo ""
+        echo "# npm network timeout defaults for Node.js recipes (e.g. webui-vue)."
+        echo "# Override in local.conf with = if needed. Registry is auto-detected by 'ob build'."
+        echo "npm_config_fetch_timeout ??= \"600000\""
+        echo "export npm_config_fetch_timeout"
+        echo "npm_config_fetch_retry_maxtimeout ??= \"120000\""
+        echo "export npm_config_fetch_retry_maxtimeout"
+        echo "npm_config_fetch_retry_mintimeout ??= \"30000\""
+        echo "export npm_config_fetch_retry_mintimeout"
+        echo "npm_config_fetch_retry_factor ??= \"2\""
+        echo "export npm_config_fetch_retry_factor"
+        echo "# npm_config_registry is NOT set here — it is injected dynamically by 'ob build'"
+        echo "# via BB_ENV_PASSTHROUGH_ADDITIONS. Setting it to empty would break direct bitbake."
 
         if [[ "$is_wsl" -eq 1 ]] && [[ -n "$parallel_n" ]]; then
             echo ""
@@ -2855,16 +3035,7 @@ cmd_init() {
 
     # Write init-done marker (all 8 steps completed successfully).
     # ob build uses this to discover buildable machines.
-    # Backfill SOURCE_LABEL from lock file — it may be empty after
-    # require_openbmc_repo() re-enters via an existing repo path.
-    local _init_done_label="${SOURCE_LABEL}"
-    if [[ -z "$_init_done_label" && -f "$SOURCE_LOCK_FILE" ]]; then
-        _init_done_label=$(read_lock_field source_label 2>/dev/null || true)
-    fi
-    {
-        date -u +"%Y-%m-%dT%H:%M:%SZ"
-        echo "source_label=${_init_done_label}"
-    } > "$CONFIGS_DIR/$MACHINE.init-done"
+    date -u +"%Y-%m-%dT%H:%M:%SZ" > "$CONFIGS_DIR/$MACHINE.init-done"
 }
 
 cmd_menu() {
