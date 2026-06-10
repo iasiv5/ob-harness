@@ -2307,11 +2307,6 @@ cmd_start_qemu() {
         exit 3
     fi
 
-    # ── Prerequisite 2-3: QB_MACHINE and QB_MEM ──
-    local QB_MACHINE_NAME=""
-    local QB_MEM_SIZE_FLAG=""
-    resolve_qb_vars
-
     # ── Prerequisite 4: QEMU binary ──
     ensure_qemu_binary
 
@@ -2354,7 +2349,7 @@ cmd_start_qemu() {
     derive_qemu_paths
     if read_pid_file; then
         local pid_status
-        validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$QB_MACHINE_NAME"
+        validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$MACHINE"
         pid_status=$?
 
         if [[ $pid_status -eq 0 ]]; then
@@ -2394,7 +2389,34 @@ cmd_start_qemu() {
         fi
     fi
 
-    # ── Build QEMU command ──
+    # ── Dispatch to source-specific implementation ──
+    local label
+    label=$(read_source_label)
+    if [[ "$label" == "community" ]]; then
+        cmd_start_qemu_community "$image_file" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log"
+    else
+        cmd_start_qemu_custom "$image_file" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log"
+    fi
+}
+
+# ──────────────────────────────────────────────
+# ob start-qemu — community path
+# ──────────────────────────────────────────────
+
+cmd_start_qemu_community() {
+    local image_file="$1"
+    local ssh_port="$2"
+    local redfish_port="$3"
+    local ipmi_port="$4"
+    local http_port="$5"
+    local serial_log="$6"
+
+    # ── Resolve QB vars via bitbake -e (strict — fail if missing) ──
+    local QB_MACHINE_NAME=""
+    local QB_MEM_SIZE_FLAG=""
+    resolve_qb_vars
+
+    # ── Build port forwarding string ──
     local hostfwd_args=""
     hostfwd_args+="hostfwd=tcp::${ssh_port}-:22,"
     hostfwd_args+="hostfwd=tcp::${redfish_port}-:443,"
@@ -2403,7 +2425,7 @@ cmd_start_qemu() {
         hostfwd_args+=",hostfwd=tcp::${http_port}-:80"
     fi
 
-    step_header "Starting QEMU for '$MACHINE'"
+    step_header "Starting QEMU for '$MACHINE' (community)"
     echo "  Machine   : $QB_MACHINE_NAME"
     echo "  Memory    : $QB_MEM_SIZE_FLAG"
     echo "  Image     : $image_file"
@@ -2438,13 +2460,91 @@ cmd_start_qemu() {
         exit 1
     fi
 
+    _qemu_post_launch "$QB_MACHINE_NAME" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log"
+}
+
+# ──────────────────────────────────────────────
+# ob start-qemu — custom path
+# ──────────────────────────────────────────────
+
+cmd_start_qemu_custom() {
+    local image_file="$1"
+    local ssh_port="$2"
+    local redfish_port="$3"
+    local ipmi_port="$4"
+    local http_port="$5"
+    local serial_log="$6"
+
+    # ── Resolve QB vars via bitbake -e (strict — fail if missing) ──
+    local QB_MACHINE_NAME=""
+    local QB_MEM_SIZE_FLAG=""
+    resolve_qb_vars
+
+    # ── Build port forwarding string ──
+    local hostfwd_args=""
+    hostfwd_args+="hostfwd=tcp::${ssh_port}-:22,"
+    hostfwd_args+="hostfwd=tcp::${redfish_port}-:443,"
+    hostfwd_args+="hostfwd=udp::${ipmi_port}-:623"
+    if [[ -n "$http_port" ]]; then
+        hostfwd_args+=",hostfwd=tcp::${http_port}-:80"
+    fi
+
+    step_header "Starting QEMU for '$MACHINE' (custom)"
+    echo "  Machine   : $QB_MACHINE_NAME"
+    echo "  Memory    : $QB_MEM_SIZE_FLAG"
+    echo "  Image     : $image_file"
+    echo "  Serial log: $serial_log"
+    echo ""
+
+    # ── Launch QEMU ──
+    local qemu_cmd=(
+        "$QEMU_BIN_FILE"
+        -machine "$QB_MACHINE_NAME"
+        $QB_MEM_SIZE_FLAG
+        -drive file="$image_file",format=raw,if=mtd
+        -net nic,netdev=net0
+        -netdev user,id=net0,"$hostfwd_args"
+        -serial file:"$serial_log"
+        -serial null
+        -monitor none
+        -daemonize
+    )
+
+    verbose "Command: setsid ${qemu_cmd[*]}"
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        info "[DRY-RUN] Would run: setsid ${qemu_cmd[*]}"
+        exit 0
+    fi
+
+    if ! setsid "${qemu_cmd[@]}" 2>/dev/null; then
+        error "QEMU failed to start."
+        error "Check serial log: $serial_log"
+        error "Verify QEMU binary: $QEMU_BIN_FILE"
+        exit 1
+    fi
+
+    _qemu_post_launch "$QB_MACHINE_NAME" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log"
+}
+
+# ──────────────────────────────────────────────
+# Post-launch: write PID, wait, print summary
+# (shared by community and custom paths)
+# ──────────────────────────────────────────────
+
+_qemu_post_launch() {
+    local qb_machine_name="$1"
+    local ssh_port="$2"
+    local redfish_port="$3"
+    local ipmi_port="$4"
+    local http_port="$5"
+    local serial_log="$6"
+
     # ── Write PID file ──
-    # Find the actual QEMU PID (setsid forks, so $! is the setsid child)
     sleep 1
     local qemu_pid=""
-    qemu_pid=$(pgrep -f "qemu-system.*-machine.*$QB_MACHINE_NAME" 2>/dev/null | head -1 || true)
+    qemu_pid=$(pgrep -f "qemu-system.*-machine.*$qb_machine_name" 2>/dev/null | head -1 || true)
     if [[ -z "$qemu_pid" ]]; then
-        # Fallback: try broader search
         qemu_pid=$(pgrep -f "$QEMU_BIN_FILE.*$MACHINE" 2>/dev/null | head -1 || true)
     fi
 
@@ -2454,7 +2554,7 @@ pid=$qemu_pid
 user=$(whoami)
 machine=$MACHINE
 binary=$QEMU_BIN_FILE
-qemu_machine=$QB_MACHINE_NAME
+qemu_machine=$qb_machine_name
 started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 ssh_port=$ssh_port
 redfish_port=$redfish_port
