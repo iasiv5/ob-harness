@@ -2755,9 +2755,15 @@ cmd_init() {
 
     # Write init-done marker (all 8 steps completed successfully).
     # ob build uses this to discover buildable machines.
+    # Backfill SOURCE_LABEL from lock file — it may be empty after
+    # require_openbmc_repo() re-enters via an existing repo path.
+    local _init_done_label="${SOURCE_LABEL}"
+    if [[ -z "$_init_done_label" && -f "$SOURCE_LOCK_FILE" ]]; then
+        _init_done_label=$(read_lock_field source_label 2>/dev/null || true)
+    fi
     {
         date -u +"%Y-%m-%dT%H:%M:%SZ"
-        echo "source_label=${SOURCE_LABEL}"
+        echo "source_label=${_init_done_label}"
     } > "$CONFIGS_DIR/$MACHINE.init-done"
 }
 
