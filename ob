@@ -581,15 +581,17 @@ download_and_replace_community_qemu() {
         return 1
     fi
 
-    # ── Download to temp directory ──
+    # ── Download to fixed partial path (supports resume) ──
+    local tmp_download="${QEMU_BIN_DIR}/.update-partial-${arch}"
     local tmp_dir
     tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/qemu-update-XXXXXX")
 
     info "Downloading QEMU binary (build #${remote_build})..."
     verbose "  URL: $qemu_url"
 
-    if ! curl -fSL -o "${tmp_dir}/download" "$qemu_url"; then
+    if ! curl -fSL -C - -o "$tmp_download" "$qemu_url"; then
         warn "Failed to download QEMU binary from: $qemu_url"
+        warn "Partial download kept at: $tmp_download (retry will resume)"
         rm -rf "$tmp_dir"
         flock -u 200 2>/dev/null; exec 200>&-
         return 1
@@ -598,12 +600,13 @@ download_and_replace_community_qemu() {
     # ── Extract / locate binary ──
     local new_binary=""
     local file_type
-    file_type=$(file -b "${tmp_dir}/download" 2>/dev/null || echo "")
+    file_type=$(file -b "$tmp_download" 2>/dev/null || echo "")
 
     if echo "$file_type" | grep -qi "gzip\|xz"; then
         verbose "  Detected archive, extracting..."
-        tar xf "${tmp_dir}/download" -C "$tmp_dir/" --strip-components=1 2>/dev/null \
-            || tar xf "${tmp_dir}/download" -C "$tmp_dir/" 2>/dev/null
+        tar xf "$tmp_download" -C "$tmp_dir/" --strip-components=1 2>/dev/null \
+            || tar xf "$tmp_download" -C "$tmp_dir/" 2>/dev/null
+        rm -f "$tmp_download"
 
         for candidate in "$tmp_dir/$arch" "$tmp_dir/bin/$arch"; do
             if [[ -f "$candidate" ]]; then
@@ -619,7 +622,7 @@ download_and_replace_community_qemu() {
             return 1
         fi
     else
-        new_binary="${tmp_dir}/download"
+        new_binary="$tmp_download"
     fi
 
     # ── Verify new binary ──
@@ -815,12 +818,12 @@ ensure_qemu_binary_community() {
     info "Downloading QEMU binary..."
     verbose "  URL: $qemu_url"
 
-    local tmp_download
-    tmp_download=$(mktemp "${TMPDIR:-/tmp}/qemu-binary-XXXXXX")
+    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
+    local tmp_download="${QEMU_BIN_DIR}/.partial-${arch}"
 
-    if ! curl -fSL -o "$tmp_download" "$qemu_url"; then
+    if ! curl -fSL -C - -o "$tmp_download" "$qemu_url"; then
         error "Failed to download QEMU binary from: $qemu_url"
-        rm -f "$tmp_download"
+        error "Partial download kept at: $tmp_download (re-run to resume)"
         exit 1
     fi
 
