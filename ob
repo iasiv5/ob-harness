@@ -221,6 +221,23 @@ resolve_effective_dl_dir() {
     echo "$dl_dir"
 }
 
+resolve_effective_sstate_dir() {
+    local local_conf="$BUILD_DIR/conf/local.conf"
+    local default_sstate_dir="$WORKSPACE_DIR/sstate-cache"
+    local sstate_dir=""
+
+    # 1. Try reading SSTATE_DIR from local.conf
+    sstate_dir=$(read_local_conf_var "$local_conf" "SSTATE_DIR" 2>/dev/null || true)
+    sstate_dir=$(trim_whitespace "$sstate_dir")
+
+    # 2. Fall back to harness default if not configured
+    if [[ -z "$sstate_dir" ]]; then
+        sstate_dir="$default_sstate_dir"
+    fi
+
+    echo "$sstate_dir"
+}
+
 derive_bitbake_git_mirror_path() {
     local reference_root="$1"
     local src_uri="$2"
@@ -2968,8 +2985,9 @@ init_bitbake_env() {
 
     # Pre-create DL_DIR and SSTATE_DIR so bitbake sanity checks don't fail
     # when the .inc file (generated later in Step 7) references them.
+    # Use resolve functions to respect overrides in local.conf (e.g. DL_DIR="/shared/downloads").
     if [[ -f "$BUILD_DIR/conf/externalsrc-$MACHINE.inc" ]]; then
-        mkdir -p "$WORKSPACE_DIR/downloads" "$WORKSPACE_DIR/sstate-cache"
+        mkdir -p "$(resolve_effective_dl_dir)" "$(resolve_effective_sstate_dir)"
 
         # Fix legacy .inc files that use ${TOPDIR}/../../../.. relative paths.
         # Bitbake internally prepends '\/' to these resolved paths, causing mkdir
@@ -3334,7 +3352,7 @@ generate_build_config() {
         fi
     } > "$inc_file"
 
-    mkdir -p "$WORKSPACE_DIR/downloads" "$WORKSPACE_DIR/sstate-cache"
+    mkdir -p "$(resolve_effective_dl_dir)" "$(resolve_effective_sstate_dir)"
 
     info "Generated $inc_file"
 }
