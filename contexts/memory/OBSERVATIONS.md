@@ -72,3 +72,11 @@ Date: 2026-06-11
 🟡 Medium: [设计文档与实施计划产出] 06-08 至 06-11 期间新增 1 篇设计文档（qemu-binary-url-config）和 5 篇实施计划（start-qemu、npm-registry、ob-init-previously-initialized、qemu-binary-url-config、qemu-custom-refactor），反映 ob 工具进入密集功能迭代期。
 🟢 Low: [init-done source_label 修复] `ob init` 写入 init-done marker 时 `source_label` 字段为空，已修复。
 🟢 Low: [Skill 致谢分离] `.claude/skills/` 下 SKILL.md 的致谢段落拆至独立 ATTRIBUTIONS.md，精简 skill 文档主体。
+
+Date: 2026-06-12
+
+🟡 Medium: [QEMU 社区更新检查] `ob start-qemu` community 路径新增 Jenkins build number 级别更新检查：自动比对本地 manifest 的 `build_number` 与 Jenkins `lastSuccessfulBuild`，检测到更新时三行 warn + Y/N 交互确认；更新失败安全回退旧 binary 不打断启动；非 TTY / Jenkins 不可达 / manifest 无 build_number 均静默跳过。配套实施计划 `2026-06-12-qemu-community-update-check-implementation-plan.md`。
+🟡 Medium: [QEMU 串口交互登录] `ob start-qemu` 支持串口交互登录：启动 QEMU 后自动连接 serial console，用户可直接在终端与 BMC 交互；同时改进 machine 列表只显示已完成构建的 machine（通过检查 image 文件存在性），避免选择未构建的 machine 导致启动失败。
+🟡 Medium: [QEMU binary 断点续传] `ob start-qemu` 下载 QEMU binary 时使用 `curl -C -` 支持断点续传，解决大文件下载中断后需重新下载的问题。
+🟢 Low: [ob init 空目录修复] `ob init` 不再无条件创建 `workspace/downloads` 空目录，改为按需创建。
+🟢 Low: [VSCode files.exclude 修正] `.vscode/settings.json` 排除目录名从 `docs/plan`/`docs/spec` 修正为实际目录名 `docs/plans`/`docs/specs`（复数形式），`docs/adr` 保持可见。
