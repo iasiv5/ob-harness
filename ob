@@ -1154,12 +1154,16 @@ build_qemu_cmd() {
         QEMU_CMD+=("${qemu_mem_args[@]}")
     fi
 
+    local serial_log="$6"
+    local serial_sock="$7"
+
     # Common tail: drive, network, serial, display
     QEMU_CMD+=(
         "-drive" "file=$image_file,format=raw,if=mtd"
         "-net" "nic,netdev=net0"
         "-netdev" "user,id=net0,$hostfwd_args"
-        "-serial" "file:$serial_log"
+        "-chardev" "socket,id=serial0,path=$serial_sock,server=on,wait=off,logfile=$serial_log"
+        "-serial" "chardev:serial0"
         "-serial" "null"
         "-monitor" "none"
         "-display" "none"
@@ -3422,16 +3426,19 @@ cmd_start_qemu() {
 
     # ── Resolve machine ──
     if [[ -z "$MACHINE" ]]; then
-        # Discover init-done machines (reuse cmd_build pattern)
+        # Discover built machines (init-done + deploy directory exists)
         local -a machines=()
         for init_done_file in "$CONFIGS_DIR"/*.init-done; do
             [[ -f "$init_done_file" ]] || continue
-            machines+=("$(basename "$init_done_file" .init-done)")
+            local _m
+            _m="$(basename "$init_done_file" .init-done)"
+            [[ -d "$OPENBMC_DIR/build/$_m/tmp/deploy/images/$_m" ]] || continue
+            machines+=("$_m")
         done
 
         if [[ ${#machines[@]} -eq 0 ]]; then
-            error "No machines initialized."
-            error "Run 'ob init <machine>' first."
+            error "No built machines found."
+            error "Run 'ob init <machine>' then 'ob build' first."
             exit 3
         fi
 
@@ -3562,6 +3569,7 @@ cmd_start_qemu() {
     ipmi_port="${QEMU_IPMI_PORT:-${OB_QEMU_IPMI_PORT:-2623}}"
     http_port="${QEMU_HTTP_PORT:-${OB_QEMU_HTTP_PORT:-}}"
     serial_log="${QEMU_SERIAL_LOG:-${OB_QEMU_SERIAL_LOG:-${HOME%/}/tmp/qemu-${MACHINE}-serial.log}}"
+    serial_sock="${serial_log%.log}.sock"
 
     # ── Interactive port conflict resolution for additional QEMU instances ──
     resolve_qemu_ports_interactive ssh_port redfish_port ipmi_port http_port
@@ -3574,7 +3582,7 @@ cmd_start_qemu() {
     check_ports_available "${ports_to_check[@]}"
 
     # ── Build QEMU command (SoC-specific template) ──
-    build_qemu_cmd "$image_file" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log"
+    build_qemu_cmd "$image_file" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log" "$serial_sock"
 
     step_header "Starting QEMU for '$MACHINE' ($SOC_TYPE)"
     echo "  Machine   : $QB_MACHINE_NAME"
@@ -3649,7 +3657,7 @@ cmd_start_qemu() {
     fi
     rm -f "$qemu_stderr"
 
-    _qemu_post_launch "$QB_MACHINE_NAME" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log"
+    _qemu_post_launch "$QB_MACHINE_NAME" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log" "$serial_sock"
 }
 
 # ──────────────────────────────────────────────
@@ -3663,6 +3671,7 @@ _qemu_post_launch() {
     local ipmi_port="$4"
     local http_port="$5"
     local serial_log="$6"
+    local serial_sock="$7"
 
     # ── Write PID file ──
     sleep 1
@@ -3685,6 +3694,7 @@ redfish_port=$redfish_port
 ipmi_port=$ipmi_port
 http_port=${http_port:-none}
 serial_log=$serial_log
+serial_sock=$serial_sock
 PIDFILE_EOF
 
     verbose "PID file written: $QEMU_PID_FILE (PID: $qemu_pid)"
@@ -3726,6 +3736,8 @@ PIDFILE_EOF
     echo "  WebUI   : https://localhost:$redfish_port  (root / 0penBmc)"
     echo "  Redfish : curl -sk -u root:0penBmc https://localhost:$redfish_port/redfish/v1"
     echo "  IPMI    : ipmitool -I lanplus -H localhost -p $ipmi_port -U root -P 0penBmc mc info"
+    echo "  Console : socat -,rawer,escape=0x1d UNIX-CONNECT:$serial_sock"
+    echo "            (Ctrl+] to exit socat session)"
     echo ""
     echo "Logs:"
     echo "  Serial  : $serial_log"
