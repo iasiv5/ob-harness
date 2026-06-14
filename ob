@@ -3418,6 +3418,97 @@ print_report() {
 }
 
 # ──────────────────────────────────────────────
+# SSH host-key conflict detection (start-qemu helpers)
+# ──────────────────────────────────────────────
+
+# Parse "Offending <TYPE> key in <file>:<line>" from an ssh changed-key stderr blob.
+# Stdout: "<file> <line>" on match; empty otherwise. Always exits 0 (pure parser,
+# safe under `set -euo pipefail`).
+parse_hostkey_offending() {
+    local stderr_blob="$1"
+    local re='Offending [A-Z0-9]+ key in ([^:]+):([0-9]+)'
+    if [[ "$stderr_blob" =~ $re ]]; then
+        printf '%s %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    fi
+}
+
+# Detect a stale SSH host key for [localhost]:<port> in the user's real
+# known_hosts and offer to clear it. Runs ONE mirror ssh probe (BatchMode, no
+# password): host-key check happens before auth, so no password is needed.
+# Silent unless a *changed*-key conflict is found. Safe under `set -euo pipefail`.
+# Args: $1 = ssh_port
+check_ssh_hostkey_conflict() {
+    local port="$1"
+    [[ -z "$port" ]] && return 0
+
+    local target="[localhost]:${port}"
+    local probe_out="" parsed=""
+    local file="" line=""
+    local display_cmd="" confirm=""
+    local rc=0
+
+    # Mirror the user's manual ssh: real known_hosts, default strict checking.
+    # Wrap in 'if' so set -e does not propagate ssh's non-zero exit (host-key
+    # failure / Permission denied / unreachable are all expected here).
+    if ! probe_out=$(ssh -o BatchMode=yes -o ConnectTimeout=3 \
+                        -p "$port" root@localhost true 2>&1); then
+        :
+    fi
+
+    # Only a *changed* key is a conflict worth acting on.
+    if [[ "$probe_out" != *"REMOTE HOST IDENTIFICATION HAS CHANGED"* ]]; then
+        if [[ "$probe_out" == *"Connection refused"* || "$probe_out" == *"Connection timed out"* ]]; then
+            warn "BMC sshd not reachable on port ${port}; if you rebuilt the image and manual ssh later reports a host key error, run: ssh-keygen -R '[localhost]:${port}'"
+        fi
+        return 0
+    fi
+
+    parsed=$(parse_hostkey_offending "$probe_out")
+    if [[ -n "$parsed" ]]; then
+        read -r file line <<< "$parsed"
+    fi
+
+    warn "Stale SSH host key for ${target} in your known_hosts (image rebuilt -> host key regenerated); manual ssh will be rejected."
+    if [[ -n "$file" && -n "$line" ]]; then
+        echo "    Offending entry (${file}:${line}):"
+        sed -n "${line}p" "$file" 2>/dev/null | sed 's/^/      /' || true
+        display_cmd="ssh-keygen -f \"${file}\" -R \"${target}\""
+    else
+        display_cmd="ssh-keygen -R \"${target}\""
+    fi
+    echo "    Removes only the ${target} entry; original backed up as known_hosts.old."
+    echo "    Clear command: ${display_cmd}"
+
+    if ! command -v ssh-keygen >/dev/null 2>&1; then
+        warn "ssh-keygen not found; run the clear command above manually."
+        return 0
+    fi
+
+    if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to clear the stale key, anything else to skip: ")" confirm; then
+        info "Non-interactive mode; run the clear command above manually."
+        return 0
+    fi
+
+    case "$confirm" in
+        [Yy]*)
+            if [[ -n "$file" ]]; then
+                ssh-keygen -f "$file" -R "$target" >/dev/null 2>&1 || rc=$?
+            else
+                ssh-keygen -R "$target" >/dev/null 2>&1 || rc=$?
+            fi
+            if [[ "$rc" -eq 0 ]]; then
+                info "Cleared stale host key for ${target} (backup: known_hosts.old)."
+            else
+                warn "ssh-keygen -R exited ${rc}; run the clear command above manually."
+            fi
+            ;;
+        *)
+            info "Skipped. Run manually: ${display_cmd}"
+            ;;
+    esac
+}
+
+# ──────────────────────────────────────────────
 # ob start-qemu
 # ──────────────────────────────────────────────
 
@@ -3726,6 +3817,9 @@ PIDFILE_EOF
             info "BMC ready after attempt $attempts (~$((attempts * 5))s)"
         fi
     fi
+
+    # ── Detect stale SSH host key (image rebuild regenerates host keys) ──
+    check_ssh_hostkey_conflict "$ssh_port"
 
     # ── Print connection summary ──
     echo ""
