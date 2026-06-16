@@ -4039,13 +4039,9 @@ cmd_menu() {
             1)
                 local init_rc=0
                 (cmd_init) || init_rc=$?
-                if [[ "$init_rc" -eq 0 ]]; then
-                    : # Init succeeded — cmd_init already printed the report
-                elif [[ "$init_rc" -eq 2 ]]; then
-                    : # User cancelled — cmd_init already printed the warning
-                else
-                    echo ""
-                    error "Initialization failed."
+                echo ""
+                if [[ "$init_rc" -ne 0 && "$init_rc" -ne 2 && "$init_rc" -ne 3 ]]; then
+                    error "Initialization failed (exit code: $init_rc)."
                 fi
                 read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
                 ;;
@@ -4053,24 +4049,13 @@ cmd_menu() {
                 local build_rc=0
                 (cmd_build) || build_rc=$?
                 echo ""
-                if [[ "$build_rc" -eq 0 ]]; then
-                    : # Build succeeded — cmd_build already printed the report
-                elif [[ "$build_rc" -eq 2 ]]; then
-                    : # User cancelled — cmd_build already printed the warning
-                elif [[ "$build_rc" -eq 3 ]]; then
-                    : # Prerequisite not met — cmd_build already printed the error
-                else
+                if [[ "$build_rc" -ne 0 && "$build_rc" -ne 2 && "$build_rc" -ne 3 ]]; then
                     error "Build failed (exit code: $build_rc)."
                 fi
                 read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
                 ;;
             3)
-                if (cmd_status); then
-                    : # Status succeeded — cmd_status already printed the report
-                else
-                    echo ""
-                    error "Status query failed."
-                fi
+                (cmd_status) # Status always succeeds — report already printed above
                 read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
                 ;;
             4)
