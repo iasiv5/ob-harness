@@ -759,7 +759,7 @@ ensure_qemu_binary_community() {
                 error "QEMU binary URL not configured for '${label}.${arch}'."
                 error "Set OB_QEMU_BINARY_URL, or add a line '${label}.${arch}=<url>' to:"
                 error "  $QEMU_URL_CONFIG_FILE"
-                exit 1
+                exit 3
             fi
 
             local input_url=""
@@ -771,7 +771,7 @@ ensure_qemu_binary_community() {
             fi
             if [[ ! "$input_url" =~ ^https?:// ]]; then
                 error "Invalid URL (must start with http:// or https://): $input_url"
-                exit 1
+                exit 3
             fi
 
             qemu_url="$input_url"
@@ -839,7 +839,7 @@ ensure_qemu_binary_custom() {
     if [[ ! -t 0 ]]; then
         error "QEMU binary not found at $QEMU_BIN_FILE"
         error "Run 'ob start-qemu $MACHINE' in an interactive terminal to set up the binary."
-        exit 1
+        exit 3
     fi
 
     mkdir -p "$QEMU_BIN_DIR"
@@ -970,7 +970,7 @@ find_ast2700_bootloaders() {
             error "  Missing: $m"
         done
         error "Ensure 'ob build' completed successfully for '$MACHINE'."
-        exit 1
+        exit 3
     fi
 
     # Get u-boot-nodtb.bin size for DTB load offset calculation
@@ -1294,7 +1294,7 @@ detect_soc_type() {
     else
         error "Cannot determine SoC type for machine '$MACHINE'."
         error "Neither QB_SYSTEM_NAME, deploy artifacts, nor machine conf provide SoC information."
-        exit 1
+        exit 3
     fi
 
     # 6. Backfill QB_SYSTEM_NAME if still empty
@@ -1326,7 +1326,7 @@ derive_qemu_machine_name() {
     if [[ "$prefix" == "$MACHINE" ]]; then
         error "Cannot derive QEMU machine name from '$MACHINE' (no '-' separator)."
         error "Define QB_MACHINE in your machine conf, or use a machine name with 'xxx-yyy' format."
-        exit 1
+        exit 3
     fi
 
     QB_MACHINE_NAME="${prefix}-bmc"
@@ -1366,7 +1366,7 @@ check_ports_available() {
         echo "    export OB_QEMU_SSH_PORT=<port>"
         echo "    export OB_QEMU_REDFISH_PORT=<port>"
         echo "    export OB_QEMU_IPMI_PORT=<port>"
-        exit 1
+        exit 3
     fi
 }
 
@@ -2373,7 +2373,7 @@ select_openbmc_repo_url() {
         if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
             error "Invalid OpenBMC repository URL: $OPENBMC_REPO_URL"
             error "Supported formats: https://, http://, ssh://, git://, git@"
-            exit 1
+            exit 3
         fi
         return 0
     fi
@@ -2382,7 +2382,7 @@ select_openbmc_repo_url() {
         OPENBMC_REPO_URL="$OB_OPENBMC_URL"
         if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
             error "Invalid OpenBMC repository URL from OB_OPENBMC_URL: $OPENBMC_REPO_URL"
-            exit 1
+            exit 3
         fi
         return 0
     fi
@@ -2720,7 +2720,7 @@ resolve_machine() {
 
     if [[ ! -t 0 ]]; then
         error "No valid machine and no interactive terminal. Pass a valid machine: ob init <machine>"
-        exit 1
+        exit 3
     fi
 
     # Print numbered list in columns (adapt to terminal width)
@@ -2791,7 +2791,7 @@ prerequisites_check() {
     # OS check
     if [[ "$(uname -s)" != "Linux" ]]; then
         error "This script must run on Linux. Current OS: $(uname -s)"
-        exit 1
+        exit 3
     fi
     verbose "OS: $(uname -s) OK"
 
@@ -2799,7 +2799,7 @@ prerequisites_check() {
     for tool in git python3; do
         if ! command -v "$tool" &>/dev/null; then
             error "Required tool not found: $tool"
-            exit 1
+            exit 3
         fi
         verbose "Tool: $tool OK"
     done
