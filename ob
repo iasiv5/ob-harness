@@ -504,17 +504,11 @@ derive_qemu_url_config_path() {
 read_qemu_url_config() {
     local source="$1"
     local arch="$2"
-    local key
-    local key_re
+    local key="${source}.${arch}"
     local url
-
-    key="${source}.${arch}"
-    key_re="${key//./\\.}"
     derive_qemu_url_config_path
-
-    [[ -f "$QEMU_URL_CONFIG_FILE" ]] || return 0
-
-    url=$(grep "^${key_re}=" "$QEMU_URL_CONFIG_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)
+    # read_kv_field returns 1 on missing file/key; keep prior "missing → empty" semantics.
+    url=$(read_kv_field "$QEMU_URL_CONFIG_FILE" "$key" 2>/dev/null) || url=""
     trim_whitespace "$url"
 }
 
@@ -671,7 +665,7 @@ download_and_replace_community_qemu() {
 
     # ── Backup old binary ──
     local old_build
-    old_build=$(grep '^build_number=' "$manifest" 2>/dev/null | cut -d= -f2)
+    old_build=$(read_kv_field "$manifest" build_number 2>/dev/null) || old_build=""
     local bak_suffix="${old_build:-unknown}"
     local bak_file="${QEMU_BIN_FILE}-${bak_suffix}.bak"
 
@@ -717,12 +711,12 @@ check_jenkins_update() {
 
     # ── Guard: build_number must be present ──
     local local_build
-    local_build=$(grep '^build_number=' "$manifest" 2>/dev/null | cut -d= -f2)
+    local_build=$(read_kv_field "$manifest" build_number 2>/dev/null) || local_build=""
     [[ -z "$local_build" ]] && return 0
 
     # ── Guard: URL must be Jenkins ──
     local manifest_url
-    manifest_url=$(grep '^url=' "$manifest" 2>/dev/null | cut -d= -f2-)
+    manifest_url=$(read_kv_field "$manifest" url 2>/dev/null) || manifest_url=""
     [[ "$manifest_url" != *"jenkins.openbmc.org"* ]] && return 0
 
     # ── Guard: extract job URL ──
@@ -1853,20 +1847,22 @@ ensure_bootstrap_local_conf() {
     verbose "Ensured ob init local.conf settings in $local_conf"
 }
 
+# Read first `key=value` match from a file. Echoes value (after first '=');
+# returns 0 if found / 1 if file missing or key absent. L3 — never exits.
+read_kv_field() {
+    local file="$1"
+    local key="$2"
+    [[ -f "$file" ]] || return 1
+    local line
+    line=$(grep -m1 "^${key//./\\.}=" "$file" 2>/dev/null) || return 1
+    [[ -z "$line" ]] && return 1
+    echo "${line#*=}"
+    return 0
+}
+
 read_lock_field() {
     local key="$1"
-
-    if [[ ! -f "$SOURCE_LOCK_FILE" ]]; then
-        return 1
-    fi
-
-    local line
-    line=$(grep -E "^${key}=" "$SOURCE_LOCK_FILE" | head -n 1 || true)
-    if [[ -z "$line" ]]; then
-        return 1
-    fi
-
-    echo "${line#*=}"
+    read_kv_field "$SOURCE_LOCK_FILE" "$key"
 }
 
 verify_source() {
