@@ -3,7 +3,7 @@
 # Usage: ob [command] [options]    (run without arguments for interactive menu)
 set -euo pipefail
 
-# === Global Variables ===
+# === §1 全局变量 (Global Variables) ===
 HARNESS_ROOT=""
 WORKSPACE_DIR=""
 COMMAND=""
@@ -54,6 +54,7 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 PROMPT_PREFIX='\033[38;2;255;210;80mob-harness>\033[0m'
 
+# === §2 通用工具 (Utility / L3) — L3 函数绝不 exit ===
 log()   { echo -e "$*"; }
 info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
@@ -464,9 +465,7 @@ parse_args() {
     done
 }
 
-# ──────────────────────────────────────────────
-# QEMU Helper Functions
-# ──────────────────────────────────────────────
+# === §3 仓库与 machine (repo source / machine resolution) ===
 
 read_source_label() {
     local label=""
@@ -480,6 +479,7 @@ read_source_label() {
     echo "$label"
 }
 
+# === §4 QEMU (binary / firmware / ports / SoC / pid) ===
 derive_qemu_paths() {
     local label arch
     label=$(read_source_label)
@@ -2105,6 +2105,7 @@ status_section_tips() {
     fi
 }
 
+# === §6 命令编排 (cmd_* orchestrators) ===
 # === ob status: Main orchestrator ===
 cmd_status() {
     local repo_exists=0
@@ -2958,6 +2959,7 @@ open('$inc_file', 'w').write(content)
     info "Bitbake environment initialized. Build dir: $BUILD_DIR"
 }
 
+# === §5 构建流程 (init pipeline: dep graph / sub-repos / lockfile / config) ===
 generate_dep_graph() {
     step_header "Step 4/8: Generating dependency graph..."
 
@@ -4095,6 +4097,7 @@ cmd_menu() {
     done
 }
 
+# === §7 入口 (parse_args / usage / main) ===
 main() {
     SECONDS=0
     parse_args "$@"
