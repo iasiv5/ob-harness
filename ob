@@ -2179,12 +2179,12 @@ cmd_status() {
         _qm=$(basename "$_pf" .pid)
 
         # Read PID file fields
-        _qp=$(grep '^pid=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-        _qbin=$(grep '^binary=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-        _qstart=$(grep '^started_at=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-        _qsport=$(grep '^ssh_port=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-        _qrport=$(grep '^redfish_port=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-        _qiport=$(grep '^ipmi_port=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
+        _qp=$(read_kv_field "$_pf" pid) || _qp=""
+        _qbin=$(read_kv_field "$_pf" binary) || _qbin=""
+        _qstart=$(read_kv_field "$_pf" started_at) || _qstart=""
+        _qsport=$(read_kv_field "$_pf" ssh_port) || _qsport=""
+        _qrport=$(read_kv_field "$_pf" redfish_port) || _qrport=""
+        _qiport=$(read_kv_field "$_pf" ipmi_port) || _qiport=""
 
         # Validate process is alive
         if [[ -n "$_qp" ]] && [[ -d "/proc/$_qp" ]]; then
