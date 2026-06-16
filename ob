@@ -2364,7 +2364,7 @@ PY
         echo "                       bitbake -c cleansstate <failed-recipe>"
         echo "    3. Full log:       $BUILD_DIR/tmp/log/cooker/$MACHINE/"
         echo ""
-        exit "$bb_exit"
+        exit 1
     fi
 }
 
