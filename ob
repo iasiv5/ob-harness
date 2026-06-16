@@ -949,11 +949,7 @@ ensure_qemu_binary_custom() {
 find_ast2700_bootloaders() {
     local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
 
-    if [[ ! -d "$deploy_dir" ]]; then
-        error "Deploy directory not found: $deploy_dir"
-        error "Run 'ob build' for machine '$MACHINE' first."
-        exit 1
-    fi
+    require_path "$deploy_dir" "Deploy directory" "Run 'ob build' for machine '$MACHINE' first." 3
 
     BOOTLOADER_UBOOT_NODTB="$deploy_dir/u-boot-nodtb.bin"
     BOOTLOADER_UBOOT_DTB="$deploy_dir/u-boot.dtb"
@@ -1089,25 +1085,14 @@ ensure_qemu_firmware() {
         return 0
     fi
 
-    if [[ ! -f "$QEMU_PCBIOS_DIR/ast27x0_bootrom.bin" ]]; then
-        error "AST2700 bootrom not found in pc-bios directory: $QEMU_PCBIOS_DIR/ast27x0_bootrom.bin"
-        error "Provide the pc-bios directory itself, or a QEMU root directory that contains pc-bios/."
-        exit 1
-    fi
+    require_path "$QEMU_PCBIOS_DIR/ast27x0_bootrom.bin" "AST2700 bootrom" "Provide the pc-bios directory itself, or a QEMU root directory that contains pc-bios/." 3
 }
 
 resolve_qb_vars() {
     # Validate build environment exists
-    if [[ ! -d "$BUILD_DIR" ]]; then
-        error "Build directory not found: $BUILD_DIR"
-        error "Run 'ob init $MACHINE' first."
-        exit 1
-    fi
+    require_path "$BUILD_DIR" "Build directory" "Run 'ob init $MACHINE' first." 3
 
-    if [[ ! -f "$OPENBMC_DIR/setup" ]]; then
-        error "OpenBMC setup script not found: $OPENBMC_DIR/setup"
-        exit 1
-    fi
+    require_path "$OPENBMC_DIR/setup" "OpenBMC setup script" "" 3
 
     info "Resolving QEMU variables via BitBake (this takes a few seconds)..."
 
@@ -1678,10 +1663,7 @@ EOF
 ensure_bootstrap_local_conf() {
     local local_conf="$BUILD_DIR/conf/local.conf"
 
-    if [[ ! -f "$local_conf" ]]; then
-        error "local.conf not found at $local_conf"
-        exit 1
-    fi
+    require_path "$local_conf" "local.conf" "" 3
 
     # Detect GitLab IP for recipes that use ${GITLAB_IP} in SRC_URI.
     # Priority: (1) github-gitlab-url.sh (2) git remote origin URL (3) empty (skip)
@@ -1872,6 +1854,25 @@ download_qemu_binary_core() {
     DLQB_BIN_PATH="$binary"
     DLQB_SHA256=$(sha256sum "$binary" | awk '{print $1}')
     return 0
+}
+
+# require_path <path> <label> <hint> <exit_code>
+# Precondition guard: if <path> does not exist (-e), print
+# "<label> not found: <path>", then <hint> (if non-empty), then exit <exit_code>.
+# L3 helper; the internal exit is orchestration semantics — <exit_code> is supplied
+# by the caller per its own layer (L1 cmd_* use 3, L2 precondition sites use 3).
+require_path() {
+    local path="$1"
+    local label="$2"
+    local hint="$3"
+    local code="$4"
+    if [[ ! -e "$path" ]]; then
+        error "$label not found: $path"
+        if [[ -n "$hint" ]]; then
+            error "$hint"
+        fi
+        exit "$code"
+    fi
 }
 
 verify_source() {
@@ -2211,17 +2212,9 @@ cmd_status() {
 
 cmd_build() {
     # === Prerequisites ===
-    if [[ ! -d "$OPENBMC_DIR/.git" ]]; then
-        error "OpenBMC main repository not found at $OPENBMC_DIR"
-        error "Run 'ob init' first."
-        exit 3
-    fi
+    require_path "$OPENBMC_DIR/.git" "OpenBMC main repository" "Run 'ob init' first." 3
 
-    if [[ ! -f "$SOURCE_LOCK_FILE" ]]; then
-        error "Source lock not found at $SOURCE_LOCK_FILE"
-        error "Run 'ob init' first."
-        exit 3
-    fi
+    require_path "$SOURCE_LOCK_FILE" "Source lock" "Run 'ob init' first." 3
 
     # === Discover init-done machines ===
     local -a machines=()
@@ -3063,10 +3056,7 @@ clone_sub_repos() {
         return 0
     fi
 
-    if [[ ! -f "$deps_json" ]]; then
-        error "deps.json not found. Previous step may have failed."
-        exit 1
-    fi
+    require_path "$deps_json" "deps.json" "Previous step may have failed." 3
 
     local effective_dl_dir=""
     effective_dl_dir=$(resolve_effective_dl_dir)
@@ -3562,11 +3552,7 @@ cmd_start_qemu() {
     local image_file=""
     # Locate .static.mtd in deploy directory
     local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
-    if [[ ! -d "$deploy_dir" ]]; then
-        error "Image deploy directory not found: $deploy_dir"
-        error "Run 'ob build' for machine '$MACHINE' first."
-        exit 3
-    fi
+    require_path "$deploy_dir" "Image deploy directory" "Run 'ob build' for machine '$MACHINE' first." 3
 
     # Look for the static MTD image
     image_file=$(find "$deploy_dir" -maxdepth 1 -name "*.static.mtd" -type f 2>/dev/null | head -1 || true)
