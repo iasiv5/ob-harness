@@ -60,6 +60,21 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 verbose() { if [[ "$VERBOSE" -eq 1 ]]; then echo -e "[DEBUG] $*"; fi; }
 
+# Print the 3-line confirmation banner (visual only — no confirmation logic).
+# See CONTEXT.md "confirmation banner". Usage: print_confirm_banner "<verb>" "$object"
+print_confirm_banner() {
+    local verb="${1:-}"
+    local object="${2:-}"
+    echo "============================================================"
+    echo ""
+    warn "  You are about to ${verb}:  >>> ${object} <<<"
+    warn "  You are about to ${verb}:  >>> ${object} <<<"
+    warn "  You are about to ${verb}:  >>> ${object} <<<"
+    echo ""
+    echo "============================================================"
+    echo ""
+}
+
 trim_whitespace() {
     local value="$1"
 
@@ -737,14 +752,7 @@ check_jenkins_update() {
     # ── Interactive confirmation ──
     local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
     echo ""
-    echo "============================================================"
-    echo ""
-    warn "  You are about to update community QEMU binary:  >>> build #${local_build} → #${remote_build} <<<"
-    warn "  You are about to update community QEMU binary:  >>> build #${local_build} → #${remote_build} <<<"
-    warn "  You are about to update community QEMU binary:  >>> build #${local_build} → #${remote_build} <<<"
-    echo ""
-    echo "============================================================"
-    echo ""
+    print_confirm_banner "update community QEMU binary" "build #${local_build} → #${remote_build}"
     while true; do
         local confirm
         if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm update, (N/n) to cancel: ")" confirm; then
@@ -2308,14 +2316,7 @@ cmd_build() {
     info "Target  : obmc-phosphor-image"
     info "Estimated time: 1-4 hours depending on machine and cache state."
     echo ""
-    echo "============================================================"
-    echo ""
-    warn "  You are about to build:  >>> $MACHINE <<<"
-    warn "  You are about to build:  >>> $MACHINE <<<"
-    warn "  You are about to build:  >>> $MACHINE <<<"
-    echo ""
-    echo "============================================================"
-    echo ""
+    print_confirm_banner "build" "$MACHINE"
     while true; do
         if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start build, (N/n) to cancel: ")" confirm; then
             error "Unable to read confirmation from stdin."
@@ -2830,14 +2831,7 @@ resolve_machine() {
     echo ""
     info "Machine '$MACHINE' selected."
     echo ""
-    echo "============================================================"
-    echo ""
-    warn "  You are about to init:  >>> $MACHINE <<<"
-    warn "  You are about to init:  >>> $MACHINE <<<"
-    warn "  You are about to init:  >>> $MACHINE <<<"
-    echo ""
-    echo "============================================================"
-    echo ""
+    print_confirm_banner "init" "$MACHINE"
     while true; do
         local confirm
         if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start init, (N/n) to cancel: ")" confirm; then
@@ -3642,6 +3636,7 @@ cmd_start_qemu() {
                 echo "  Ports     : SSH($PIDFILE_SSH_PORT) Redfish($PIDFILE_REDFISH_PORT) IPMI($PIDFILE_IPMI_PORT/UDP)"
                 echo "  Serial log: $PIDFILE_SERIAL_LOG"
                 echo ""
+                print_confirm_banner "kill and restart QEMU for" "$MACHINE"
                 local answer
                 if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Kill and restart? [y/N]: ")" answer; then
                     exit 1
@@ -3696,14 +3691,7 @@ cmd_start_qemu() {
     echo ""
 
     # ── Safety confirmation (same pattern as ob init / ob build) ──
-    echo "============================================================"
-    echo ""
-    warn "  You are about to start QEMU for:  >>> $MACHINE <<<"
-    warn "  You are about to start QEMU for:  >>> $MACHINE <<<"
-    warn "  You are about to start QEMU for:  >>> $MACHINE <<<"
-    echo ""
-    echo "============================================================"
-    echo ""
+    print_confirm_banner "start QEMU for" "$MACHINE"
     while true; do
         local confirm
         if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start QEMU, (N/n) to cancel: ")" confirm; then
@@ -3966,6 +3954,7 @@ cmd_stop_qemu() {
         echo "  Ports     : SSH($PIDFILE_SSH_PORT) Redfish($PIDFILE_REDFISH_PORT) IPMI($PIDFILE_IPMI_PORT/UDP)"
         echo "  Serial log: $PIDFILE_SERIAL_LOG"
         echo ""
+        print_confirm_banner "stop QEMU for" "$MACHINE"
 
         if [[ "$QEMU_FORCE" -ne 1 ]]; then
             if [[ -t 0 ]]; then

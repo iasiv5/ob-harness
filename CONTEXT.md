@@ -39,3 +39,7 @@ _Avoid_: QEMU lock, QEMU state
 **QB variable**:
 BitBake 变量（`QB_MACHINE`、`QB_MEM` 等），定义在 OpenBMC machine conf 及其 include 链中。`ob start-qemu` 通过 `bitbake -e` 解析最终生效值，ob-harness 不提供 fallback。
 _Avoid_: QEMU 配置变量, QEMU 参数
+
+**confirmation banner**:
+`ob` 在面向用户的破坏性确认前输出的视觉块：横线边框 + 3 行重复 `warn`，内容形如 `You are about to <verb>: >>> <object> <<<`。它只负责视觉强调，不含确认逻辑——Y/N 循环、3 秒倒计时、批量处理由各确认点自行管理。覆盖门槛是"破坏性够分量"，太轻的确认（如清理一条 stale SSH host key）不套。
+_Avoid_: 三次重复提示, heavy gate, 确认门
