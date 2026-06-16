@@ -767,7 +767,7 @@ ensure_qemu_binary_community() {
             input_url="$(trim_whitespace "$input_url")"
             if [[ -z "$input_url" ]]; then
                 info "No URL provided — aborting QEMU binary setup."
-                exit 0
+                exit 2
             fi
             if [[ ! "$input_url" =~ ^https?:// ]]; then
                 error "Invalid URL (must start with http:// or https://): $input_url"
@@ -2423,7 +2423,7 @@ select_openbmc_repo_url() {
                 ;;
             [qQ])
                 warn "Source selection cancelled by user."
-                exit 0
+                exit 2
                 ;;
             *)
                 warn "Invalid selection: $selection. Please choose 1, 2, or Q."
@@ -3559,7 +3559,7 @@ cmd_start_qemu() {
                 fi
                 if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
                     info "Aborted."
-                    exit 0
+                    exit 2
                 fi
                 kill "$PIDFILE_PID" 2>/dev/null || true
                 sleep 2
