@@ -28,7 +28,13 @@ echo "OB_NO_MAIN source OK"
 assert_exit 0 "parse_args --help"      bash -c 'OB_NO_MAIN=1 source "$0"; parse_args --help' "$OB"
 assert_exit 1 "parse_args unknown opt" bash -c 'OB_NO_MAIN=1 source "$0"; parse_args start-qemu --bogus-opt' "$OB"
 assert_exit 1 "parse_args missing val" bash -c 'OB_NO_MAIN=1 source "$0"; parse_args start-qemu --ssh-port' "$OB"
-# (dispatch / prerequisites tests added in Task 3)
+# --- dispatch + prerequisites (baseline: ob build in empty workspace -> exit 3) ---
+TMPWS="$(mktemp -d)"
+assert_exit 3 "ob build in empty workspace" \
+    bash -c 'cd "$1"; OB_NO_MAIN=1 source /bmc/iasi/ob-harness/ob; set +e; parse_args build; cmd_build' _ "$TMPWS"
+rm -rf "$TMPWS"
+# NOTE: --dry-run has no machineless path (resolve_machine runs first, exits 3 in empty
+# workspace) — covered by the manual matrix, not automated here.
 
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"
