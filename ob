@@ -1865,6 +1865,28 @@ read_lock_field() {
     read_kv_field "$SOURCE_LOCK_FILE" "$key"
 }
 
+# select_from_list <prompt> <total>
+# Reads a 1-based index in [1,total]; sets global SELECT_FROM_LIST_CHOICE on success.
+# Returns 0=selected / 2=cancelled (user entered 0) / 1=read failure.
+# Caller prints the numbered list first (formats vary across call sites). L3 — never exits.
+select_from_list() {
+    local prompt="$1"
+    local total="$2"
+    local selected
+    while true; do
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} ${prompt} (0 to cancel): ")" selected; then
+            error "Unable to read selection from stdin."
+            return 1
+        fi
+        [[ "$selected" == "0" ]] && return 2
+        if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
+            SELECT_FROM_LIST_CHOICE="$selected"
+            return 0
+        fi
+        warn "Please enter a number (1-${total})"
+    done
+}
+
 verify_source() {
     local lock_source=""
     local current_origin=""
@@ -2283,26 +2305,15 @@ cmd_build() {
         exit 3
     fi
 
-    local selected chosen=""
-    while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine to build [1-${total}] (0 to cancel): ")" selected; then
-            error "Unable to read selection from stdin."
-            exit 1
-        fi
-        if [[ "$selected" == "0" ]]; then
-            warn "Build cancelled by user."
-            exit 2
-        fi
-        if [[ "$selected" =~ ^[0-9]+$ ]]; then
-            if [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
-                chosen="${machines[$((selected - 1))]}"
-                break
-            fi
-            warn "Number out of range (1-${total}): $selected"
-            continue
-        fi
-        warn "Please enter a number (1-${total})"
-    done
+    local sfl_rc=0
+    select_from_list "Select a machine to build [1-${total}]" "$total" || sfl_rc=$?
+    if [[ "$sfl_rc" -eq 2 ]]; then
+        warn "Build cancelled by user."
+        exit 2
+    elif [[ "$sfl_rc" -ne 0 ]]; then
+        exit 1
+    fi
+    local chosen="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
 
     MACHINE="$chosen"
     BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
@@ -3546,22 +3557,15 @@ cmd_start_qemu() {
         done
         echo ""
 
-        local selected
-        while true; do
-            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine [1-${total}] (0 to cancel): ")" selected; then
-                error "Unable to read selection from stdin."
-                exit 1
-            fi
-            if [[ "$selected" == "0" ]]; then
-                warn "Start QEMU cancelled by user."
-                exit 2
-            fi
-            if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
-                MACHINE="${machines[$((selected - 1))]}"
-                break
-            fi
-            warn "Please enter a number (1-${total})"
-        done
+        local sfl_rc=0
+        select_from_list "Select a machine [1-${total}]" "$total" || sfl_rc=$?
+        if [[ "$sfl_rc" -eq 2 ]]; then
+            warn "Start QEMU cancelled by user."
+            exit 2
+        elif [[ "$sfl_rc" -ne 0 ]]; then
+            exit 1
+        fi
+        MACHINE="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
     fi
 
     # Re-derive paths after machine resolution
@@ -3894,21 +3898,15 @@ cmd_stop_qemu() {
         done
         echo ""
 
-        local selected
-        while true; do
-            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select instance to stop [1-${total}] (0 to cancel): ")" selected; then
-                exit 1
-            fi
-            if [[ "$selected" == "0" ]]; then
-                warn "Stop QEMU cancelled by user."
-                exit 2
-            fi
-            if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
-                targets+=("${available[$((selected - 1))]}")
-                break
-            fi
-            warn "Please enter a number (1-${total})"
-        done
+        local sfl_rc=0
+        select_from_list "Select instance to stop [1-${total}]" "$total" || sfl_rc=$?
+        if [[ "$sfl_rc" -eq 2 ]]; then
+            warn "Stop QEMU cancelled by user."
+            exit 2
+        elif [[ "$sfl_rc" -ne 0 ]]; then
+            exit 1
+        fi
+        targets+=("${available[$((SELECT_FROM_LIST_CHOICE - 1))]}")
     fi
 
     if [[ ${#targets[@]} -eq 0 ]]; then
