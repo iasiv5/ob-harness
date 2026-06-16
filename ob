@@ -2281,9 +2281,13 @@ cmd_build() {
 
     local selected chosen=""
     while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine to build [1-${total}]: ")" selected; then
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine to build [1-${total}] (0 to cancel): ")" selected; then
             error "Unable to read selection from stdin."
             exit 1
+        fi
+        if [[ "$selected" == "0" ]]; then
+            warn "Build cancelled by user."
+            exit 2
         fi
         if [[ "$selected" =~ ^[0-9]+$ ]]; then
             if [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
@@ -2796,9 +2800,13 @@ resolve_machine() {
     local selected
     local chosen=""
     while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine [1-${#machine_arr[@]}] or type machine name: ")" selected; then
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine [1-${#machine_arr[@]}] or type machine name (0 to cancel): ")" selected; then
             error "Unable to read machine selection from stdin."
             exit 1
+        fi
+        if [[ "$selected" == "0" ]]; then
+            warn "Init cancelled by user."
+            exit 2
         fi
         # Try as number first
         if [[ "$selected" =~ ^[0-9]+$ ]]; then
@@ -3550,9 +3558,13 @@ cmd_start_qemu() {
 
         local selected
         while true; do
-            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine [1-${total}]: ")" selected; then
+            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine [1-${total}] (0 to cancel): ")" selected; then
                 error "Unable to read selection from stdin."
                 exit 1
+            fi
+            if [[ "$selected" == "0" ]]; then
+                warn "Start QEMU cancelled by user."
+                exit 2
             fi
             if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
                 MACHINE="${machines[$((selected - 1))]}"
@@ -3900,8 +3912,12 @@ cmd_stop_qemu() {
 
         local selected
         while true; do
-            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select instance to stop [1-${total}]: ")" selected; then
+            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select instance to stop [1-${total}] (0 to cancel): ")" selected; then
                 exit 1
+            fi
+            if [[ "$selected" == "0" ]]; then
+                warn "Stop QEMU cancelled by user."
+                exit 2
             fi
             if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
                 targets+=("${available[$((selected - 1))]}")
@@ -4134,8 +4150,12 @@ cmd_menu() {
 
         case "$choice" in
             1)
-                if (cmd_init); then
+                local init_rc=0
+                (cmd_init) || init_rc=$?
+                if [[ "$init_rc" -eq 0 ]]; then
                     : # Init succeeded — cmd_init already printed the report
+                elif [[ "$init_rc" -eq 2 ]]; then
+                    : # User cancelled — cmd_init already printed the warning
                 else
                     echo ""
                     error "Initialization failed."
@@ -4170,7 +4190,7 @@ cmd_menu() {
                 local qemu_rc=0
                 (cmd_start_qemu) || qemu_rc=$?
                 echo ""
-                if [[ "$qemu_rc" -ne 0 && "$qemu_rc" -ne 3 ]]; then
+                if [[ "$qemu_rc" -ne 0 && "$qemu_rc" -ne 2 && "$qemu_rc" -ne 3 ]]; then
                     error "start-qemu failed (exit code: $qemu_rc)."
                 fi
                 read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
@@ -4179,7 +4199,7 @@ cmd_menu() {
                 local stop_rc=0
                 (cmd_stop_qemu) || stop_rc=$?
                 echo ""
-                if [[ "$stop_rc" -ne 0 && "$stop_rc" -ne 3 ]]; then
+                if [[ "$stop_rc" -ne 0 && "$stop_rc" -ne 2 && "$stop_rc" -ne 3 ]]; then
                     error "stop-qemu failed (exit code: $stop_rc)."
                 fi
                 read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
