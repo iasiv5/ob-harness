@@ -928,27 +928,12 @@ ensure_qemu_binary_custom() {
     local input_binary=""
     local resolved_binary_path=""
     while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter absolute path to QEMU binary ($arch): ")" input_binary; then
-            error "Unable to read input."
+        local pfp_rc=0
+        prompt_for_absolute_path "Enter absolute path to QEMU binary ($arch)" || pfp_rc=$?
+        if [[ "$pfp_rc" -ne 0 ]]; then
             exit 1
         fi
-        input_binary=$(trim_whitespace "$input_binary")
-
-        if [[ -z "$input_binary" ]]; then
-            error "QEMU binary path cannot be empty."
-            continue
-        fi
-
-        if [[ "$input_binary" == -* ]]; then
-            error "QEMU binary path must be a filesystem path, not an option: $input_binary"
-            continue
-        fi
-
-        # Validate: must be absolute path
-        if [[ "$input_binary" != /* ]]; then
-            error "Must be an absolute path (starting with /). Got: $input_binary"
-            continue
-        fi
+        input_binary="$PROMPT_PATH_RESULT"
 
         resolved_binary_path="$input_binary"
         if [[ -d "$input_binary" ]]; then
@@ -976,26 +961,12 @@ ensure_qemu_binary_custom() {
         echo ""
 
         while true; do
-            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter absolute path to pc-bios directory: ")" input_pcbios; then
-                error "Unable to read input."
+            local pfp_rc=0
+            prompt_for_absolute_path "Enter absolute path to pc-bios directory" || pfp_rc=$?
+            if [[ "$pfp_rc" -ne 0 ]]; then
                 exit 1
             fi
-            input_pcbios=$(trim_whitespace "$input_pcbios")
-
-            if [[ -z "$input_pcbios" ]]; then
-                error "pc-bios directory path cannot be empty."
-                continue
-            fi
-
-            if [[ "$input_pcbios" == -* ]]; then
-                error "pc-bios directory path must be a filesystem path, not an option: $input_pcbios"
-                continue
-            fi
-
-            if [[ "$input_pcbios" != /* ]]; then
-                error "Must be an absolute path (starting with /). Got: $input_pcbios"
-                continue
-            fi
+            input_pcbios="$PROMPT_PATH_RESULT"
 
             if [[ ! -d "$input_pcbios" ]]; then
                 error "Directory not found: $input_pcbios"
@@ -1888,6 +1859,36 @@ confirm_action() {
             [nN]) return 2 ;;
             *) warn "Invalid input. Please type Y or N." ;;
         esac
+    done
+}
+
+# prompt_for_absolute_path <prompt>
+# Reads+trims input, loops until non-empty / not an option / absolute path (/*).
+# Sets global PROMPT_PATH_RESULT on success. Returns 0=ok / 1=read failure.
+# Existence/content validation left to caller. L3 — never exits.
+prompt_for_absolute_path() {
+    local prompt="$1"
+    local input
+    while true; do
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} ${prompt}: ")" input; then
+            error "Unable to read input."
+            return 1
+        fi
+        input=$(trim_whitespace "$input")
+        if [[ -z "$input" ]]; then
+            error "Path cannot be empty."
+            continue
+        fi
+        if [[ "$input" == -* ]]; then
+            error "Path must be a filesystem path, not an option: $input"
+            continue
+        fi
+        if [[ "$input" != /* ]]; then
+            error "Must be an absolute path (starting with /). Got: $input"
+            continue
+        fi
+        PROMPT_PATH_RESULT="$input"
+        return 0
     done
 }
 
