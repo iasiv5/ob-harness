@@ -1509,7 +1509,7 @@ read_pid_file() {
 }
 
 validate_pid() {
-    # Returns: 0=running and matches, 1=process exited, 2=PID recycled
+    # return 0=running&match, 1=exited, 2=pid recycled — diagnostic only, NOT part of exit-code protocol
     local pid="$1"
     local expected_binary="$2"
     local expected_machine="$3"
@@ -3774,7 +3774,7 @@ cmd_stop_qemu() {
 
         if [[ ${#available[@]} -eq 0 ]]; then
             info "No QEMU instances found."
-            return 0
+            exit 0
         fi
 
         if [[ ! -t 0 ]]; then
@@ -3815,7 +3815,7 @@ cmd_stop_qemu() {
 
     if [[ ${#targets[@]} -eq 0 ]]; then
         info "No QEMU instances to stop."
-        return 0
+        exit 0
     fi
 
     # ── Stop each target ──
@@ -4110,12 +4110,12 @@ main() {
 
     if [[ "$COMMAND" == "status" ]]; then
         cmd_status
-        return 0
+        return $?
     fi
 
     if [[ "$COMMAND" == "build" ]]; then
         cmd_build
-        return 0
+        return $?
     fi
 
     if [[ "$COMMAND" == "start-qemu" ]]; then
