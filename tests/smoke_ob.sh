@@ -24,7 +24,11 @@ OB_NO_MAIN=1 source "$OB" || { echo "source failed"; exit 1; }
 set +e
 echo "OB_NO_MAIN source OK"
 
-# (parse_args / dispatch / exit-code tests added in Task 2/3)
+# --- parse_args exit codes (each case runs in its own subshell via assert_exit) ---
+assert_exit 0 "parse_args --help"      bash -c 'OB_NO_MAIN=1 source "$0"; parse_args --help' "$OB"
+assert_exit 1 "parse_args unknown opt" bash -c 'OB_NO_MAIN=1 source "$0"; parse_args start-qemu --bogus-opt' "$OB"
+assert_exit 1 "parse_args missing val" bash -c 'OB_NO_MAIN=1 source "$0"; parse_args start-qemu --ssh-port' "$OB"
+# (dispatch / prerequisites tests added in Task 3)
 
 echo ""
 echo "PASS=$PASS FAIL=$FAIL"
