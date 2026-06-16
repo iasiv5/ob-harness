@@ -1350,11 +1350,7 @@ check_ports_available() {
         local port="${port_args[$((i+1))]}"
 
         local occupants=""
-        if [[ "$proto" == "tcp" ]]; then
-            occupants=$(ss -tlnpH "sport = :$port" 2>/dev/null | grep -v "^State" || true)
-        else
-            occupants=$(ss -ulnpH "sport = :$port" 2>/dev/null | grep -v "^State" || true)
-        fi
+        occupants=$(get_port_occupants "$proto" "$port")
 
         if [[ -n "$occupants" ]]; then
             local pid_info
