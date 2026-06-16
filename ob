@@ -746,32 +746,17 @@ check_jenkins_update() {
     # ── Interactive confirmation ──
     local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
     echo ""
-    print_confirm_banner "update community QEMU binary" "build #${local_build} → #${remote_build}"
-    while true; do
-        local confirm
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm update, (N/n) to cancel: ")" confirm; then
-            error "Unable to read confirmation from stdin."
-            return 0
+    local ca_rc=0
+    confirm_action "update community QEMU binary" "build #${local_build} → #${remote_build}" || ca_rc=$?
+    if [[ "$ca_rc" -eq 0 ]]; then
+        echo ""
+        if ! download_and_replace_community_qemu "$manifest_url" "$remote_build" "$arch"; then
+            warn "QEMU binary update failed. Continuing with existing binary."
         fi
-        case "$confirm" in
-            [yY])
-                echo ""
-                if download_and_replace_community_qemu "$manifest_url" "$remote_build" "$arch"; then
-                    return 0
-                else
-                    warn "QEMU binary update failed. Continuing with existing binary."
-                    return 0
-                fi
-                ;;
-            [nN])
-                warn "Update cancelled by user."
-                return 0
-                ;;
-            *)
-                warn "Invalid input. Please type Y or N."
-                ;;
-        esac
-    done
+    elif [[ "$ca_rc" -eq 2 ]]; then
+        warn "Update cancelled by user."
+    fi
+    return 0
 }
 
 ensure_qemu_binary_community() {
@@ -1887,6 +1872,25 @@ select_from_list() {
     done
 }
 
+# confirm_action <verb> <object>
+# Prints confirmation banner, loops until Y/y (confirm) or N/n (cancel).
+# Returns 0=confirmed / 2=cancelled / 1=read failure. L3 — never exits.
+confirm_action() {
+    print_confirm_banner "$1" "$2"
+    local confirm
+    while true; do
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm, (N/n) to cancel: ")" confirm; then
+            error "Unable to read confirmation from stdin."
+            return 1
+        fi
+        case "$confirm" in
+            [yY]) return 0 ;;
+            [nN]) return 2 ;;
+            *) warn "Invalid input. Please type Y or N." ;;
+        esac
+    done
+}
+
 verify_source() {
     local lock_source=""
     local current_origin=""
@@ -2323,25 +2327,14 @@ cmd_build() {
     info "Target  : obmc-phosphor-image"
     info "Estimated time: 1-4 hours depending on machine and cache state."
     echo ""
-    print_confirm_banner "build" "$MACHINE"
-    while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start build, (N/n) to cancel: ")" confirm; then
-            error "Unable to read confirmation from stdin."
-            exit 1
-        fi
-        case "$confirm" in
-            [yY])
-                break
-                ;;
-            [nN])
-                warn "Build cancelled by user."
-                exit 2
-                ;;
-            *)
-                warn "Invalid input. Please type Y or N."
-                ;;
-        esac
-    done
+    local ca_rc=0
+    confirm_action "build" "$MACHINE" || ca_rc=$?
+    if [[ "$ca_rc" -eq 2 ]]; then
+        warn "Build cancelled by user."
+        exit 2
+    elif [[ "$ca_rc" -ne 0 ]]; then
+        exit 1
+    fi
 
     # === Re-enter bitbake environment ===
     cd "$OPENBMC_DIR"
@@ -2838,28 +2831,17 @@ resolve_machine() {
     echo ""
     info "Machine '$MACHINE' selected."
     echo ""
-    print_confirm_banner "init" "$MACHINE"
-    while true; do
-        local confirm
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start init, (N/n) to cancel: ")" confirm; then
-            error "Unable to read confirmation from stdin."
-            exit 1
-        fi
-        case "$confirm" in
-            [yY])
-                echo ""
-                info "Init confirmed for machine '$MACHINE'."
-                return 0
-                ;;
-            [nN])
-                warn "Init cancelled by user."
-                exit 0
-                ;;
-            *)
-                warn "Invalid input. Please type Y or N."
-                ;;
-        esac
-    done
+    local ca_rc=0
+    confirm_action "init" "$MACHINE" || ca_rc=$?
+    if [[ "$ca_rc" -eq 2 ]]; then
+        warn "Init cancelled by user."
+        exit 2
+    elif [[ "$ca_rc" -ne 0 ]]; then
+        exit 1
+    fi
+    echo ""
+    info "Init confirmed for machine '$MACHINE'."
+    return 0
 }
 
 prerequisites_check() {
@@ -3691,28 +3673,16 @@ cmd_start_qemu() {
     echo ""
 
     # ── Safety confirmation (same pattern as ob init / ob build) ──
-    print_confirm_banner "start QEMU for" "$MACHINE"
-    while true; do
-        local confirm
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start QEMU, (N/n) to cancel: ")" confirm; then
-            error "Unable to read confirmation from stdin."
-            exit 1
-        fi
-        case "$confirm" in
-            [yY])
-                echo ""
-                info "QEMU start confirmed for machine '$MACHINE'."
-                break
-                ;;
-            [nN])
-                warn "QEMU start cancelled by user."
-                exit 0
-                ;;
-            *)
-                warn "Invalid input. Please type Y or N."
-                ;;
-        esac
-    done
+    local ca_rc=0
+    confirm_action "start QEMU for" "$MACHINE" || ca_rc=$?
+    if [[ "$ca_rc" -eq 2 ]]; then
+        warn "QEMU start cancelled by user."
+        exit 2
+    elif [[ "$ca_rc" -ne 0 ]]; then
+        exit 1
+    fi
+    echo ""
+    info "QEMU start confirmed for machine '$MACHINE'."
 
     # ── Emergency escape window ──
     warn "Launching QEMU in 3 seconds..."
