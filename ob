@@ -607,49 +607,19 @@ download_and_replace_community_qemu() {
         return 1
     fi
 
-    # ── Download to fixed partial path (supports resume) ──
-    local tmp_download="${QEMU_BIN_DIR}/.update-partial-${arch}"
+    # ── Staging dir for extraction (partial path lives in download_qemu_binary_core) ──
     local tmp_dir
     tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/qemu-update-XXXXXX")
 
     info "Downloading QEMU binary (build #${remote_build})..."
-    verbose "  URL: $qemu_url"
-
-    if ! curl -fSL -C - -o "$tmp_download" "$qemu_url"; then
-        warn "Failed to download QEMU binary from: $qemu_url"
-        warn "Partial download kept at: $tmp_download (retry will resume)"
+    if ! download_qemu_binary_core "$qemu_url" "$tmp_dir" "$arch"; then
+        warn "Failed to download/extract QEMU binary from: $qemu_url"
         rm -rf "$tmp_dir"
         flock -u 200 2>/dev/null; exec 200>&-
         return 1
     fi
-
-    # ── Extract / locate binary ──
-    local new_binary=""
-    local file_type
-    file_type=$(file -b "$tmp_download" 2>/dev/null || echo "")
-
-    if echo "$file_type" | grep -qi "gzip\|xz"; then
-        verbose "  Detected archive, extracting..."
-        tar xf "$tmp_download" -C "$tmp_dir/" --strip-components=1 2>/dev/null \
-            || tar xf "$tmp_download" -C "$tmp_dir/" 2>/dev/null
-        rm -f "$tmp_download"
-
-        for candidate in "$tmp_dir/$arch" "$tmp_dir/bin/$arch"; do
-            if [[ -f "$candidate" ]]; then
-                new_binary="$candidate"
-                break
-            fi
-        done
-
-        if [[ -z "$new_binary" ]]; then
-            warn "Could not find $arch in extracted archive."
-            rm -rf "$tmp_dir"
-            flock -u 200 2>/dev/null; exec 200>&-
-            return 1
-        fi
-    else
-        new_binary="$tmp_download"
-    fi
+    local new_binary="$DLQB_BIN_PATH"
+    local new_sha256="$DLQB_SHA256"
 
     # ── Verify new binary ──
     chmod +x "$new_binary"
@@ -659,9 +629,6 @@ download_and_replace_community_qemu() {
         flock -u 200 2>/dev/null; exec 200>&-
         return 1
     fi
-
-    local new_sha256
-    new_sha256=$(sha256sum "$new_binary" | awk '{print $1}')
 
     # ── Backup old binary ──
     local old_build
@@ -820,53 +787,19 @@ ensure_qemu_binary_community() {
     fi
 
     info "Downloading QEMU binary..."
-    verbose "  URL: $qemu_url"
-
-    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
-    local tmp_download="${QEMU_BIN_DIR}/.partial-${arch}"
-
-    if ! curl -fSL -C - -o "$tmp_download" "$qemu_url"; then
-        error "Failed to download QEMU binary from: $qemu_url"
-        error "Partial download kept at: $tmp_download (re-run to resume)"
+    if ! download_qemu_binary_core "$qemu_url" "$QEMU_BIN_DIR" "$arch"; then
+        error "Failed to download/extract QEMU binary from: $qemu_url"
         exit 1
     fi
 
-    # Detect file type: tarball or single binary
-    local file_type
-    file_type=$(file -b "$tmp_download" 2>/dev/null || echo "")
-
-    if echo "$file_type" | grep -qi "gzip\|xz"; then
-        # Tarball — extract
-        verbose "  Detected archive, extracting..."
-        tar xf "$tmp_download" -C "$QEMU_BIN_DIR/" --strip-components=1 2>/dev/null \
-            || tar xf "$tmp_download" -C "$QEMU_BIN_DIR/" 2>/dev/null
-        rm -f "$tmp_download"
-
-        local found_bin=""
-        for candidate in "$QEMU_BIN_DIR/$arch" "$QEMU_BIN_DIR/bin/$arch"; do
-            if [[ -f "$candidate" ]]; then
-                found_bin="$candidate"
-                break
-            fi
-        done
-
-        if [[ -z "$found_bin" ]]; then
-            error "Could not find $arch in extracted archive."
-            exit 1
-        fi
-
-        if [[ "$found_bin" != "$QEMU_BIN_FILE" ]]; then
-            mv "$found_bin" "$QEMU_BIN_FILE"
-        fi
-        chmod +x "$QEMU_BIN_FILE"
-    else
-        # Single binary
-        mv "$tmp_download" "$QEMU_BIN_FILE"
-        chmod +x "$QEMU_BIN_FILE"
+    # Place the located binary at QEMU_BIN_FILE (download_qemu_binary_core
+    # leaves it at DLQB_BIN_PATH; caller owns the final move + executable bit).
+    if [[ "$DLQB_BIN_PATH" != "$QEMU_BIN_FILE" ]]; then
+        mv "$DLQB_BIN_PATH" "$QEMU_BIN_FILE"
     fi
+    chmod +x "$QEMU_BIN_FILE"
 
-    local sha256=""
-    sha256=$(sha256sum "$QEMU_BIN_FILE" | awk '{print $1}')
+    local sha256="$DLQB_SHA256"
 
     # Query Jenkins for build number (community source only)
     local build_number=""
@@ -1890,6 +1823,55 @@ prompt_for_absolute_path() {
         PROMPT_PATH_RESULT="$input"
         return 0
     done
+}
+
+# download_qemu_binary_core <url> <extract_dir> <arch>
+# Shared download→detect→extract→locate→sha256 core for QEMU binaries
+# (used by download_and_replace_community_qemu and ensure_qemu_binary_community).
+# Sets globals DLQB_BIN_PATH (located binary) and DLQB_SHA256 on success.
+# Returns 0=success / 1=download, extract, or locate failure.
+# Caller owns: flock/backup/rollback/manifest/exit, the -x executable check,
+# and the final mv of DLQB_BIN_PATH to QEMU_BIN_FILE. L3 — never exits.
+download_qemu_binary_core() {
+    local url="$1"
+    local extract_dir="$2"
+    local arch="$3"
+
+    local tmp_download="${QEMU_BIN_DIR}/.dlqbc-partial-${arch}"
+    verbose "  URL: $url"
+
+    if ! curl -fSL -C - -o "$tmp_download" "$url"; then
+        return 1
+    fi
+
+    local file_type
+    file_type=$(file -b "$tmp_download" 2>/dev/null || echo "")
+
+    local binary=""
+    if echo "$file_type" | grep -qi "gzip\|xz"; then
+        verbose "  Detected archive, extracting..."
+        tar xf "$tmp_download" -C "$extract_dir/" --strip-components=1 2>/dev/null \
+            || tar xf "$tmp_download" -C "$extract_dir/" 2>/dev/null
+        rm -f "$tmp_download"
+
+        local candidate
+        for candidate in "$extract_dir/$arch" "$extract_dir/bin/$arch"; do
+            if [[ -f "$candidate" ]]; then
+                binary="$candidate"
+                break
+            fi
+        done
+
+        if [[ -z "$binary" ]]; then
+            return 1
+        fi
+    else
+        binary="$tmp_download"
+    fi
+
+    DLQB_BIN_PATH="$binary"
+    DLQB_SHA256=$(sha256sum "$binary" | awk '{print $1}')
+    return 0
 }
 
 verify_source() {
