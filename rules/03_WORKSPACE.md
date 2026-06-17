@@ -5,8 +5,8 @@
 ## 路由规则
 
 ### 项目与代码
-- 工具脚本（依赖解析等）：`tools/`
-- 测试脚本（smoke test）：`tests/`（如 `tests/smoke_ob.sh`，零依赖 bash，`bash tests/smoke_ob.sh` 运行）
+- 工具脚本（依赖解析等）：`tools/`（含 `reorder.py`/`extract_funcs.py` — ob 函数物理重排工具，阶段 3b 可复现）
+- 测试脚本：`tests/`（`smoke_ob.sh` 零依赖 bash 日常回归；`manual_matrix.exp`/`manual_matrix_qemu.exp` expect 手动矩阵，覆盖 smoke 不及的 TTY 交互分支与退出码协议，需 expect）
 - OpenBMC 环境初始化工具：根目录 `ob`（`./ob init [<machine>]` 一键初始化）
 - OpenBMC 工作区（主仓库、子仓库源码、lockfile）：`workspace/`（整体 gitignore，仅保留 `.gitkeep`）
 
