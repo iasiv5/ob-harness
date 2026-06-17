@@ -1,21 +1,39 @@
 #!/usr/bin/env python3
-"""ob 函数物理重排器（阶段 3b：§1-§7 分区连续化）。
+"""ob 函数物理重排器 —— 把函数按 §1-§7 分区重排成连续块。
 
-把 ob 单文件脚本的函数按 §1-§7 理想分层物理连续化，§ 锚点严格递增。
-函数体字节零改动，仅重排顺序（顶部 §1 声明 + 底部 main 调用保留原位）。
+只改函数的物理顺序，函数体一个字节都不动；顶部 §1 声明和底部 main 调用原位保留。
+产出 /tmp/ob_new，不直接覆盖 ob —— 三重验证全过才能正式采纳。
 
-用法：python3 tools/reorder.py ob        # 生成 /tmp/ob_new
-验证（三重保证）：
-  bash -n /tmp/ob_new                                                    # 语法
+【什么时候用】
+  - 给 ob 新增函数后，本脚本 assert 会报 mismatch —— 把新函数名加进下方 sections
+    dict 的对应 § 分区，重跑即可归类
+  - 想调整某函数的 § 归属（归错区、或重新分层）—— 改 sections 映射，重跑
+  - 想重新生成一份“按 § 连续化”的 ob（验证现有结构 / 演示）
+
+【怎么用】
+  $ python3 tools/reorder.py ob          # 生成 /tmp/ob_new
+  § 归类在下方 sections dict（§2-§7 共 92 个函数 = 28+13+29+9+10+3）；
+  改映射重跑即可调整归类，函数体零改动，纯机械。
+
+【重排后必须三重验证（缺一不可）】
+  # 1. 语法没坏
+  bash -n /tmp/ob_new
+
+  # 2. 函数体零变化（只改了顺序，内容一字不差）
   diff <(bash -c 'OB_NO_MAIN=1 source ob;declare -f'|sort) \\
-       <(bash -c 'OB_NO_MAIN=1 source /tmp/ob_new;declare -f'|sort)      # 函数体零变化
-  cp ob /tmp/ob_orig && cp /tmp/ob_new ob && bash tests/smoke_ob.sh      # 行为
+       <(bash -c 'OB_NO_MAIN=1 source /tmp/ob_new;declare -f'|sort)
 
-§ 归类在下方 sections dict（92 = 28+13+29+9+10+3）。调整某函数的 § 归属：
-改 sections 映射重跑即可，函数体零改动纯机械。当前归类的主观判断见 commit f7f4d0b。
+  # 3. 行为等价（跑冒烟测试；会临时覆盖 ob，完事从备份还原）
+  cp ob /tmp/ob_orig && cp /tmp/ob_new ob && bash tests/smoke_ob.sh
 
-结构前提（重排安全的基础）：ob 顶层可执行语句只在头部（set/变量/Colors）和
-尾部（main 调用），函数定义之间无夹杂——bash 函数顺序对执行无关（调用都在 main）。
+  三重全过，才能把 /tmp/ob_new 当成正式 ob。
+
+【为什么能这么干】
+  bash 函数物理顺序不影响执行（调用都在 main 里）。只要 ob 顶层语句只在头尾
+  （即 extract_funcs.py 的 GAPS=0），重排就是纯顺序变换，行为等价。
+  重排前先用 extract_funcs.py 确认 GAPS=0。
+
+【由来】ob §1-§7 分层重构的执行工具，精确复现那次物理重排（归类判断见 git log）。
 """
 import re, sys
 

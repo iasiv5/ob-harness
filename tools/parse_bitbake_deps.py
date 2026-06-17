@@ -1,26 +1,40 @@
 #!/usr/bin/env python3
-"""
-Parse bitbake dependency graph output to extract SRC_URI and SRCREV per recipe.
+"""解析 bitbake 依赖图，提取每个 git recipe 的 SRC_URI / SRCREV，输出 JSON。
 
-Strategy (Tinfoil, default):
-  1. Read pn-buildlist (from `bitbake -g`, ~570 recipes) as the recipe list.
-  2. Use bitbake Tinfoil API to query SRC_URI/SRCREV in a single process.
-     ~37s for ~570 recipes (vs ~17 min with bitbake -e × N).
-     If pn-buildlist is absent, falls back to all_recipes() (~2750, slower).
+ob 的 init 流程（generate_dep_graph）会自动调用本脚本生成 deps.json，用于本地镜像
+加速克隆与智能 clone URL 路由。日常一般无需手动跑——下面是调试 / 排查时才用。
 
-Strategy (legacy, --pn-buildlist):
-  1. Read pn-buildlist (from `bitbake -g`) to get the list of recipes.
-  2. For each recipe, run `bitbake -e <recipe>` and parse its SRC_URI / SRCREV.
-  3. Filter for git:// based sources and output JSON.
+【什么时候用】
+  - 通常不用：ob init 自动调用即可。手动跑主要是这些场景：
+  - deps.json 内容不对（某 recipe 缺失 / clone_url 路由错）时，单独跑看输出
+  - 排查性能：对比 Tinfoil（--build-dir）与 legacy（--pn-buildlist）两种模式
+  - 改了 meta-* recipe，想确认 git 依赖变化时
 
-Usage:
-    # Preferred: Tinfoil (requires bitbake environment)
-    python3 parse_bitbake_deps.py --build-dir <path> --machine <machine>
+【怎么用】
+  前提：需在 OpenBMC tree 内运行（脚本要 import bitbake 的 Tinfoil）。
+        --build-dir 指向 <openbmc>/build/<machine>。
 
-    # Legacy fallback: bitbake -e per recipe
-    python3 parse_bitbake_deps.py --pn-buildlist <path> --machine <machine>
+  # Tinfoil 模式（推荐，快；单进程查询）
+  python3 tools/parse_bitbake_deps.py --build-dir <build-dir> --machine <machine>
 
-Output: JSON array to stdout, one entry per git-based recipe.
+  # Legacy 模式（fallback；逐 recipe bitbake -e，慢约 5x）
+  python3 tools/parse_bitbake_deps.py --pn-buildlist <pn-buildlist> --machine <machine>
+
+  输出：JSON 数组到 stdout，每条 = 一个 git recipe（name / src_uri / srcrev /
+       recipe / clone_url / branch）；进度与警告走 stderr。
+  Ctrl+C：静默退出（码 130）。调用方（ob）先写 .tmp 再 rename，故中断即丢弃半成品。
+
+【原理】
+  - 两种模式：Tinfoil（默认，单进程，~37s 查 ~570 recipe）vs legacy（N 个 bitbake -e
+    子进程，~17 min）。Tinfoil 优先读 bitbake -g 生成的 pn-buildlist（~570 个 build
+    target），而非 all_recipes()（~2750，噪音大 ~8x）。
+  - clone_url 路由：私有 IP / RFC1918 / 运行时探测到的主机强制 SSH（内部服务器免认证）；
+    外部主机按 protocol= 参数（https / ssh / http）。
+  - ${VAR}（如 GIT_MIRROR_HOST）先用 Tinfoil config_data 解析，拿不到则回退到运行时
+    探测（meta-*/git-mirror-url.sh 或 .git/config），与 init_openbmc_repo.sh 同源。
+  - 全程不硬编码任何内部 IP / 主机名（见 _is_private_host 的探测式判定）。
+
+【由来】ob 一键初始化（ob init）的依赖解析组件；Tinfoil 模式是后续性能优化（~17min→~37s）。
 """
 
 import argparse
