@@ -3499,9 +3499,11 @@ _qemu_post_launch() {
     # ── Write PID file ──
     sleep 1
     local qemu_pid=""
-    qemu_pid=$(pgrep -f "qemu-system.*-machine.*$qb_machine_name" 2>/dev/null | head -1 || true)
+    # 用 serial socket 路径（每实例唯一）+ 当前用户过滤定位 PID，避免多用户同 SoC
+    # （如 ast2700a1-evb）machine 名相同导致 pgrep 误匹配到他人 QEMU。fallback 用 binary 路径。
+    qemu_pid=$(pgrep -u "$(whoami)" -f "$serial_sock" 2>/dev/null | head -1 || true)
     if [[ -z "$qemu_pid" ]]; then
-        qemu_pid=$(pgrep -f "$QEMU_BIN_FILE.*$MACHINE" 2>/dev/null | head -1 || true)
+        qemu_pid=$(pgrep -u "$(whoami)" -f "$QEMU_BIN_FILE" 2>/dev/null | head -1 || true)
     fi
 
     mkdir -p "$QEMU_PIDS_DIR"
