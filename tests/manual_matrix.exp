@@ -1,24 +1,31 @@
 #!/usr/bin/env expect
 #
-# 手动矩阵核心测试 — smoke_ob.sh 不覆盖的 TTY 交互分支（不需运行中 QEMU）。
+# 手动矩阵核心测试 —— 覆盖 smoke_ob.sh 不及的 TTY 交互分支（不需运行中 QEMU）。
 #
-# 覆盖：
-#   非 TTY/参数：--help(0) / unknown command(1) / build 空工作区(3) / init 非 TTY(3)
-#   菜单(PTY)： menu Q(0) / menu status(0)
-#   取消(PTY)：  init cancel(2) / build cancel(2) / start-qemu cancel(2)
+# 【什么时候用】
+#   - 改了 ob 的交互提示 / 菜单 / 取消逻辑，或退出码协议后，验证行为没变
+#   - 想确认非 TTY 检测、菜单 Q/status、用户取消（exit 2）分支正确
+#   - smoke 跑过了，还想再覆盖一层交互层时
 #
-# 退出码协议：0=成功 / 1=硬错误 / 2=用户取消 / 3=前提不满足
-# 前提：expect；取消分支需 workspace 有 init+build 过的 machine（无则自动跳过+warn）。
-# 用法：expect tests/manual_matrix.exp
-# 退出：FAIL=0 → exit 0；FAIL>0 → exit 1。
+# 【怎么用】
+#   前提：装了 expect。取消分支另需 workspace 里有 init+build 过的 machine（无则自动 skip+warn）。
+#   $ expect tests/manual_matrix.exp
+#   退出：FAIL=0 → exit 0；FAIL>0 → exit 1。
 #
-# ob 的三种交互提示（expect -re 匹配）：
-#   confirm_action : "Type (Y/y) to confirm, (N/n) to cancel"
-#   select_from_list: "... (0 to cancel)"
-#   单次 read       : "Stop this instance? [y/N]" / "Kill and restart? [y/N]"（见 manual_matrix_qemu.exp）
+# 【覆盖项】（退出码协议：0=成功 / 1=硬错误 / 2=用户取消 / 3=前提不满足）
+#   非 TTY/参数： --help(0) · unknown command(1) · build 空工作区(3) · init 非 TTY(3)
+#   菜单(PTY)：   menu Q(0) · menu status(0)
+#   取消(PTY)：   init cancel(2) · build cancel(2) · start-qemu cancel(2)   [需 workspace]
 #
-# 注：交互测试用内联 spawn（非 proc 包装的 split/eval），后者在 expect 里 spawn_id
-# 作用域不可靠；内联形态经实测稳定。
+# 【原理/注意】
+#   - ob 的三种交互提示，expect 需分别 -re 匹配：
+#       confirm_action  : "Type (Y/y) to confirm, (N/n) to cancel"
+#       select_from_list: "... (0 to cancel)"
+#       单次 read       : "Stop this instance? [y/N]" / "Kill and restart? [y/N]"（见 qemu 段）
+#   - 交互用内联 spawn（非 proc 包装的 split/eval）——后者在 expect 里 spawn_id 作用域
+#     不可靠，内联形态经实测稳定。
+#
+# 【由来】smoke_ob.sh 只测非交互路径；本脚本补齐 TTY 交互与取消分支，需 expect 手动跑。
 
 set timeout 30
 log_user 0
