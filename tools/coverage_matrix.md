@@ -63,3 +63,5 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 交互叶子(stdin) | select_from_list;confirm_action;prompt_for_absolute_path | unit/interact.sh | |
 | require_path 前置 | require_path | unit/require_path.sh | exit 函数,radar 低估 |
 | 字符串/工具子函数 | is_valid_repo_url;read_kv_field;read_lock_field;trim_whitespace | unit/url.sh;unit/source_lock.sh | 子工具,被上层调用 |
+| SoC/QEMU 派生 | detect_soc_type;derive_qemu_machine_name | unit/soc.sh | start-qemu SoC/机型派生 |
+| conf/url 工具 | read_local_conf_var;resolve_effective_dl_dir;resolve_effective_sstate_dir;is_private_url;parse_hostkey_offending;machine_conf_chain_contains | unit/conf_read.sh;unit/url_extra.sh | 子工具 |
