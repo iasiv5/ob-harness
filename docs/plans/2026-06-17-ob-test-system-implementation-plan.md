@@ -529,9 +529,9 @@ assert_summary
 
 - Run: `bash tests/run_all.sh`
 - Expected: `ALL GREEN`（protocol + unit + orchestration 全绿，collect-all 汇总无 FAILED）
-- Run: `python3 tools/coverage_radar.py`（配合 run_all 的 xtrace 采集）
+- Run: `tools/trace_collect.sh | python3 tools/coverage_radar.py -`
 - Expected: unit 范围（~40 函数）覆盖率 ≥ 95%；presentation/logging 档标为 transitive 无主（良性）
-- Run: `python3 tools/coverage_radar.py --cross-check`
+- Run: `tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check`
 - Expected: checklist × 雷达无未解释矛盾
 - Run: `command -v shellcheck >/dev/null && shellcheck -f gcc ob > /tmp/sc.final 2>&1 && diff -u tests/.shellcheck-baseline /tmp/sc.final; echo "exit=$?"`
 - Expected: diff 无新增行（exit=0）；既有 SC warning 不阻断，仅防退化（与 Task 16 一致）

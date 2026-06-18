@@ -2,7 +2,7 @@
 
 功能点 × 涉及函数 × 覆盖 test。与 [coverage_radar.py](coverage_radar.py)(结构层,运行时实测)交叉校验:
 
-```
+```bash
 tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 ```
 
@@ -34,7 +34,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
-| 空工作区 → exit 0 | cmd_status |  | TODO: protocol/exit_codes.sh 待建 |
+| 空工作区 → exit 0 | cmd_status | protocol/exit_codes.sh | exit 函数,radar 低估 |
 
 ## start-qemu
 
@@ -51,7 +51,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
-| 无实例 → exit 0 | cmd_stop_qemu |  | TODO: protocol/exit_codes.sh 待建 |
+| 无实例 → exit 0 | cmd_stop_qemu | protocol/exit_codes.sh | exit 函数,radar 低估 |
 | 取消/正常停止 | cmd_stop_qemu | protocol/manual_matrix_qemu.exp | integration |
 
 ## 横切(通用)
