@@ -50,9 +50,28 @@ cat "$BUILD_DIR/conf/externalsrc-$MACHINE.inc"
 ' _ "$OB" 2>/dev/null >"$TMP/inc"
 body="$(cat "$TMP/inc")"
 assert_contains "inc externalsrc" "$body" 'INHERIT += "externalsrc"'
-assert_contains "inc DL_DIR"      "$body" 'DL_DIR ??= "'
-assert_contains "inc SSTATE_DIR"  "$body" 'SSTATE_DIR ??= "'
+assert_contains "inc DL_DIR"      "$body" 'DL_DIR = "'
+assert_contains "inc SSTATE_DIR"  "$body" 'SSTATE_DIR = "'
 assert_contains "inc npm timeout" "$body" 'npm_config_fetch_timeout ??= "600000"'
+
+# --- generate_build_config: user already defines DL_DIR/SSTATE_DIR in local.conf → not overridden ---
+# 关键回归防护: ob 必须尊重用户已定义的 DL_DIR/SSTATE_DIR, 不在 .inc 写赋值 (否则覆盖用户配置,
+# 如 NFS shared cache)。43b0e7a 曾把这里退化成无条件 ??= 导致失效, 此 case 防止再回归。
+BUILD_DIR2="$TMP/openbmc/build/$MACHINE-userdef"; mkdir -p "$BUILD_DIR2/conf"
+cat > "$BUILD_DIR2/conf/local.conf" <<EOF
+DL_DIR = "$TMP/user-dl"
+SSTATE_DIR = "$TMP/user-sstate"
+EOF
+with_stub "$DB" -- bash -c 'OB_NO_MAIN=1 source "$1"
+BUILD_DIR="'"$BUILD_DIR2"'"; MACHINE="'"$MACHINE"'"; WORKSPACE_DIR="'"$WORKSPACE_DIR"'"; DRY_RUN=0
+generate_build_config
+cat "$BUILD_DIR/conf/externalsrc-'"$MACHINE"'.inc"
+' _ "$OB" 2>/dev/null >"$TMP/inc2"
+body="$(cat "$TMP/inc2")"
+assert_contains "user dl not overridden"     "$body" 'DL_DIR defined in local.conf'
+assert_contains "user sstate not overridden" "$body" 'SSTATE_DIR defined in local.conf'
+assert_false  "user dl no assignment"     grep -q '^DL_DIR = '    "$TMP/inc2"
+assert_false  "user sstate no assignment" grep -q '^SSTATE_DIR = ' "$TMP/inc2"
 
 rm -rf "$TMP" "$DB"
 assert_summary
