@@ -15,13 +15,11 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck expect
       - name: run_all(默认只跑 .sh,~1.5s;--full 才跑慢的交互矩阵)
         run: bash tests/run_all.sh
-      - name: shellcheck 防退化(baseline diff)
+      - name: shellcheck 防退化(baseline multiset 判定,免疫行号漂移)
         run: |
-          shellcheck -f gcc ob > /tmp/sc.new 2>&1 || true
-          if ! diff -u tests/.shellcheck-baseline /tmp/sc.new; then
-            echo "::error::shellcheck 新增告警(改 ob 后跑 'shellcheck -f gcc ob > tests/.shellcheck-baseline' 更新 baseline,或修复)"
-            exit 1
-          fi
-          echo "shellcheck 无新增(与 baseline 一致)"
+          # 复用 ob_check.sh 已验证的行号无关判定(logic: 只比对告警文本集合,
+          # 行号因上方插行而平移 / 告警减少都判 CLEAN/REGEN 通过; 仅"同类型+1"或全新类型才失败)。
+          # SKIP_TESTS 跳过 run_all(本 job 上一步已跑); READONLY 避免重生成 baseline 架空门禁。
+          OB_CHECK_SKIP_TESTS=1 OB_CHECK_READONLY=1 bash tools/ob_check.sh
       - name: coverage radar(报告,不阻断)
         run: tools/trace_collect.sh | python3 tools/coverage_radar.py - | grep '^TOTAL'

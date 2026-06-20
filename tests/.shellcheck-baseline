@@ -14,5 +14,5 @@ ob:2552:32: note: Expressions don't expand in single quotes, use double quotes f
 ob:2596:36: note: Expressions don't expand in single quotes, use double quotes for that. [SC2016]
 ob:2992:22: note: Use find instead of ls to better handle non-alphanumeric filenames. [SC2012]
 ob:3094:22: note: Use find instead of ls to better handle non-alphanumeric filenames. [SC2012]
-ob:3285:22: note: Use find instead of ls to better handle non-alphanumeric filenames. [SC2012]
-ob:3821:36: note: Use find instead of ls to better handle non-alphanumeric filenames. [SC2012]
+ob:3307:22: note: Use find instead of ls to better handle non-alphanumeric filenames. [SC2012]
+ob:3864:36: note: Use find instead of ls to better handle non-alphanumeric filenames. [SC2012]
