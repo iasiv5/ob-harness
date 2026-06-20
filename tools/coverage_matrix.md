@@ -44,6 +44,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | QB 变量解析 | resolve_qb_vars | orchestration/resolve_qb_vars.sh | exit 函数 |
 | 端口检查 | check_ports_available;get_port_occupants | unit/ports.sh | check_ports_available exit 函数 |
 | PID 校验 | validate_pid | unit/ports.sh | |
+| 失效 host key 检测 | check_ssh_hostkey_conflict;_clear_stale_hostkey_menu | unit/hostkey_conflict.sh | Track A 删除菜单(确证失效);Track B sshd 未就绪仅提示不删 |
 | 取消 → exit 2 | cmd_start_qemu | protocol/manual_matrix.exp | TTY |
 | kill-restart | cmd_start_qemu | protocol/manual_matrix_qemu.exp | integration |
 

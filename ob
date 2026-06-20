@@ -2188,26 +2188,57 @@ check_ssh_hostkey_conflict() {
     [[ -z "$port" ]] && return 0
 
     local target="[localhost]:${port}"
-    local probe_out="" parsed=""
-    local file="" line=""
-    local display_cmd="" confirm=""
-    local rc=0
 
+    # ── Local pre-screen: does known_hosts hold an entry for the target? ──
+    # Pure local file read — independent of sshd / network. Silent if none.
+    local kh_probe=""
+    kh_probe=$(ssh-keygen -F "$target" 2>/dev/null || true)
+    if [[ -z "$kh_probe" ]]; then
+        return 0  # No entry → nothing can conflict; stay silent.
+    fi
+
+    # ── Probe sshd to confirm whether the entry is actually stale ──
     # Mirror the user's manual ssh: real known_hosts, default strict checking.
-    # Wrap in 'if' so set -e does not propagate ssh's non-zero exit (host-key
-    # failure / Permission denied / unreachable are all expected here).
+    # Wrap in 'if' so set -e does not propagate ssh's non-zero exit.
+    local probe_out=""
     if ! probe_out=$(ssh -o BatchMode=yes -o ConnectTimeout=3 \
                         -p "$port" root@localhost true 2>&1); then
         :
     fi
 
-    # Only a *changed* key is a conflict worth acting on.
-    if [[ "$probe_out" != *"REMOTE HOST IDENTIFICATION HAS CHANGED"* ]]; then
-        if [[ "$probe_out" == *"Connection refused"* || "$probe_out" == *"Connection timed out"* ]]; then
-            warn "BMC sshd not reachable on port ${port}; if you rebuilt the image and manual ssh later reports a host key error, run: ssh-keygen -R '[localhost]:${port}'"
-        fi
+    # Track A — cryptographically confirmed stale: sshd up, key mismatch.
+    if [[ "$probe_out" == *"REMOTE HOST IDENTIFICATION HAS CHANGED"* ]]; then
+        _clear_stale_hostkey_menu "$target" "$probe_out"
         return 0
     fi
+
+    # Entry still matches the live key (sshd up, probe reached auth). No cleanup.
+    if [[ "$probe_out" == *"Permission denied"* ]]; then
+        verbose "Host key for ${target} still matches current image; no cleanup needed."
+        return 0
+    fi
+
+    # Track B — sshd not reachable / status unknown. Entry exists but we can't
+    # confirm it's stale. Warn + give the clear command; do NOT auto-delete —
+    # the entry may still be valid if the user only re-ran start-qemu (no rebuild).
+    warn "Found a known_hosts entry for ${target}, but BMC sshd is not reachable yet — cannot confirm whether it's stale."
+    if [[ "$probe_out" == *"Connection refused"* || "$probe_out" == *"Connection timed out"* ]]; then
+        warn "BMC sshd not ready on port ${port} (still booting)."
+    fi
+    echo "    If you just rebuilt the image, this entry is stale and manual ssh will report a host key error."
+    echo "    Clear it yourself when ready:"
+    echo "      ssh-keygen -R '${target}'"
+    echo "    (ob won't auto-delete — only you know whether you rebuilt the image.)"
+    return 0
+}
+
+# Interactive menu to clear a cryptographically-confirmed stale SSH host key.
+# Only called once ssh has proved the known_hosts entry mismatches the live key,
+# so removal is justified by proof (zero risk of deleting a still-valid entry).
+# Args: $1 = target ("[localhost]:<port>"), $2 = ssh probe stderr blob.
+_clear_stale_hostkey_menu() {
+    local target="$1" probe_out="$2"
+    local parsed="" file="" line="" display_cmd="" confirm=""
 
     parsed=$(parse_hostkey_offending "$probe_out")
     if [[ -n "$parsed" ]]; then
@@ -2235,6 +2266,7 @@ check_ssh_hostkey_conflict() {
         return 0
     fi
 
+    local rc=0
     case "$confirm" in
         [Yy]*)
             if [[ -n "$file" ]]; then
@@ -2252,6 +2284,7 @@ check_ssh_hostkey_conflict() {
             info "Skipped. Run manually: ${display_cmd}"
             ;;
     esac
+    return 0
 }
 
 # === §5 构建流程 (init pipeline: dep graph / sub-repos / lockfile / config) ===
