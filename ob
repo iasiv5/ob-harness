@@ -2751,6 +2751,12 @@ generate_build_config() {
         fi
 
         echo ""
+        echo "# Hash equivalency database for shared sstate reuse across builds."
+        echo "# When SSTATE_DIR is shared, put the hash database there too, not in build-specific dirs."
+        echo "# See: https://docs.yoctoproject.org/bitbake/latest/manual/concepts.html#hashing"
+        echo "BB_HASHSERVE_DB_DIR = \"\${SSTATE_DIR}\""
+
+        echo ""
         echo "# npm network timeout defaults for Node.js recipes (e.g. webui-vue)."
         echo "# Override in local.conf with = if needed. Registry is auto-detected by 'ob build'."
         echo "npm_config_fetch_timeout ??= \"600000\""
