@@ -4084,7 +4084,8 @@ Commands:
 
 Global Options:
   -d, --dry-run         Print actions without executing
-  -u, --url <url>       Use a custom OpenBMC repository URL
+  -s, --skip-deps       Reuse existing deps.json, skip dependency resolution (init only)
+  -u, --url <url>       Use a custom OpenBMC repository URL (init only)
   -v, --verbose         Verbose output
   -h, --help            Show this help
 
@@ -4100,6 +4101,13 @@ start-qemu Options:
 stop-qemu Options:
   --force                 Stop without confirmation
   --all                   Stop all running QEMU instances
+
+Exit Codes:
+  0   Success (or benign no-op)
+  1   Failure — broken, or usage error (e.g. unknown option)
+  2   Cancelled by user (not a failure)
+  3   Precondition missing (e.g. machine not initialized / not built);
+      satisfy it via ob (run the suggested 'ob ...' first), then retry
 
 Environment Variables (lower priority than command-line options):
   OB_QEMU_SSH_PORT        SSH port override

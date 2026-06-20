@@ -60,6 +60,8 @@
 
 ## 可用资源
 
+> ob 优先调用约定（做环境动作前先查 `ob --help`，命中就走 `ob <cmd>`，出错才手动）见 `bestpractice_06-ob_first.md`。
+
 **工具**：
 - 根目录 `ob` — 主入口 bash 脚本，支持三种运行模式：
   - `./ob`（无参数）→ 交互菜单（init/build/status/clear/quit）

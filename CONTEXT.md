@@ -51,3 +51,11 @@ _Avoid_: 调用层级, 函数分级；勿与 test layer（protocol/unit/orchestr
 **test layer**:
 `ob` 测试体系的分层，自下而上为 protocol（退出码协议，非交互）、unit（纯函数单测，零依赖毫秒级）、orchestration（编排函数，PATH 注入 stub）、integration（真实集成，init→build→QEMU 全流程）。曾用 L0–L3 编号，为脱离与「function semantic layer」的 L1/L2/L3 撞名而改语义名。
 _Avoid_: 测试等级, 覆盖等级, L0–L3（旧称已弃）, function semantic layer
+
+**ob 优先 (ob-first)**:
+做 OpenBMC 环境生命周期动作（init/build/status/start-qemu/stop-qemu 及未来子命令）前，先查 `ob --help` 是否提供对应能力；提供则走 `ob <cmd>`，仅当 exit 1 真实失败且 ob 确无此能力时才手动兜底。`ob --help` 是唯一权威能力清单。
+_Avoid_: tool-first, ob first, 能力清单（并入本条）
+
+**exit-code 契约**:
+`ob` 所有 `cmd_*` 统一退出码：0=成功/良性无操作，1=真实失败（坏了或用法错），2=用户主动取消（非失败），3=前置缺失（修复方式是用 ob 补前置）。agent 仅在 exit 1 触发回退；补充 `function semantic layer` 条目里关于 exit 3 的说法。
+_Avoid_: 返回码约定, exit status
