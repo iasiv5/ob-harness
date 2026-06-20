@@ -5,8 +5,8 @@
 ## 路由规则
 
 ### 项目与代码
-- 工具脚本：`tools/`（`parse_bitbake_deps.py` 依赖解析；`extract_funcs.py` + `reorder.py` 维护 ob 的 §1-§7 物理分层——前者只读体检/GAPS 检查，后者重排函数顺序，何时用 + 怎么用见各脚本 docstring）
-- 测试脚本：`tests/`（`smoke_ob.sh` 零依赖 bash 日常回归；`manual_matrix.exp`/`manual_matrix_qemu.exp` expect 手动矩阵，覆盖 smoke 不及的 TTY 交互分支与退出码协议，需 expect；何时用 + 怎么用见各脚本顶部说明）
+- 工具脚本：`tools/`（`parse_bitbake_deps.py` 依赖解析；`extract_funcs.py` + `reorder.py` 维护 ob 的 §1-§7 物理分层——前者只读体检/GAPS 检查，后者重排函数顺序，何时用 + 怎么用见各脚本 docstring；`ob_check.sh` 改 ob 后一站式配套自检（聚合 extract_funcs/reorder/shellcheck baseline/run_all），改完 ob 必跑）
+- 测试入口与分层调度：`tests/run_all.sh`（默认跑 protocol/unit/orchestration 的 .sh；`--full` 加 .exp 交互矩阵；`--integration` 加 E2E）；分层目录 `tests/{protocol,unit,orchestration,integration,lib}/`，何时用见 `run_all.sh` 顶部
 - OpenBMC 环境初始化工具：根目录 `ob`（`./ob init [<machine>]` 一键初始化）
 - OpenBMC 工作区（主仓库、子仓库源码、lockfile）：`workspace/`（整体 gitignore，仅保留 `.gitkeep`）
 
