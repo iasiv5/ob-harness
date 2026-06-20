@@ -18,11 +18,11 @@
     ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 
-OpenBMC 固件开发工作台。`ob` CLI 覆盖环境初始化、镜像构建、工作区状态管理和 QEMU 仿真；内置 AI Agent 上下文框架，用 Claude Code 或 GitHub Copilot 打开仓库即可用自然语言驱动开发任务。
+OpenBMC 固件开发工作台。`ob` CLI 覆盖环境初始化、镜像构建、工作区状态管理和 QEMU 仿真；内置 AI Agent 上下文框架，用 Claude Code 或 GitHub Copilot 等任意 Coding Agent 打开仓库即可用自然语言驱动开发任务。
 
 ## 开始
 
-> **前提条件**：Linux + `git` + `python3` + 30 GB 磁盘 + 网络访问 OpenBMC Git 服务器（社区版：[GitHub](https://github.com/openbmc/openbmc.git)）
+> **前提条件**：Linux + `git` + `python3` + 100+ GB 磁盘 + 网络访问 OpenBMC Git 服务器（社区版：[GitHub](https://github.com/openbmc/openbmc.git)）
 
 ```bash
 git clone https://github.com/iasiv5/ob-harness.git
