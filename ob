@@ -3,7 +3,7 @@
 # Usage: ob [command] [options]    (run without arguments for interactive menu)
 set -euo pipefail
 
-# === Global Variables ===
+# === §1 全局变量 (Global Variables) ===
 HARNESS_ROOT=""
 WORKSPACE_DIR=""
 COMMAND=""
@@ -54,10 +54,16 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 PROMPT_PREFIX='\033[38;2;255;210;80mob-harness>\033[0m'
 
+# === §2 通用工具 (Utility / L3) — L3 函数绝不 exit ===
+
 log()   { echo -e "$*"; }
+
 info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
+
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
+
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
+
 verbose() { if [[ "$VERBOSE" -eq 1 ]]; then echo -e "[DEBUG] $*"; fi; }
 
 # Print the 3-line confirmation banner (visual only — no confirmation logic).
@@ -103,6 +109,44 @@ format_timestamp() {
     }
 
     echo "$ts_local"
+}
+
+step_header() {
+    local sep
+    sep=$(printf '\u2500%.0s' {1..60})
+    echo -e "${CYAN}${sep}${NC}"
+    echo -e "  ${BOLD}${CYAN}$*${NC}"
+    echo -e "${CYAN}${sep}${NC}"
+}
+
+show_logo() {
+    echo -e ""
+    echo -e "\033[38;2;255;216;106m      ██████╗ ██████╗ ███████╗ ███╗   ██╗ ██████╗ ███╗   ███╗ ██████╗\033[0m"
+    echo -e "\033[38;2;220;220;90m     ██╔═══██╗██╔══██╗██╔════╝ ████╗  ██║ ██╔══██╗████╗ ████║██╔════╝ \033[0m"
+    echo -e "\033[38;2;180;215;100m     ██║   ██║██████╔╝█████╗   ██╔██╗ ██║ ██████╔╝██╔████╔██║██║      \033[0m"
+    echo -e "\033[38;2;160;210;115m     ██║   ██║██╔═══╝ ██╔══╝   ██║╚██╗██║ ██╔══██╗██║╚██╔╝██║██║      \033[0m"
+    echo -e "\033[38;2;140;200;150m     ╚██████╔╝██║     ███████╗ ██║ ╚████║ ██████╔╝██║ ╚═╝ ██║╚██████╗ \033[0m"
+    echo -e "\033[38;2;125;195;185m      ╚═════╝ ╚═╝     ╚══════╝ ╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝ ╚═════╝ \033[0m"
+    echo -e "\033[38;2;115;195;215m     ██╗  ██╗  █████╗  █████╗   ███╗   ██╗ ███████╗ ███████╗ ███████╗ \033[0m"
+    echo -e "\033[38;2;115;195;235m     ██║  ██║ ██╔══██╗ ██╔══██╗ ████╗  ██║ ██╔════╝ ██╔════╝ ██╔════╝ \033[0m"
+    echo -e "\033[38;2;135;190;240m     ███████║ ███████║ ██████╔╝ ██╔██╗ ██║ █████╗   ███████╗ ███████╗ \033[0m"
+    echo -e "\033[38;2;165;185;240m     ██╔══██║ ██╔══██║ ██╔══██╗ ██║╚██╗██║ ██╔══╝   ╚════██║ ╚════██║ \033[0m"
+    echo -e "\033[38;2;195;180;240m     ██║  ██║ ██║  ██║ ██║  ██║ ██║ ╚████║ ███████╗ ███████║ ███████║ \033[0m"
+    echo -e "\033[38;2;208;184;240m     ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═══╝ ╚══════╝ ╚══════╝ ╚══════╝ \033[0m"
+    echo    "    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
+    echo -e "    ┃      OpenBMC Development Environment · \\033[38;2;255;210;80mob-harness\033[0m · 𝓲𝓪𝓼𝓲      ┃"
+    echo    "    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
+}
+
+show_brand_line() {
+    echo -e "\n\033[38;2;255;210;80m━━━ >>> ob-harness <<< ━━━\033[0m\n"
+}
+
+fn_quit() {
+    echo ""
+    echo -e "${PROMPT_PREFIX} ...... Exit [ ob-harness · OpenBMC Development Environment ]"
+    echo ""
+    exit 0
 }
 
 read_local_conf_var() {
@@ -281,2214 +325,6 @@ if gitsrcname.startswith('.'):
 
 print(reference_root / gitsrcname)
 PY
-}
-
-step_header() {
-    local sep
-    sep=$(printf '\u2500%.0s' {1..60})
-    echo -e "${CYAN}${sep}${NC}"
-    echo -e "  ${BOLD}${CYAN}$*${NC}"
-    echo -e "${CYAN}${sep}${NC}"
-}
-
-show_logo() {
-    echo -e ""
-    echo -e "\033[38;2;255;216;106m      ██████╗ ██████╗ ███████╗ ███╗   ██╗ ██████╗ ███╗   ███╗ ██████╗\033[0m"
-    echo -e "\033[38;2;220;220;90m     ██╔═══██╗██╔══██╗██╔════╝ ████╗  ██║ ██╔══██╗████╗ ████║██╔════╝ \033[0m"
-    echo -e "\033[38;2;180;215;100m     ██║   ██║██████╔╝█████╗   ██╔██╗ ██║ ██████╔╝██╔████╔██║██║      \033[0m"
-    echo -e "\033[38;2;160;210;115m     ██║   ██║██╔═══╝ ██╔══╝   ██║╚██╗██║ ██╔══██╗██║╚██╔╝██║██║      \033[0m"
-    echo -e "\033[38;2;140;200;150m     ╚██████╔╝██║     ███████╗ ██║ ╚████║ ██████╔╝██║ ╚═╝ ██║╚██████╗ \033[0m"
-    echo -e "\033[38;2;125;195;185m      ╚═════╝ ╚═╝     ╚══════╝ ╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝ ╚═════╝ \033[0m"
-    echo -e "\033[38;2;115;195;215m     ██╗  ██╗  █████╗  █████╗   ███╗   ██╗ ███████╗ ███████╗ ███████╗ \033[0m"
-    echo -e "\033[38;2;115;195;235m     ██║  ██║ ██╔══██╗ ██╔══██╗ ████╗  ██║ ██╔════╝ ██╔════╝ ██╔════╝ \033[0m"
-    echo -e "\033[38;2;135;190;240m     ███████║ ███████║ ██████╔╝ ██╔██╗ ██║ █████╗   ███████╗ ███████╗ \033[0m"
-    echo -e "\033[38;2;165;185;240m     ██╔══██║ ██╔══██║ ██╔══██╗ ██║╚██╗██║ ██╔══╝   ╚════██║ ╚════██║ \033[0m"
-    echo -e "\033[38;2;195;180;240m     ██║  ██║ ██║  ██║ ██║  ██║ ██║ ╚████║ ███████╗ ███████║ ███████║ \033[0m"
-    echo -e "\033[38;2;208;184;240m     ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═══╝ ╚══════╝ ╚══════╝ ╚══════╝ \033[0m"
-    echo    "    ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓"
-    echo -e "    ┃      OpenBMC Development Environment · \\033[38;2;255;210;80mob-harness\033[0m · 𝓲𝓪𝓼𝓲      ┃"
-    echo    "    ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛"
-}
-
-show_brand_line() {
-    echo -e "\n\033[38;2;255;210;80m━━━ >>> ob-harness <<< ━━━\033[0m\n"
-}
-
-fn_quit() {
-    echo ""
-    echo -e "${PROMPT_PREFIX} ...... Exit [ ob-harness · OpenBMC Development Environment ]"
-    echo ""
-    exit 0
-}
-
-fn_err_quit() {
-    echo ""
-    echo -e "${PROMPT_PREFIX} ...... \033[0;31mError Exit [ ob-harness · OpenBMC Development Environment ]\033[0m"
-    echo ""
-    exit 1
-}
-
-# === Functions ===
-
-usage() {
-    cat <<EOF
-Usage: ob [command] [options] [arguments]
-
-Run without arguments to enter interactive menu mode.
-
-Commands:
-  init         [<machine>]    One-click initialize OpenBMC dev environment
-  build                        Select an initialized machine and build its image
-  status                       Show current OpenBMC source binding status
-  start-qemu   [<machine>]    Launch QEMU with built BMC image
-  stop-qemu    [<machine>]    Stop a running QEMU instance
-
-Global Options:
-  -d, --dry-run         Print actions without executing
-  -u, --url <url>       Use a custom OpenBMC repository URL
-  -v, --verbose         Verbose output
-  -h, --help            Show this help
-
-start-qemu Options:
-  --ssh-port <port>       SSH port forwarding    (default: 2222)
-  --redfish-port <port>   Redfish port forwarding (default: 2443)
-  --ipmi-port <port>      IPMI port forwarding    (default: 2623, UDP)
-  --http-port <port>      HTTP port forwarding    (no default; set to enable)
-  --serial-log <path>     Serial log file path    (default: ~/tmp/qemu-<machine>-serial.log)
-  --no-wait               Don't wait for BMC to become ready
-  --force                 Kill existing instance without confirmation
-
-stop-qemu Options:
-  --force                 Stop without confirmation
-  --all                   Stop all running QEMU instances
-
-Environment Variables (lower priority than command-line options):
-  OB_QEMU_SSH_PORT        SSH port override
-  OB_QEMU_REDFISH_PORT    Redfish port override
-  OB_QEMU_IPMI_PORT       IPMI port override
-  OB_QEMU_HTTP_PORT       HTTP port override
-  OB_QEMU_SERIAL_LOG      Serial log path override
-  OB_QEMU_BINARY_URL      Custom QEMU binary download URL
-  OB_NPM_REGISTRY         Override npm registry URL (set empty to disable auto-detection)
-
-Examples:
-  ob init                          # List machines and choose interactively
-  ob init romulus                  # Initialize romulus machine
-  ob init romulus -d               # Preview what would be done
-  ob init romulus --url https://example.com/openbmc.git
-  ob start-qemu romulus            # Launch romulus in QEMU
-  ob start-qemu romulus --ssh-port 22223
-  ob stop-qemu romulus             # Stop romulus QEMU instance
-  ob stop-qemu --all               # Stop all running instances
-EOF
-}
-
-parse_args() {
-    if [[ $# -lt 1 ]]; then
-        COMMAND=""
-        return 0
-    fi
-
-    # Handle global --help/-h before dispatching to subcommands
-    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
-        usage
-        exit 0
-    fi
-
-    COMMAND="$1"
-    shift
-
-    case "$COMMAND" in
-        init)
-            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
-                MACHINE="$1"
-                shift
-            fi
-            ;;
-        status)
-            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
-                MACHINE="$1"
-                shift
-            fi
-            ;;
-        build)
-            # No arguments accepted for build
-            ;;
-        start-qemu)
-            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
-                MACHINE="$1"
-                shift
-            fi
-            ;;
-        stop-qemu)
-            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
-                MACHINE="$1"
-                shift
-            fi
-            ;;
-        *)
-            error "Unknown command: $COMMAND"
-            usage
-            exit 1
-            ;;
-    esac
-
-    while [[ $# -gt 0 ]]; do
-        case "$1" in
-            -d|-D|--dry-run)    DRY_RUN=1; shift ;;
-            -s|-S|--skip-deps)   SKIP_DEPS=1; shift ;;
-            -u|-U|--url)
-                if [[ $# -lt 2 ]]; then
-                    error "Missing value for --url"
-                    usage
-                    exit 1
-                fi
-                OPENBMC_REPO_URL="$2"
-                shift 2
-                ;;
-            -v|-V|--verbose)  VERBOSE=1; shift ;;
-            -h|-H|--help)     usage; exit 0 ;;
-            --ssh-port)
-                if [[ $# -lt 2 ]]; then error "Missing value for --ssh-port"; exit 1; fi
-                QEMU_SSH_PORT="$2"; shift 2 ;;
-            --redfish-port)
-                if [[ $# -lt 2 ]]; then error "Missing value for --redfish-port"; exit 1; fi
-                QEMU_REDFISH_PORT="$2"; shift 2 ;;
-            --ipmi-port)
-                if [[ $# -lt 2 ]]; then error "Missing value for --ipmi-port"; exit 1; fi
-                QEMU_IPMI_PORT="$2"; shift 2 ;;
-            --http-port)
-                if [[ $# -lt 2 ]]; then error "Missing value for --http-port"; exit 1; fi
-                QEMU_HTTP_PORT="$2"; shift 2 ;;
-            --serial-log)
-                if [[ $# -lt 2 ]]; then error "Missing value for --serial-log"; exit 1; fi
-                QEMU_SERIAL_LOG="$2"; shift 2 ;;
-            --no-wait)  QEMU_NO_WAIT=1; shift ;;
-            --force)    QEMU_FORCE=1; shift ;;
-            --all)      QEMU_STOP_ALL=1; shift ;;
-            *)             error "Unknown option: $1"; usage; exit 1 ;;
-        esac
-    done
-}
-
-# ──────────────────────────────────────────────
-# QEMU Helper Functions
-# ──────────────────────────────────────────────
-
-read_source_label() {
-    local label=""
-    if [[ -f "$SOURCE_LOCK_FILE" ]]; then
-        label=$(read_lock_field source_label 2>/dev/null || true)
-        label=$(trim_whitespace "$label")
-    fi
-    if [[ -z "$label" ]]; then
-        label="community"
-    fi
-    echo "$label"
-}
-
-derive_qemu_paths() {
-    local label arch
-    label=$(read_source_label)
-    arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
-    QEMU_BIN_DIR="$WORKSPACE_DIR/qemu-bin/$label"
-    QEMU_BIN_FILE="$QEMU_BIN_DIR/$arch"
-    QEMU_PIDS_DIR="$WORKSPACE_DIR/qemu-bin/.pids"
-    QEMU_PID_FILE="$QEMU_PIDS_DIR/${MACHINE}.pid"
-}
-
-derive_qemu_url_config_path() {
-    QEMU_URL_CONFIG_FILE="$WORKSPACE_DIR/qemu-bin/qemu-binary-urls.conf"
-}
-
-read_qemu_url_config() {
-    local source="$1"
-    local arch="$2"
-    local key
-    local key_re
-    local url
-
-    key="${source}.${arch}"
-    key_re="${key//./\\.}"
-    derive_qemu_url_config_path
-
-    [[ -f "$QEMU_URL_CONFIG_FILE" ]] || return 0
-
-    url=$(grep "^${key_re}=" "$QEMU_URL_CONFIG_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)
-    trim_whitespace "$url"
-}
-
-write_qemu_url_config() {
-    local source="$1"
-    local arch="$2"
-    local url="$3"
-    local key
-    local key_re
-    local tmp
-
-    key="${source}.${arch}"
-    key_re="${key//./\\.}"
-    derive_qemu_url_config_path
-
-    mkdir -p "$(dirname "$QEMU_URL_CONFIG_FILE")"
-    if [[ ! -f "$QEMU_URL_CONFIG_FILE" ]]; then
-        echo "# qemu binary download URLs — auto-managed by 'ob start-qemu'" > "$QEMU_URL_CONFIG_FILE"
-        echo "# key: <source_label>.<QB_SYSTEM_NAME>" >> "$QEMU_URL_CONFIG_FILE"
-    fi
-
-    if grep -q "^${key_re}=" "$QEMU_URL_CONFIG_FILE"; then
-        tmp=$(mktemp "${TMPDIR:-/tmp}/qemu-url-conf-XXXXXX")
-        grep -v "^${key_re}=" "$QEMU_URL_CONFIG_FILE" > "$tmp"
-        echo "${key}=${url}" >> "$tmp"
-        mv "$tmp" "$QEMU_URL_CONFIG_FILE"
-    else
-        echo "${key}=${url}" >> "$QEMU_URL_CONFIG_FILE"
-    fi
-}
-
-write_qemu_binary_manifest() {
-    local install_source="$1"
-    local arch="$2"
-    local source_key="$3"
-    local source_value="$4"
-    local sha256="$5"
-    local build_number="${6:-}"
-    local manifest_path="${QEMU_BIN_FILE}.manifest"
-
-    cat > "$manifest_path" <<MANIFEST_EOF
-asset=binary
-source=${install_source}
-arch=${arch}
-binary_path=${QEMU_BIN_FILE}
-${source_key}=${source_value}
-installed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-sha256=${sha256}
-MANIFEST_EOF
-
-    if [[ -n "$build_number" ]]; then
-        echo "build_number=${build_number}" >> "$manifest_path"
-    fi
-}
-
-write_qemu_pcbios_manifest() {
-    local install_source="$1"
-    local pcbios_source_path="$2"
-    local manifest_path="$QEMU_BIN_DIR/pc-bios.manifest"
-
-    cat > "$manifest_path" <<MANIFEST_EOF
-asset=pc-bios
-source=${install_source}
-pcbios_path=${QEMU_BIN_DIR}/pc-bios
-pcbios_source=${pcbios_source_path}
-installed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-MANIFEST_EOF
-}
-
-# Query Jenkins lastSuccessfulBuild number for a given job URL.
-# Args: $1 = Jenkins job base URL (e.g. https://jenkins.openbmc.org/job/latest-qemu-x86)
-# Returns: build number via stdout (empty string on failure)
-query_jenkins_build_number() {
-    local job_url="$1"
-    local api_url="${job_url}/lastSuccessfulBuild/api/json?tree=number"
-    local raw
-    raw=$(curl -s --max-time 5 "$api_url" 2>/dev/null) || return 0
-    echo "$raw" | grep -o '"number":[0-9]*' | head -1 | cut -d: -f2
-}
-
-# Download a new QEMU binary and safely replace the existing one.
-# Args: $1 = download URL, $2 = remote build number, $3 = arch
-# Returns: 0 on success, 1 on failure (caller should continue with old binary)
-download_and_replace_community_qemu() {
-    local qemu_url="$1"
-    local remote_build="$2"
-    local arch="$3"
-    local manifest="${QEMU_BIN_FILE}.manifest"
-
-    # ── flock: prevent concurrent updates ──
-    local lock_file="${QEMU_BIN_FILE}.update.lock"
-    exec 200>"$lock_file"
-    if ! flock -n 200; then
-        warn "Another QEMU binary update is in progress. Skipping."
-        exec 200>&-
-        return 1
-    fi
-
-    # ── Download to fixed partial path (supports resume) ──
-    local tmp_download="${QEMU_BIN_DIR}/.update-partial-${arch}"
-    local tmp_dir
-    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/qemu-update-XXXXXX")
-
-    info "Downloading QEMU binary (build #${remote_build})..."
-    verbose "  URL: $qemu_url"
-
-    if ! curl -fSL -C - -o "$tmp_download" "$qemu_url"; then
-        warn "Failed to download QEMU binary from: $qemu_url"
-        warn "Partial download kept at: $tmp_download (retry will resume)"
-        rm -rf "$tmp_dir"
-        flock -u 200 2>/dev/null; exec 200>&-
-        return 1
-    fi
-
-    # ── Extract / locate binary ──
-    local new_binary=""
-    local file_type
-    file_type=$(file -b "$tmp_download" 2>/dev/null || echo "")
-
-    if echo "$file_type" | grep -qi "gzip\|xz"; then
-        verbose "  Detected archive, extracting..."
-        tar xf "$tmp_download" -C "$tmp_dir/" --strip-components=1 2>/dev/null \
-            || tar xf "$tmp_download" -C "$tmp_dir/" 2>/dev/null
-        rm -f "$tmp_download"
-
-        for candidate in "$tmp_dir/$arch" "$tmp_dir/bin/$arch"; do
-            if [[ -f "$candidate" ]]; then
-                new_binary="$candidate"
-                break
-            fi
-        done
-
-        if [[ -z "$new_binary" ]]; then
-            warn "Could not find $arch in extracted archive."
-            rm -rf "$tmp_dir"
-            flock -u 200 2>/dev/null; exec 200>&-
-            return 1
-        fi
-    else
-        new_binary="$tmp_download"
-    fi
-
-    # ── Verify new binary ──
-    chmod +x "$new_binary"
-    if ! [[ -x "$new_binary" ]]; then
-        warn "Downloaded file is not executable."
-        rm -rf "$tmp_dir"
-        flock -u 200 2>/dev/null; exec 200>&-
-        return 1
-    fi
-
-    local new_sha256
-    new_sha256=$(sha256sum "$new_binary" | awk '{print $1}')
-
-    # ── Backup old binary ──
-    local old_build
-    old_build=$(grep '^build_number=' "$manifest" 2>/dev/null | cut -d= -f2)
-    local bak_suffix="${old_build:-unknown}"
-    local bak_file="${QEMU_BIN_FILE}-${bak_suffix}.bak"
-
-    info "Backing up current QEMU binary (build #${bak_suffix})..."
-    cp "$QEMU_BIN_FILE" "$bak_file"
-
-    # ── Replace ──
-    if ! mv "$new_binary" "$QEMU_BIN_FILE"; then
-        warn "Failed to replace QEMU binary."
-        if [[ -f "$bak_file" ]]; then
-            mv "$bak_file" "$QEMU_BIN_FILE"
-        fi
-        rm -rf "$tmp_dir"
-        flock -u 200 2>/dev/null; exec 200>&-
-        return 1
-    fi
-    chmod +x "$QEMU_BIN_FILE"
-
-    # ── Update manifest ──
-    local label
-    label=$(read_source_label)
-    write_qemu_binary_manifest "$label" "$arch" "url" "$qemu_url" "$new_sha256" "$remote_build"
-
-    # ── Cleanup ──
-    rm -rf "$tmp_dir"
-    rm -f "$bak_file"
-    flock -u 200 2>/dev/null; exec 200>&-
-
-    info "QEMU binary updated to build #${remote_build}."
-    verbose "  SHA256: $new_sha256"
-    return 0
-}
-
-# Check if a newer QEMU binary is available on Jenkins.
-# If update available and interactive, prompt user to update.
-# Non-interactive: notify only.
-# On any failure: silently continue with existing binary.
-check_jenkins_update() {
-    local manifest="${QEMU_BIN_FILE}.manifest"
-
-    # ── Guard: manifest must exist ──
-    [[ -f "$manifest" ]] || return 0
-
-    # ── Guard: build_number must be present ──
-    local local_build
-    local_build=$(grep '^build_number=' "$manifest" 2>/dev/null | cut -d= -f2)
-    [[ -z "$local_build" ]] && return 0
-
-    # ── Guard: URL must be Jenkins ──
-    local manifest_url
-    manifest_url=$(grep '^url=' "$manifest" 2>/dev/null | cut -d= -f2-)
-    [[ "$manifest_url" != *"jenkins.openbmc.org"* ]] && return 0
-
-    # ── Guard: extract job URL ──
-    local job_url
-    job_url=$(echo "$manifest_url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||')
-
-    # ── Query Jenkins ──
-    local remote_build
-    remote_build=$(query_jenkins_build_number "$job_url")
-    [[ -z "$remote_build" ]] && return 0  # Jenkins unreachable
-
-    # ── Same version? ──
-    if [[ "$remote_build" == "$local_build" ]]; then
-        verbose "QEMU binary is up to date (build #${local_build})."
-        return 0
-    fi
-
-    # ── Update available ──
-    info "QEMU binary update available: build #${local_build} → #${remote_build}"
-
-    # ── Non-interactive: notify and skip ──
-    if [[ ! -t 0 ]]; then
-        info "Update skipped: non-interactive mode. Re-run in a terminal to update."
-        return 0
-    fi
-
-    # ── Interactive confirmation ──
-    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
-    echo ""
-    print_confirm_banner "update community QEMU binary" "build #${local_build} → #${remote_build}"
-    while true; do
-        local confirm
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm update, (N/n) to cancel: ")" confirm; then
-            error "Unable to read confirmation from stdin."
-            return 0
-        fi
-        case "$confirm" in
-            [yY])
-                echo ""
-                if download_and_replace_community_qemu "$manifest_url" "$remote_build" "$arch"; then
-                    return 0
-                else
-                    warn "QEMU binary update failed. Continuing with existing binary."
-                    return 0
-                fi
-                ;;
-            [nN])
-                warn "Update cancelled by user."
-                return 0
-                ;;
-            *)
-                warn "Invalid input. Please type Y or N."
-                ;;
-        esac
-    done
-}
-
-ensure_qemu_binary_community() {
-    derive_qemu_paths
-
-    # Already downloaded and executable?
-    if [[ -x "$QEMU_BIN_FILE" ]]; then
-        verbose "QEMU binary already exists: $QEMU_BIN_FILE"
-        check_jenkins_update
-        return 0
-    fi
-
-    local label
-    label=$(read_source_label)
-    mkdir -p "$QEMU_BIN_DIR"
-
-    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
-    local qemu_url=""
-
-    if [[ -n "${OB_QEMU_BINARY_URL:-}" ]]; then
-        qemu_url="$OB_QEMU_BINARY_URL"
-        write_qemu_url_config "$label" "$arch" "$qemu_url"
-    else
-        qemu_url="$(read_qemu_url_config "$label" "$arch")"
-    fi
-
-    if [[ -z "$qemu_url" ]]; then
-        if [[ "$label" == "community" && "$arch" == "qemu-system-arm" ]]; then
-            qemu_url="https://jenkins.openbmc.org/job/latest-qemu-x86/lastSuccessfulBuild/artifact/qemu/build/qemu-system-arm"
-            write_qemu_url_config "$label" "$arch" "$qemu_url"
-            info "Using OpenBMC Jenkins default QEMU URL (recorded in $QEMU_URL_CONFIG_FILE)"
-        else
-            if [[ "$label" == "community" && "$arch" == "qemu-system-aarch64" ]]; then
-                info "Community source provides no aarch64 QEMU binary."
-                info "Provide a custom download URL below, or press Enter / Ctrl-C to abort."
-            fi
-
-            derive_qemu_url_config_path
-            if [[ ! -t 0 ]]; then
-                error "QEMU binary URL not configured for '${label}.${arch}'."
-                error "Set OB_QEMU_BINARY_URL, or add a line '${label}.${arch}=<url>' to:"
-                error "  $QEMU_URL_CONFIG_FILE"
-                exit 1
-            fi
-
-            local input_url=""
-            read -r -p "$(echo -e "${PROMPT_PREFIX} Enter QEMU binary URL for ${label}.${arch}: ")" input_url || true
-            input_url="$(trim_whitespace "$input_url")"
-            if [[ -z "$input_url" ]]; then
-                info "No URL provided — aborting QEMU binary setup."
-                exit 0
-            fi
-            if [[ ! "$input_url" =~ ^https?:// ]]; then
-                error "Invalid URL (must start with http:// or https://): $input_url"
-                exit 1
-            fi
-
-            qemu_url="$input_url"
-            write_qemu_url_config "$label" "$arch" "$qemu_url"
-        fi
-    fi
-
-    info "Downloading QEMU binary..."
-    verbose "  URL: $qemu_url"
-
-    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
-    local tmp_download="${QEMU_BIN_DIR}/.partial-${arch}"
-
-    if ! curl -fSL -C - -o "$tmp_download" "$qemu_url"; then
-        error "Failed to download QEMU binary from: $qemu_url"
-        error "Partial download kept at: $tmp_download (re-run to resume)"
-        exit 1
-    fi
-
-    # Detect file type: tarball or single binary
-    local file_type
-    file_type=$(file -b "$tmp_download" 2>/dev/null || echo "")
-
-    if echo "$file_type" | grep -qi "gzip\|xz"; then
-        # Tarball — extract
-        verbose "  Detected archive, extracting..."
-        tar xf "$tmp_download" -C "$QEMU_BIN_DIR/" --strip-components=1 2>/dev/null \
-            || tar xf "$tmp_download" -C "$QEMU_BIN_DIR/" 2>/dev/null
-        rm -f "$tmp_download"
-
-        local found_bin=""
-        for candidate in "$QEMU_BIN_DIR/$arch" "$QEMU_BIN_DIR/bin/$arch"; do
-            if [[ -f "$candidate" ]]; then
-                found_bin="$candidate"
-                break
-            fi
-        done
-
-        if [[ -z "$found_bin" ]]; then
-            error "Could not find $arch in extracted archive."
-            exit 1
-        fi
-
-        if [[ "$found_bin" != "$QEMU_BIN_FILE" ]]; then
-            mv "$found_bin" "$QEMU_BIN_FILE"
-        fi
-        chmod +x "$QEMU_BIN_FILE"
-    else
-        # Single binary
-        mv "$tmp_download" "$QEMU_BIN_FILE"
-        chmod +x "$QEMU_BIN_FILE"
-    fi
-
-    local sha256=""
-    sha256=$(sha256sum "$QEMU_BIN_FILE" | awk '{print $1}')
-
-    # Query Jenkins for build number (community source only)
-    local build_number=""
-    if [[ "$qemu_url" == *"jenkins.openbmc.org"* ]]; then
-        local job_url
-        job_url=$(echo "$qemu_url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||')
-        build_number=$(query_jenkins_build_number "$job_url")
-    fi
-
-    write_qemu_binary_manifest "$label" "$arch" "url" "$qemu_url" "$sha256" "$build_number"
-
-    info "QEMU binary ready: $QEMU_BIN_FILE"
-    verbose "  SHA256: $sha256"
-    if [[ -n "$build_number" ]]; then
-        verbose "  Build: #$build_number"
-    fi
-}
-
-# Dispatcher: route to community (URL download) or custom (local copy) setup
-ensure_qemu_binary() {
-    local label
-    label=$(read_source_label)
-    if [[ "$label" == "community" ]]; then
-        ensure_qemu_binary_community
-    else
-        ensure_qemu_binary_custom
-    fi
-}
-
-# ──────────────────────────────────────────────
-# Custom QEMU Binary Setup (local path copy)
-# ──────────────────────────────────────────────
-
-ensure_qemu_binary_custom() {
-    derive_qemu_paths
-
-    # Already present and executable?
-    if [[ -x "$QEMU_BIN_FILE" ]]; then
-        verbose "QEMU binary already exists: $QEMU_BIN_FILE"
-        return 0
-    fi
-
-    # Need interactive terminal for prompts
-    if [[ ! -t 0 ]]; then
-        error "QEMU binary not found at $QEMU_BIN_FILE"
-        error "Run 'ob start-qemu $MACHINE' in an interactive terminal to set up the binary."
-        exit 1
-    fi
-
-    mkdir -p "$QEMU_BIN_DIR"
-
-    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
-
-    # --- Step 1: QEMU binary ---
-    echo ""
-    info "QEMU binary for custom source not found."
-    echo ""
-
-    local input_binary=""
-    local resolved_binary_path=""
-    while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter absolute path to QEMU binary ($arch): ")" input_binary; then
-            error "Unable to read input."
-            exit 1
-        fi
-        input_binary=$(trim_whitespace "$input_binary")
-
-        if [[ -z "$input_binary" ]]; then
-            error "QEMU binary path cannot be empty."
-            continue
-        fi
-
-        if [[ "$input_binary" == -* ]]; then
-            error "QEMU binary path must be a filesystem path, not an option: $input_binary"
-            continue
-        fi
-
-        # Validate: must be absolute path
-        if [[ "$input_binary" != /* ]]; then
-            error "Must be an absolute path (starting with /). Got: $input_binary"
-            continue
-        fi
-
-        resolved_binary_path="$input_binary"
-        if [[ -d "$input_binary" ]]; then
-            resolved_binary_path="${input_binary%/}/$arch"
-            if [[ ! -f "$resolved_binary_path" ]]; then
-                error "Directory does not contain $arch: $input_binary"
-                continue
-            fi
-        elif [[ ! -f "$input_binary" ]]; then
-            error "File not found: $input_binary"
-            continue
-        fi
-
-        break
-    done
-
-    cp "$resolved_binary_path" "$QEMU_BIN_FILE"
-    chmod +x "$QEMU_BIN_FILE"
-    info "QEMU binary copied: $QEMU_BIN_FILE"
-
-    local input_pcbios=""
-    local resolved_pcbios_path=""
-    local target_pcbios="$QEMU_BIN_DIR/pc-bios"
-    if [[ "$SOC_TYPE" == "ast2700" ]]; then
-        echo ""
-
-        while true; do
-            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter absolute path to pc-bios directory: ")" input_pcbios; then
-                error "Unable to read input."
-                exit 1
-            fi
-            input_pcbios=$(trim_whitespace "$input_pcbios")
-
-            if [[ -z "$input_pcbios" ]]; then
-                error "pc-bios directory path cannot be empty."
-                continue
-            fi
-
-            if [[ "$input_pcbios" == -* ]]; then
-                error "pc-bios directory path must be a filesystem path, not an option: $input_pcbios"
-                continue
-            fi
-
-            if [[ "$input_pcbios" != /* ]]; then
-                error "Must be an absolute path (starting with /). Got: $input_pcbios"
-                continue
-            fi
-
-            if [[ ! -d "$input_pcbios" ]]; then
-                error "Directory not found: $input_pcbios"
-                continue
-            fi
-
-            resolved_pcbios_path="$input_pcbios"
-            if [[ ! -f "$resolved_pcbios_path/ast27x0_bootrom.bin" ]]; then
-                if [[ -f "$resolved_pcbios_path/pc-bios/ast27x0_bootrom.bin" ]]; then
-                    resolved_pcbios_path="$resolved_pcbios_path/pc-bios"
-                else
-                    error "Directory does not contain ast27x0_bootrom.bin: $input_pcbios"
-                    error "Provide the pc-bios directory itself, or a QEMU root directory that contains pc-bios/."
-                    continue
-                fi
-            fi
-
-            break
-        done
-
-        if [[ -d "$target_pcbios" ]]; then
-            rm -rf "$target_pcbios"
-        fi
-        cp -r "$resolved_pcbios_path" "$target_pcbios"
-        info "pc-bios directory copied: $target_pcbios"
-    elif [[ -d "$target_pcbios" ]]; then
-        verbose "Keeping existing pc-bios directory for non-AST2700 machine: $target_pcbios"
-    fi
-
-    local sha256=""
-    sha256=$(sha256sum "$QEMU_BIN_FILE" | awk '{print $1}')
-
-    write_qemu_binary_manifest "custom" "$arch" "binary_source" "$resolved_binary_path" "$sha256"
-    if [[ -n "$resolved_pcbios_path" ]]; then
-        write_qemu_pcbios_manifest "custom" "$resolved_pcbios_path"
-    fi
-
-    info "QEMU binary setup complete."
-    verbose "  Binary : $QEMU_BIN_FILE"
-    verbose "  SHA256 : $sha256"
-}
-
-# ──────────────────────────────────────────────
-# AST2700 Bootloader File Detection
-# ──────────────────────────────────────────────
-
-find_ast2700_bootloaders() {
-    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
-
-    if [[ ! -d "$deploy_dir" ]]; then
-        error "Deploy directory not found: $deploy_dir"
-        error "Run 'ob build' for machine '$MACHINE' first."
-        exit 1
-    fi
-
-    BOOTLOADER_UBOOT_NODTB="$deploy_dir/u-boot-nodtb.bin"
-    BOOTLOADER_UBOOT_DTB="$deploy_dir/u-boot.dtb"
-    BOOTLOADER_BL31="$deploy_dir/bl31.bin"
-    BOOTLOADER_OPTEE="$deploy_dir/optee/tee-raw.bin"
-
-    # Validate each file
-    local -a missing=()
-    for desc_file in \
-        "u-boot-nodtb.bin:$BOOTLOADER_UBOOT_NODTB" \
-        "u-boot.dtb:$BOOTLOADER_UBOOT_DTB" \
-        "bl31.bin:$BOOTLOADER_BL31" \
-        "optee/tee-raw.bin:$BOOTLOADER_OPTEE"
-    do
-        local desc="${desc_file%%:*}"
-        local fpath="${desc_file#*:}"
-        if [[ ! -f "$fpath" ]]; then
-            missing+=("$desc ($fpath)")
-        fi
-    done
-
-    if [[ ${#missing[@]} -gt 0 ]]; then
-        error "AST2700 bootloader files not found in deploy directory:"
-        for m in "${missing[@]}"; do
-            error "  Missing: $m"
-        done
-        error "Ensure 'ob build' completed successfully for '$MACHINE'."
-        exit 1
-    fi
-
-    # Get u-boot-nodtb.bin size for DTB load offset calculation
-    BOOTLOADER_UBOOT_SIZE=$(stat --format=%s -L "$BOOTLOADER_UBOOT_NODTB" 2>/dev/null || echo "0")
-
-    verbose "AST2700 bootloaders:"
-    verbose "  u-boot-nodtb.bin : $BOOTLOADER_UBOOT_NODTB ($BOOTLOADER_UBOOT_SIZE bytes)"
-    verbose "  u-boot.dtb       : $BOOTLOADER_UBOOT_DTB"
-    verbose "  bl31.bin         : $BOOTLOADER_BL31"
-    verbose "  tee-raw.bin      : $BOOTLOADER_OPTEE"
-}
-
-# ──────────────────────────────────────────────
-# SoC-specific QEMU Command Builder
-# ──────────────────────────────────────────────
-
-build_qemu_cmd() {
-    local image_file="$1"
-    local ssh_port="$2"
-    local redfish_port="$3"
-    local ipmi_port="$4"
-    local http_port="$5"
-    local serial_log="$6"
-
-    # Port forwarding string
-    local hostfwd_args=""
-    hostfwd_args+="hostfwd=tcp::${ssh_port}-:22,"
-    hostfwd_args+="hostfwd=tcp::${redfish_port}-:443,"
-    hostfwd_args+="hostfwd=udp::${ipmi_port}-:623"
-    if [[ -n "$http_port" ]]; then
-        hostfwd_args+=",hostfwd=tcp::${http_port}-:80"
-    fi
-
-    # Start building command array
-    QEMU_CMD=(
-        "$QEMU_BIN_FILE"
-        "-machine" "$QB_MACHINE_NAME"
-    )
-
-    # SoC-specific parameters
-    if [[ "$SOC_TYPE" == "ast2700" ]]; then
-        find_ast2700_bootloaders
-        QEMU_CMD+=(
-            "-device" "loader,force-raw=on,addr=0x400000000,file=$BOOTLOADER_UBOOT_NODTB"
-            "-device" "loader,force-raw=on,addr=$((0x400000000 + BOOTLOADER_UBOOT_SIZE)),file=$BOOTLOADER_UBOOT_DTB"
-            "-device" "loader,force-raw=on,addr=0x430000000,file=$BOOTLOADER_BL31"
-            "-device" "loader,force-raw=on,addr=0x430080000,file=$BOOTLOADER_OPTEE"
-            "-device" "loader,cpu-num=0,addr=0x430000000"
-            "-device" "loader,cpu-num=1,addr=0x430000000"
-            "-device" "loader,cpu-num=2,addr=0x430000000"
-            "-device" "loader,cpu-num=3,addr=0x430000000"
-            "-smp" "4"
-        )
-    fi
-    # AST2600: bootloader is embedded in MTD image, no extra params needed
-
-    # QB_MEM (-m flag): include only if resolved from bitbake
-    if [[ -n "$QB_MEM_SIZE_FLAG" ]]; then
-        local -a qemu_mem_args=()
-        read -r -a qemu_mem_args <<< "$QB_MEM_SIZE_FLAG"
-        QEMU_CMD+=("${qemu_mem_args[@]}")
-    fi
-
-    local serial_log="$6"
-    local serial_sock="$7"
-
-    # Common tail: drive, network, serial, display
-    QEMU_CMD+=(
-        "-drive" "file=$image_file,format=raw,if=mtd"
-        "-net" "nic,netdev=net0"
-        "-netdev" "user,id=net0,$hostfwd_args"
-        "-chardev" "socket,id=serial0,path=$serial_sock,server=on,wait=off,logfile=$serial_log"
-        "-serial" "chardev:serial0"
-        "-serial" "null"
-        "-monitor" "none"
-        "-display" "none"
-    )
-    if [[ -d "$QEMU_PCBIOS_DIR" ]]; then
-        QEMU_CMD+=("-L" "$QEMU_PCBIOS_DIR")
-    fi
-    QEMU_CMD+=("-daemonize")
-}
-#
-# QEMU searches for firmware files in this order (with -L <dir>):
-#   1. <cwd>/<name>
-#   2. <dir>/<name>                        (the -L path)
-#   3. <QEMU_BIN_DIR>/../share/qemu-firmware/<name>
-#   4. <QEMU_BIN_DIR>/../share/qemu/<name>
-#
-# Strategy:
-# Ensure QEMU firmware directory (pc-bios) is available.
-# For custom QEMU, the user provides pc-bios/ during binary setup.
-# For community QEMU, pc-bios/ may or may not exist — QEMU will fall back
-# to its built-in firmware paths.
-ensure_qemu_firmware() {
-    QEMU_PCBIOS_DIR="$QEMU_BIN_DIR/pc-bios"
-
-    if [[ "$SOC_TYPE" != "ast2700" ]]; then
-        return 0
-    fi
-
-    if [[ ! -d "$QEMU_PCBIOS_DIR" ]]; then
-        warn "QEMU pc-bios directory not found: $QEMU_PCBIOS_DIR"
-        warn "Custom QEMU requires pc-bios/. Ensure it was provided during binary setup."
-        return 0
-    fi
-
-    if [[ ! -f "$QEMU_PCBIOS_DIR/ast27x0_bootrom.bin" ]]; then
-        error "AST2700 bootrom not found in pc-bios directory: $QEMU_PCBIOS_DIR/ast27x0_bootrom.bin"
-        error "Provide the pc-bios directory itself, or a QEMU root directory that contains pc-bios/."
-        exit 1
-    fi
-}
-
-resolve_qb_vars() {
-    # Validate build environment exists
-    if [[ ! -d "$BUILD_DIR" ]]; then
-        error "Build directory not found: $BUILD_DIR"
-        error "Run 'ob init $MACHINE' first."
-        exit 1
-    fi
-
-    if [[ ! -f "$OPENBMC_DIR/setup" ]]; then
-        error "OpenBMC setup script not found: $OPENBMC_DIR/setup"
-        exit 1
-    fi
-
-    info "Resolving QEMU variables via BitBake (this takes a few seconds)..."
-
-    local bitbake_output
-    bitbake_output=$(cd "$OPENBMC_DIR" && set +u; source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null && bitbake -e 2>/dev/null)
-
-    if [[ -z "$bitbake_output" ]]; then
-        error "Failed to run 'bitbake -e' for machine '$MACHINE'."
-        error "Ensure the build environment is healthy (try 'ob init $MACHINE' if unsure)."
-        exit 1
-    fi
-
-    QB_MACHINE_NAME=""
-    QB_MEM_SIZE_FLAG=""
-    QB_SYSTEM_NAME=""
-
-    # Extract QB_MACHINE
-    local qb_machine_raw
-    qb_machine_raw=$(echo "$bitbake_output" | grep '^QB_MACHINE=' | head -1 | cut -d= -f2-)
-    qb_machine_raw=$(trim_whitespace "$qb_machine_raw")
-    # Strip quotes
-    qb_machine_raw="${qb_machine_raw#\"}"
-    qb_machine_raw="${qb_machine_raw%\"}"
-    qb_machine_raw="${qb_machine_raw#\'}"
-    qb_machine_raw="${qb_machine_raw%\'}"
-
-    if [[ -z "$qb_machine_raw" ]]; then
-        warn "QB_MACHINE not defined for machine '$MACHINE' — will derive from machine name or SoC fallback."
-        QB_MACHINE_NAME=""
-    else
-        # Extract the machine name from "-machine <name>"
-        QB_MACHINE_NAME=$(echo "$qb_machine_raw" | sed 's/^-machine[[:space:]]*//' | awk '{print $1}')
-        if [[ -z "$QB_MACHINE_NAME" ]]; then
-            warn "Could not parse QEMU machine name from QB_MACHINE='$qb_machine_raw' — will use fallback."
-            QB_MACHINE_NAME=""
-        fi
-    fi
-
-    # Extract QB_MEM
-    local qb_mem_raw
-    qb_mem_raw=$(echo "$bitbake_output" | grep '^QB_MEM=' | head -1 | cut -d= -f2-)
-    qb_mem_raw=$(trim_whitespace "$qb_mem_raw")
-    qb_mem_raw="${qb_mem_raw#\"}"
-    qb_mem_raw="${qb_mem_raw%\"}"
-    qb_mem_raw="${qb_mem_raw#\'}"
-    qb_mem_raw="${qb_mem_raw%\'}"
-
-    if [[ -z "$qb_mem_raw" ]]; then
-        verbose "QB_MEM not defined for machine '$MACHINE' — QEMU will use default memory."
-        QB_MEM_SIZE_FLAG=""
-    else
-        QB_MEM_SIZE_FLAG="$qb_mem_raw"
-    fi
-
-    # Extract QB_SYSTEM_NAME (qemu-system-arm | qemu-system-aarch64)
-    local qb_system_raw
-    qb_system_raw=$(echo "$bitbake_output" | grep '^QB_SYSTEM_NAME=' | head -1 | cut -d= -f2-)
-    qb_system_raw=$(trim_whitespace "$qb_system_raw")
-    qb_system_raw="${qb_system_raw#\"}"
-    qb_system_raw="${qb_system_raw%\"}"
-    qb_system_raw="${qb_system_raw#\'}"
-    qb_system_raw="${qb_system_raw%\'}"
-
-    if [[ -z "$qb_system_raw" ]]; then
-        warn "QB_SYSTEM_NAME not defined for machine '$MACHINE' — will detect from SoC fallback."
-        QB_SYSTEM_NAME=""
-    else
-        QB_SYSTEM_NAME="$qb_system_raw"
-    fi
-
-    verbose "  QB_MACHINE → -machine $QB_MACHINE_NAME"
-    verbose "  QB_MEM → $QB_MEM_SIZE_FLAG"
-    verbose "  QB_SYSTEM_NAME → $QB_SYSTEM_NAME"
-}
-
-resolve_machine_conf_include() {
-    local current_file="$1"
-    local include_spec="$2"
-
-    if [[ -z "$include_spec" ]]; then
-        return 1
-    fi
-
-    if [[ "$include_spec" == /* && -f "$include_spec" ]]; then
-        echo "$include_spec"
-        return 0
-    fi
-
-    local layer_root="${current_file%%/conf/*}"
-    if [[ -n "$layer_root" && -f "$layer_root/$include_spec" ]]; then
-        echo "$layer_root/$include_spec"
-        return 0
-    fi
-
-    find "$OPENBMC_DIR" -path "*/$include_spec" -type f 2>/dev/null | head -1
-}
-
-machine_conf_chain_contains() {
-    local start_file="$1"
-    local pattern="$2"
-
-    [[ -f "$start_file" ]] || return 1
-
-    local -a queue=("$start_file")
-    local -a seen=()
-
-    while [[ ${#queue[@]} -gt 0 ]]; do
-        local current="${queue[0]}"
-        queue=("${queue[@]:1}")
-
-        [[ -f "$current" ]] || continue
-
-        local canonical=""
-        canonical=$(readlink -f "$current" 2>/dev/null || echo "$current")
-
-        local visited=0
-        local seen_file
-        for seen_file in "${seen[@]}"; do
-            if [[ "$seen_file" == "$canonical" ]]; then
-                visited=1
-                break
-            fi
-        done
-        if [[ "$visited" -eq 1 ]]; then
-            continue
-        fi
-        seen+=("$canonical")
-
-        if grep -Eq "$pattern" "$current" 2>/dev/null; then
-            return 0
-        fi
-
-        while IFS= read -r include_spec; do
-            local resolved_include=""
-            resolved_include=$(resolve_machine_conf_include "$current" "$include_spec")
-            if [[ -n "$resolved_include" ]]; then
-                queue+=("$resolved_include")
-            fi
-        done < <(
-            sed -nE 's/^[[:space:]]*(require|include)[[:space:]]+([^[:space:]#]+).*$/\2/p' "$current" 2>/dev/null
-        )
-    done
-
-    return 1
-}
-
-# ──────────────────────────────────────────────
-# SoC Detection (AST2700 / AST2600)
-# ──────────────────────────────────────────────
-
-detect_soc_type() {
-    # 1. If QB_SYSTEM_NAME already set by bitbake, infer directly
-    if [[ -n "$QB_SYSTEM_NAME" ]]; then
-        case "$QB_SYSTEM_NAME" in
-            qemu-system-aarch64) SOC_TYPE="ast2700" ;;
-            qemu-system-arm)     SOC_TYPE="ast2600" ;;
-            *)
-                warn "Unknown QB_SYSTEM_NAME '$QB_SYSTEM_NAME' — cannot infer SoC type."
-                SOC_TYPE=""
-                ;;
-        esac
-        if [[ -n "$SOC_TYPE" ]]; then
-            verbose "SoC detected from QB_SYSTEM_NAME: $SOC_TYPE"
-            return 0
-        fi
-    fi
-
-    # 2. Deploy directory file detection
-    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
-    local deploy_hint=""
-    if [[ -d "$deploy_dir" ]]; then
-        if [[ -f "$deploy_dir/bl31-ast2700.bin" ]]; then
-            deploy_hint="ast2700"
-        else
-            deploy_hint="ast2600"
-        fi
-    fi
-    verbose "SoC deploy hint: ${deploy_hint:-<none>} (from $deploy_dir)"
-
-    # 3. Machine conf include chain detection
-    local conf_hint=""
-    local machine_conf=""
-    machine_conf=$(find "$OPENBMC_DIR" -path "*/conf/machine/$MACHINE.conf" -type f 2>/dev/null | head -1 || true)
-
-    if [[ -n "$machine_conf" && -f "$machine_conf" ]]; then
-        if machine_conf_chain_contains "$machine_conf" 'ast2700-sdk\.inc|ast2700[^[:space:]#]*\.inc'; then
-            conf_hint="ast2700"
-        elif machine_conf_chain_contains "$machine_conf" 'ast2600[^[:space:]#]*\.inc|ast2600-default'; then
-            conf_hint="ast2600"
-        fi
-    fi
-    verbose "SoC conf hint: ${conf_hint:-<none>} (from machine conf include chain)"
-
-    # 4. Cross-validate
-    if [[ -n "$deploy_hint" && -n "$conf_hint" && "$deploy_hint" != "$conf_hint" ]]; then
-        error "SoC type conflict: deploy dir says '$deploy_hint', machine conf says '$conf_hint'"
-        error "Resolve the mismatch before continuing."
-        exit 1
-    fi
-
-    # 5. Determine SOC_TYPE
-    if [[ -n "$deploy_hint" ]]; then
-        SOC_TYPE="$deploy_hint"
-    elif [[ -n "$conf_hint" ]]; then
-        SOC_TYPE="$conf_hint"
-    else
-        error "Cannot determine SoC type for machine '$MACHINE'."
-        error "Neither QB_SYSTEM_NAME, deploy artifacts, nor machine conf provide SoC information."
-        exit 1
-    fi
-
-    # 6. Backfill QB_SYSTEM_NAME if still empty
-    if [[ -z "$QB_SYSTEM_NAME" ]]; then
-        case "$SOC_TYPE" in
-            ast2700) QB_SYSTEM_NAME="qemu-system-aarch64" ;;
-            ast2600) QB_SYSTEM_NAME="qemu-system-arm" ;;
-        esac
-        verbose "Backfilled QB_SYSTEM_NAME=$QB_SYSTEM_NAME from SoC detection"
-    fi
-
-    info "SoC detected: $SOC_TYPE (arch: $QB_SYSTEM_NAME)"
-}
-
-# ──────────────────────────────────────────────
-# QEMU Machine Name Derivation
-# ──────────────────────────────────────────────
-
-derive_qemu_machine_name() {
-    # If QB_MACHINE_NAME already resolved from bitbake, use it directly
-    if [[ -n "$QB_MACHINE_NAME" ]]; then
-        verbose "QEMU machine name from QB_MACHINE: $QB_MACHINE_NAME"
-        return 0
-    fi
-
-    # Fallback: extract first segment before '-' and append '-bmc'
-    # e.g. b865g8-bytedance → b865g8-bmc, k709g8-bytedance → k709g8-bmc
-    local prefix="${MACHINE%%-*}"
-    if [[ "$prefix" == "$MACHINE" ]]; then
-        error "Cannot derive QEMU machine name from '$MACHINE' (no '-' separator)."
-        error "Define QB_MACHINE in your machine conf, or use a machine name with 'xxx-yyy' format."
-        exit 1
-    fi
-
-    QB_MACHINE_NAME="${prefix}-bmc"
-    info "QEMU machine name derived: $QB_MACHINE_NAME (from machine '$MACHINE')"
-}
-
-check_ports_available() {
-    local -a port_args=("$@")
-    local -a conflicts=()
-
-    local i
-    for (( i=0; i<${#port_args[@]}; i+=2 )); do
-        local proto="${port_args[$i]}"   # "tcp" or "udp"
-        local port="${port_args[$((i+1))]}"
-
-        local occupants=""
-        if [[ "$proto" == "tcp" ]]; then
-            occupants=$(ss -tlnpH "sport = :$port" 2>/dev/null | grep -v "^State" || true)
-        else
-            occupants=$(ss -ulnpH "sport = :$port" 2>/dev/null | grep -v "^State" || true)
-        fi
-
-        if [[ -n "$occupants" ]]; then
-            local pid_info
-            pid_info=$(echo "$occupants" | head -1 | grep -oP 'pid=\K[0-9]+' | head -1 || echo "?")
-            conflicts+=("$proto $port — used by process $pid_info")
-        fi
-    done
-
-    if [[ ${#conflicts[@]} -gt 0 ]]; then
-        echo ""
-        error "Port(s) already in use:"
-        local c
-        for c in "${conflicts[@]}"; do
-            echo -e "  ${RED}$c${NC}"
-        done
-        echo ""
-        echo "  Set a different port:"
-        echo "    ob start-qemu $MACHINE --ssh-port <port> --redfish-port <port> --ipmi-port <port>"
-        echo "  Or export:"
-        echo "    export OB_QEMU_SSH_PORT=<port>"
-        echo "    export OB_QEMU_REDFISH_PORT=<port>"
-        echo "    export OB_QEMU_IPMI_PORT=<port>"
-        exit 1
-    fi
-}
-
-get_port_occupants() {
-    local proto="$1"
-    local port="$2"
-
-    if [[ "$proto" == "tcp" ]]; then
-        ss -tlnpH "sport = :$port" 2>/dev/null | grep -v "^State" || true
-    else
-        ss -ulnpH "sport = :$port" 2>/dev/null | grep -v "^State" || true
-    fi
-}
-
-prompt_for_available_port() {
-    local port_var_name="$1"
-    local service_label="$2"
-    local proto="$3"
-    shift 3
-
-    local -n port_ref="$port_var_name"
-    local -a reserved_ports=("$@")
-
-    while true; do
-        local reserved_port=""
-        local candidate
-        for candidate in "${reserved_ports[@]}"; do
-            if [[ -n "$candidate" && "$candidate" == "$port_ref" ]]; then
-                reserved_port="$candidate"
-                break
-            fi
-        done
-
-        local occupants=""
-        occupants=$(get_port_occupants "$proto" "$port_ref")
-
-        if [[ -z "$reserved_port" && -z "$occupants" ]]; then
-            return 0
-        fi
-
-        if [[ ! -t 0 ]]; then
-            return 1
-        fi
-
-        echo ""
-        if [[ -n "$reserved_port" ]]; then
-            warn "$service_label port $port_ref/$proto conflicts with another requested $proto port."
-        else
-            local pid_info
-            pid_info=$(echo "$occupants" | head -1 | grep -oP 'pid=\K[0-9]+' | head -1 || echo "?")
-            warn "$service_label port $port_ref/$proto is already in use by process $pid_info."
-        fi
-
-        local input_port=""
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter new $service_label $proto port: ")" input_port; then
-            error "Unable to read port from stdin."
-            exit 1
-        fi
-        input_port=$(trim_whitespace "$input_port")
-
-        if [[ -z "$input_port" ]]; then
-            error "$service_label port cannot be empty."
-            continue
-        fi
-
-        if [[ ! "$input_port" =~ ^[0-9]+$ ]]; then
-            error "$service_label port must be a number: $input_port"
-            continue
-        fi
-
-        if (( input_port < 1 || input_port > 65535 )); then
-            error "$service_label port must be between 1 and 65535: $input_port"
-            continue
-        fi
-
-        port_ref="$input_port"
-    done
-}
-
-resolve_qemu_ports_interactive() {
-    local -n ssh_ref="$1"
-    local -n redfish_ref="$2"
-    local -n ipmi_ref="$3"
-    local -n http_ref="$4"
-
-    if [[ ! -t 0 ]]; then
-        return 0
-    fi
-
-    if ! prompt_for_available_port ssh_ref "SSH" "tcp" "$redfish_ref" "$http_ref"; then
-        return 1
-    fi
-    if ! prompt_for_available_port redfish_ref "Redfish" "tcp" "$ssh_ref" "$http_ref"; then
-        return 1
-    fi
-    if ! prompt_for_available_port ipmi_ref "IPMI" "udp"; then
-        return 1
-    fi
-    if [[ -n "$http_ref" ]]; then
-        if ! prompt_for_available_port http_ref "HTTP" "tcp" "$ssh_ref" "$redfish_ref"; then
-            return 1
-        fi
-    fi
-
-    return 0
-}
-
-write_pid_file() {
-    mkdir -p "$QEMU_PIDS_DIR"
-    local ssh_p="${1:-}"
-    local redfish_p="${2:-}"
-    local ipmi_p="${3:-}"
-    local http_p="${4:-}"
-    local serial_log_p="${5:-}"
-
-    cat > "$QEMU_PID_FILE" <<PIDFILE_EOF
-pid=$!
-user=$(whoami)
-machine=$MACHINE
-binary=$QEMU_BIN_FILE
-started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-ssh_port=$ssh_p
-redfish_port=$redfish_p
-ipmi_port=$ipmi_p
-http_port=$http_p
-serial_log=$serial_log_p
-PIDFILE_EOF
-
-    verbose "PID file written: $QEMU_PID_FILE"
-}
-
-read_pid_file() {
-    if [[ ! -f "$QEMU_PID_FILE" ]]; then
-        return 1
-    fi
-
-    PIDFILE_PID=""
-    PIDFILE_USER=""
-    PIDFILE_MACHINE=""
-    PIDFILE_BINARY=""
-    PIDFILE_STARTED_AT=""
-    PIDFILE_SSH_PORT=""
-    PIDFILE_REDFISH_PORT=""
-    PIDFILE_IPMI_PORT=""
-    PIDFILE_HTTP_PORT=""
-    PIDFILE_SERIAL_LOG=""
-
-    while IFS='=' read -r key value; do
-        case "$key" in
-            pid)          PIDFILE_PID="$value" ;;
-            user)         PIDFILE_USER="$value" ;;
-            machine)      PIDFILE_MACHINE="$value" ;;
-            binary)       PIDFILE_BINARY="$value" ;;
-            started_at)   PIDFILE_STARTED_AT="$value" ;;
-            ssh_port)     PIDFILE_SSH_PORT="$value" ;;
-            redfish_port) PIDFILE_REDFISH_PORT="$value" ;;
-            ipmi_port)    PIDFILE_IPMI_PORT="$value" ;;
-            http_port)    PIDFILE_HTTP_PORT="$value" ;;
-            serial_log)   PIDFILE_SERIAL_LOG="$value" ;;
-        esac
-    done < "$QEMU_PID_FILE"
-
-    return 0
-}
-
-validate_pid() {
-    # Returns: 0=running and matches, 1=process exited, 2=PID recycled
-    local pid="$1"
-    local expected_binary="$2"
-    local expected_machine="$3"
-
-    if [[ ! -d "/proc/$pid" ]]; then
-        return 1  # Process exited
-    fi
-
-    local cmdline
-    cmdline=$(cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ' || true)
-
-    if [[ "$cmdline" != *"$expected_binary"* ]] || [[ "$cmdline" != *"$expected_machine"* ]]; then
-        return 2  # PID recycled — different process
-    fi
-
-    return 0  # Running and matches
-}
-
-# ──────────────────────────────────────────────
-# End QEMU Helper Functions
-# ──────────────────────────────────────────────
-
-is_valid_repo_url() {
-    local repo_url="$1"
-    [[ "$repo_url" =~ ^https?:// ]] || [[ "$repo_url" =~ ^ssh:// ]] || [[ "$repo_url" =~ ^git:// ]] || [[ "$repo_url" =~ ^git@ ]]
-}
-
-normalize_repo_url() {
-    local repo_url="$1"
-    local normalized="$repo_url"
-    local host=""
-    local path=""
-
-    normalized="${normalized#https://}"
-    normalized="${normalized#http://}"
-    normalized="${normalized#ssh://}"
-    normalized="${normalized#git://}"
-
-    if [[ "$normalized" =~ ^([^@]+)@([^:]+):(.+)$ ]]; then
-        host="${BASH_REMATCH[2]}"
-        path="${BASH_REMATCH[3]}"
-        if [[ "$path" =~ ^([0-9]+)/(.*)$ ]]; then
-            normalized="$host/${path#*/}"
-        else
-            normalized="$host/$path"
-        fi
-    elif [[ "$normalized" =~ ^([^@]+)@(.+)$ ]]; then
-        normalized="${BASH_REMATCH[2]}"
-    fi
-
-    if [[ "$normalized" =~ ^\[?([^]/:]+)\]?:(.+)$ ]]; then
-        host="${BASH_REMATCH[1]}"
-        path="${BASH_REMATCH[2]}"
-        if [[ "$path" =~ ^([0-9]+)/(.*)$ ]]; then
-            normalized="$host/${path#*/}"
-        else
-            normalized="$host/$path"
-        fi
-    fi
-
-    normalized="${normalized%/}"
-    normalized="${normalized%.git}"
-
-    if [[ "$normalized" =~ ^([^/]+)/(.*)$ ]]; then
-        local host="${BASH_REMATCH[1]}"
-        local path="${BASH_REMATCH[2]}"
-        host="${host,,}"
-        path="${path,,}"
-        normalized="$host/$path"
-    else
-        normalized="${normalized,,}"
-    fi
-
-    echo "$normalized"
-}
-
-derive_source_label() {
-    local normalized
-
-    normalized="$(normalize_repo_url "$OPENBMC_REPO_URL")"
-    if [[ "$normalized" == "github.com/openbmc/openbmc" ]]; then
-        SOURCE_LABEL="community"
-    else
-        SOURCE_LABEL="custom"
-    fi
-}
-
-write_source_lock() {
-    local normalized_source
-    local timestamp
-
-    normalized_source="$(normalize_repo_url "$OPENBMC_REPO_URL")"
-    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-    derive_source_label
-
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-        info "[DRY-RUN] Would write source lock to $SOURCE_LOCK_FILE"
-        info "[DRY-RUN]   normalized_source=$normalized_source"
-        info "[DRY-RUN]   origin_url=$OPENBMC_REPO_URL"
-        info "[DRY-RUN]   source_label=$SOURCE_LABEL"
-        return 0
-    fi
-
-    mkdir -p "$CONFIGS_DIR"
-
-    cat > "$SOURCE_LOCK_FILE" <<EOF
-# openbmc source lock — auto-generated by 'ob init', do not edit by hand
-normalized_source=$normalized_source
-origin_url=$OPENBMC_REPO_URL
-source_label=$SOURCE_LABEL
-machine_first_init=$MACHINE
-created_at=$timestamp
-EOF
-}
-
-ensure_bootstrap_local_conf() {
-    local local_conf="$BUILD_DIR/conf/local.conf"
-
-    if [[ ! -f "$local_conf" ]]; then
-        error "local.conf not found at $local_conf"
-        exit 1
-    fi
-
-    # Detect GitLab IP for recipes that use ${GITLAB_IP} in SRC_URI.
-    # Priority: (1) github-gitlab-url.sh (2) git remote origin URL (3) empty (skip)
-    local gitlab_ip=""
-    local _rt_script=""
-    local _remote_url=""
-    for _candidate in "$OPENBMC_DIR"/meta-*/git-mirror-url.sh \
-                      "$OPENBMC_DIR"/meta-*/github-gitlab-url.sh; do
-        if [[ -f "$_candidate" ]]; then _rt_script="$_candidate"; break; fi
-    done
-    if [[ -f "$_rt_script" ]]; then
-        gitlab_ip=$(grep -oP '^(GITLAB_IP|GIT_MIRROR_HOST)=["'"'"']?\K[^"'"'"'\s]+' "$_rt_script" 2>/dev/null | head -1 || true)
-    fi
-    if [[ -z "$gitlab_ip" && -f "$OPENBMC_DIR/.git/config" ]]; then
-        _remote_url=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
-        if [[ "$_remote_url" == git@* ]]; then
-            gitlab_ip=$(echo "$_remote_url" | sed -E 's/^git@([^:]+):.*/\1/')
-        elif [[ "$_remote_url" == http://* || "$_remote_url" == https://* ]]; then
-            gitlab_ip=$(echo "$_remote_url" | sed -E 's#^https?://([^/:]+).*#\1#')
-        fi
-    fi
-
-    # If the remote uses SSH, but recipes reference the host via protocol=https,
-    # configure git to rewrite HTTPS URLs to SSH automatically.
-    # This handles GitLab servers where HTTPS is unavailable or requires auth
-    # that isn't configured in recipes, while SSH key access works out of the box.
-    # Only set when missing — user can override manually if needed.
-    if [[ -n "$gitlab_ip" ]]; then
-        local _existing_rewrite=""
-        _existing_rewrite=$(git config --global --get "url.git@${gitlab_ip}:.insteadOf" 2>/dev/null || true)
-        if [[ -z "$_existing_rewrite" ]]; then
-            git config --global "url.git@${gitlab_ip}:.insteadOf" "https://${gitlab_ip}/"
-            info "Configured git insteadOf: https://${gitlab_ip}/ → git@${gitlab_ip} (SSH rewrite for recipe fetches)"
-        else
-            verbose "Git insteadOf for ${gitlab_ip} already configured: ${_existing_rewrite} → git@${gitlab_ip}:"
-        fi
-    fi
-
-    # Add include to local.conf if not already present.
-    # The .inc file (managed by generate_build_config) contains all ob init settings.
-    local include_line="include externalsrc-$MACHINE.inc"
-
-    if grep -qF "$include_line" "$local_conf"; then
-        verbose "Include line already exists in local.conf, skipping."
-    else
-        cp "$local_conf" "${local_conf}.bak.$(date +%Y%m%d%H%M%S)"
-        echo "" >> "$local_conf"
-        echo "$include_line" >> "$local_conf"
-        info "Added '$include_line' to local.conf"
-    fi
-
-    verbose "Ensured ob init local.conf settings in $local_conf"
-}
-
-read_lock_field() {
-    local key="$1"
-
-    if [[ ! -f "$SOURCE_LOCK_FILE" ]]; then
-        return 1
-    fi
-
-    local line
-    line=$(grep -E "^${key}=" "$SOURCE_LOCK_FILE" | head -n 1 || true)
-    if [[ -z "$line" ]]; then
-        return 1
-    fi
-
-    echo "${line#*=}"
-}
-
-verify_source() {
-    local lock_source=""
-    local current_origin=""
-    local current_source=""
-    local requested_url="$OPENBMC_REPO_URL"
-    local requested_source=""
-    local lock_label=""
-
-    if [[ ! -d "$OPENBMC_DIR/.git" ]]; then
-        return 0
-    fi
-
-    if [[ ! -f "$SOURCE_LOCK_FILE" ]]; then
-        current_origin=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
-        if [[ -n "$current_origin" ]]; then
-            OPENBMC_REPO_URL="$current_origin"
-            SOURCE_LABEL=""
-            write_source_lock
-            if [[ -n "$requested_url" ]]; then
-                requested_source=$(normalize_repo_url "$requested_url")
-                current_source=$(normalize_repo_url "$current_origin")
-                if [[ "$requested_source" != "$current_source" ]]; then
-                    error "OpenBMC main repository source conflict detected."
-                    error "  Current harness source: $current_source"
-                    error "  Requested source:       $requested_source"
-                    error "A harness may only bind to one OpenBMC main repository source."
-                    error "To use a different source, copy ob-harness and run ob init in the new copy."
-                    exit 1
-                fi
-            fi
-            OPENBMC_REPO_URL="$requested_url"
-        else
-            warn "OpenBMC main repository exists but has no origin remote; skipping source lock bootstrap."
-        fi
-        return 0
-    fi
-
-    lock_source=$(read_lock_field normalized_source || true)
-    lock_label=$(read_lock_field source_label || true)
-    current_origin=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
-
-    if [[ -n "$current_origin" ]]; then
-        current_source=$(normalize_repo_url "$current_origin")
-        if [[ -n "$lock_source" ]] && [[ "$current_source" != "$lock_source" ]]; then
-            error "OpenBMC main repository source does not match the lock file."
-            error "  Locked source:  $lock_source"
-            error "  Actual origin:   $current_source"
-            error "Existing openbmc origin and openbmc-source.lock have drifted, likely due to a manual change."
-            error "Please verify the main repository source before continuing. If you need a different source, use a separate harness copy."
-            exit 1
-        fi
-    else
-        warn "OpenBMC main repository has no origin remote; skipping lock vs origin verification."
-    fi
-
-    if [[ -n "$OPENBMC_REPO_URL" ]]; then
-        requested_source=$(normalize_repo_url "$OPENBMC_REPO_URL")
-        if [[ -n "$lock_source" ]] && [[ "$requested_source" != "$lock_source" ]]; then
-            error "OpenBMC main repository source conflict detected."
-            error "  Current harness source: $lock_source${lock_label:+  ($lock_label)}"
-            error "  Requested source:       $requested_source"
-            error "A harness may only bind to one OpenBMC main repository source."
-            error "To use a different source, copy ob-harness and run ob init in the new copy."
-            exit 1
-        fi
-    fi
-
-    return 0
-}
-
-# === ob status: Section 1 — Main Repository ===
-status_section_main_repo() {
-    step_header "OpenBMC Main Repository"
-
-    if [[ ! -d "$OPENBMC_DIR/.git" ]]; then
-        echo "  Status       : missing"
-        return 0
-    fi
-
-    # Source (origin URL + label)
-    local origin_url=""
-    local source_label=""
-    origin_url=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
-    if [[ -f "$SOURCE_LOCK_FILE" ]]; then
-        source_label=$(read_lock_field source_label 2>/dev/null || true)
-    fi
-    local source_display="${origin_url:-<no origin>}${source_label:+ ($source_label)}"
-
-    # Branch & commit
-    local branch=""
-    local commit_line=""
-    branch=$(git -C "$OPENBMC_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
-    commit_line=$(git -C "$OPENBMC_DIR" log --oneline -1 2>/dev/null || true)
-
-    # Upstream comparison (network, best-effort)
-    local upstream_display="⚠️ unreachable (skipped)"
-    if timeout 10 git -C "$OPENBMC_DIR" fetch origin --quiet 2>/dev/null; then
-        local ahead behind
-        ahead=$(git -C "$OPENBMC_DIR" rev-list --count "origin/${branch}..HEAD" 2>/dev/null || echo "0")
-        behind=$(git -C "$OPENBMC_DIR" rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo "0")
-        if [[ "$ahead" -eq 0 && "$behind" -eq 0 ]]; then
-            upstream_display="✅ up-to-date"
-        elif [[ "$behind" -gt 0 ]]; then
-            upstream_display="⬇️  behind ${behind}${ahead:+, ⬆️  ahead ${ahead}}"
-        else
-            upstream_display="⬆️  ahead ${ahead}"
-        fi
-    fi
-
-    # First init time
-    local first_init=""
-    if [[ -f "$SOURCE_LOCK_FILE" ]]; then
-        local raw_time
-        raw_time=$(read_lock_field created_at 2>/dev/null || true)
-        if [[ -n "$raw_time" ]]; then
-            # Format ISO to readable: 2026-06-06T17:13:41Z → 2026-06-06 17:13 UTC
-            first_init=$(format_timestamp "$raw_time")
-        fi
-    fi
-
-    echo "  Status       : present"
-    echo "  Source       : $source_display"
-    echo "  Local path   : $OPENBMC_DIR"
-    echo "  Branch       : ${branch:-<unknown>}"
-    echo "  Commit       : ${commit_line:-<unknown>}"
-    echo "  Upstream     : $upstream_display"
-    echo "  First init   : ${first_init:-<unknown>}"
-}
-
-# === ob status: Section 2 — Machines ===
-status_section_machines() {
-    step_header "Machines"
-
-    # Discover machines: from .init-done and .lock files, merged and deduplicated
-    local -a machines=()
-    local -A seen_machines=()
-
-    for f in "$CONFIGS_DIR"/*.init-done "$CONFIGS_DIR"/*.lock; do
-        [[ -f "$f" ]] || continue
-        local mname
-        mname=$(basename "$f" | sed -E 's/\.(init-done|lock)$//')
-        # Skip the main repo source lock (not a per-machine lock)
-        [[ "$mname" == "openbmc-source" ]] && continue
-        if [[ -z "${seen_machines[$mname]:-}" ]]; then
-            seen_machines["$mname"]=1
-            machines+=("$mname")
-        fi
-    done
-
-    if [[ ${#machines[@]} -eq 0 ]]; then
-        echo "  (none)"
-        return 0
-    fi
-
-    # Sort machine names
-    local -a sorted_machines=()
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && sorted_machines+=("$line")
-    done < <(printf '%s\n' "${machines[@]}" | sort)
-
-    # --- Summary table ---
-    # Collect per-machine data
-    local -A m_init=() m_repos=() m_build=() m_image=()
-
-    for m in "${sorted_machines[@]}"; do
-        # Init status
-        if [[ -f "$CONFIGS_DIR/$m.init-done" ]]; then
-            m_init["$m"]="✅ done"
-        elif [[ -f "$CONFIGS_DIR/$m.lock" ]]; then
-            m_init["$m"]="⏳ partial"
-        else
-            m_init["$m"]="—"
-        fi
-
-        # Repos count
-        if [[ -f "$CONFIGS_DIR/$m.lock" ]]; then
-            m_repos["$m"]=$(python3 -c "import json; print(len(json.load(open('$CONFIGS_DIR/$m.lock'))['sub_repos']))" 2>/dev/null || echo "?")
-        else
-            m_repos["$m"]="—"
-        fi
-
-        # Build status — glob for *.static.mtd to handle custom image names
-        local image_path=""
-        image_path=$(ls "$OPENBMC_DIR/build/$m/tmp/deploy/images/$m/"*.static.mtd 2>/dev/null | head -1 || true)
-        if [[ -n "$image_path" && -f "$image_path" ]]; then
-            m_build["$m"]="🔨 succeeded"
-            m_image["$m"]="$image_path"
-        elif [[ -d "$OPENBMC_DIR/build/$m" ]]; then
-            m_build["$m"]="❌ failed"
-        else
-            m_build["$m"]="— never"
-        fi
-    done
-
-    # Print summary table header
-    printf "  %-22s %-10s %s\n" "Machine" "Init" "Build"
-    for m in "${sorted_machines[@]}"; do
-        local m_padded
-        printf -v m_padded "%-22s" "$m"
-        printf "  %b%-10s %s\n" "${YELLOW}${m_padded}${NC}" "${m_init[$m]}" "${m_build[$m]}"
-    done
-
-    # --- Per-machine expansion ---
-    for m in "${sorted_machines[@]}"; do
-        # Only expand machines that have a .lock file (meaningful data)
-        [[ -f "$CONFIGS_DIR/$m.lock" ]] || continue
-
-        echo ""
-        echo "  ── $m ──────────────────────────────────────"
-
-        # Init time
-        local init_time=""
-        if [[ -f "$CONFIGS_DIR/$m.init-done" ]]; then
-            local raw_init_time
-            raw_init_time=$(head -1 "$CONFIGS_DIR/$m.init-done" 2>/dev/null || true)
-            if [[ -n "$raw_init_time" ]]; then
-                init_time=$(format_timestamp "$raw_init_time")
-            fi
-        fi
-        echo "    Init time    : ${init_time:--}"
-
-        # Repos
-        echo "    Repos        : ${m_repos[$m]}"
-
-        # Image details (only when build succeeded)
-        if [[ -n "${m_image[$m]:-}" ]]; then
-            local build_time=""
-            local _bt_epoch=""
-            _bt_epoch=$(stat -c '%Y' "${m_image[$m]}" 2>/dev/null) || true
-            if [[ -n "$_bt_epoch" ]]; then
-                local _bt_iso
-                _bt_iso=$(date -u -d "@$_bt_epoch" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null) || true
-                build_time=$(format_timestamp "$_bt_iso")
-            else
-                build_time="-"
-            fi
-            echo "    Build time   : $build_time"
-            echo "    Image name   : $(basename "${m_image[$m]}")"
-            echo "    Image path   : $(dirname "${m_image[$m]}")/"
-        fi
-    done
-}
-
-# === ob status: Section 3 — Tips ===
-status_section_tips() {
-    local repo_exists="$1"
-    local has_init_done="$2"
-    local has_never_built="$3"
-
-    local tip=""
-
-    if [[ "$repo_exists" -eq 0 ]]; then
-        tip="💡 Run 'ob init' to get started."
-    elif [[ "$has_init_done" -eq 0 ]]; then
-        tip="💡 Run 'ob init' to initialize a machine."
-    elif [[ "$has_never_built" -eq 1 ]]; then
-        tip="💡 Run 'ob build' to build a machine."
-    fi
-
-    if [[ -n "$tip" ]]; then
-        echo ""
-        echo "  $tip"
-    fi
-}
-
-# === ob status: Main orchestrator ===
-cmd_status() {
-    local repo_exists=0
-    [[ -d "$OPENBMC_DIR/.git" ]] && repo_exists=1
-
-    # Section 1: Main repo info (always shown)
-    status_section_main_repo
-
-    echo ""
-
-    # Section 2: Machine list + expansion (always shown, even if repo missing — may have residual data)
-    status_section_machines
-
-    # Section 3: Dynamic tips
-    local has_init_done=0
-    local has_never_built=0
-    for f in "$CONFIGS_DIR"/*.init-done; do
-        [[ -f "$f" ]] || continue
-        has_init_done=1
-        local mname
-        mname=$(basename "$f" .init-done)
-        local image_path=""
-        image_path=$(ls "$OPENBMC_DIR/build/$mname/tmp/deploy/images/$mname/"*.static.mtd 2>/dev/null | head -1 || true)
-        if [[ -z "$image_path" ]]; then
-            has_never_built=1
-        fi
-        break
-    done
-
-    status_section_tips "$repo_exists" "$has_init_done" "$has_never_built"
-
-    # Section 4: QEMU instances (only shown when instances exist)
-    local _pids_dir="$WORKSPACE_DIR/qemu-bin/.pids"
-    local _has_qemu=0
-    local -a _qemu_lines=()
-
-    for _pf in "$_pids_dir"/*.pid; do
-        [[ -f "$_pf" ]] || continue
-
-        local _qm="" _qp="" _qbin="" _qstart="" _qsport="" _qrport="" _qiport=""
-        _qm=$(basename "$_pf" .pid)
-
-        # Read PID file fields
-        _qp=$(grep '^pid=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-        _qbin=$(grep '^binary=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-        _qstart=$(grep '^started_at=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-        _qsport=$(grep '^ssh_port=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-        _qrport=$(grep '^redfish_port=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-        _qiport=$(grep '^ipmi_port=' "$_pf" 2>/dev/null | cut -d= -f2 || true)
-
-        # Validate process is alive
-        if [[ -n "$_qp" ]] && [[ -d "/proc/$_qp" ]]; then
-            _has_qemu=1
-            _qemu_lines+=("  $_qm   PID $_qp   SSH($_qsport) Redfish($_qrport) IPMI($_qiport/UDP)   ✅ running")
-        else
-            # Stale PID file — clean up silently
-            rm -f "$_pf"
-        fi
-    done
-
-    if [[ "$_has_qemu" -eq 1 ]]; then
-        echo ""
-        step_header "QEMU Instances"
-        local _ql
-        for _ql in "${_qemu_lines[@]}"; do
-            echo "$_ql"
-        done
-    fi
-}
-
-cmd_build() {
-    # === Prerequisites ===
-    if [[ ! -d "$OPENBMC_DIR/.git" ]]; then
-        error "OpenBMC main repository not found at $OPENBMC_DIR"
-        error "Run 'ob init' first."
-        exit 3
-    fi
-
-    if [[ ! -f "$SOURCE_LOCK_FILE" ]]; then
-        error "Source lock not found at $SOURCE_LOCK_FILE"
-        error "Run 'ob init' first."
-        exit 3
-    fi
-
-    # === Discover init-done machines ===
-    local -a machines=()
-    local -a init_times=()
-    local -a repo_counts=()
-
-    for init_done_file in "$CONFIGS_DIR"/*.init-done; do
-        [[ -f "$init_done_file" ]] || continue
-        local mname
-        mname=$(basename "$init_done_file" .init-done)
-        machines+=("$mname")
-
-        local init_time raw_init_time
-        if ! IFS= read -r raw_init_time < "$init_done_file"; then
-            raw_init_time=""
-        fi
-        init_time=$(format_timestamp "$raw_init_time")
-        init_times+=("$init_time")
-
-        local lockfile="$CONFIGS_DIR/$mname.lock"
-        local repo_count=0
-        if [[ -f "$lockfile" ]]; then
-            repo_count=$(python3 -c "import json; print(len(json.load(open('$lockfile'))['sub_repos']))" 2>/dev/null || echo "?")
-        else
-            repo_count="?"
-        fi
-        repo_counts+=("$repo_count")
-    done
-
-    if [[ ${#machines[@]} -eq 0 ]]; then
-        step_header "Initialized Machines"
-        echo ""
-        echo "  (none)"
-        echo ""
-        error "No machines are ready to build."
-        error "Run 'ob init' first to initialize a machine."
-        exit 3
-    fi
-
-    # === Read main repo info ===
-    local lock_origin_url lock_source_label
-    lock_origin_url=$(read_lock_field origin_url || echo "<unknown>")
-    lock_source_label=$(read_lock_field source_label || echo "")
-
-    # === Display ===
-    step_header "OpenBMC Repository"
-    echo "  Source : $lock_origin_url${lock_source_label:+ ($lock_source_label)}"
-    echo "  Path   : $OPENBMC_DIR"
-    echo ""
-
-    step_header "Initialized Machines"
-
-    local total=${#machines[@]}
-    local idx_width=${#total}
-    local i
-    for (( i=0; i<total; i++ )); do
-        printf "  %${idx_width}d) %-20s %s    %s repos\n" \
-            "$((i + 1))" "${machines[$i]}" "${init_times[$i]}" "${repo_counts[$i]}"
-    done
-
-    echo ""
-    info "If the machine you want is not listed, run 'init' task or './ob init' first."
-    echo ""
-
-    # === Interactive selection ===
-    if [[ ! -t 0 ]]; then
-        error "No interactive terminal. ob build requires interactive mode."
-        exit 3
-    fi
-
-    local selected chosen=""
-    while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine to build [1-${total}] (0 to cancel): ")" selected; then
-            error "Unable to read selection from stdin."
-            exit 1
-        fi
-        if [[ "$selected" == "0" ]]; then
-            warn "Build cancelled by user."
-            exit 2
-        fi
-        if [[ "$selected" =~ ^[0-9]+$ ]]; then
-            if [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
-                chosen="${machines[$((selected - 1))]}"
-                break
-            fi
-            warn "Number out of range (1-${total}): $selected"
-            continue
-        fi
-        warn "Please enter a number (1-${total})"
-    done
-
-    MACHINE="$chosen"
-    BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
-
-    echo ""
-    info "Selected: $MACHINE"
-    info "Target  : obmc-phosphor-image"
-    info "Estimated time: 1-4 hours depending on machine and cache state."
-    echo ""
-    print_confirm_banner "build" "$MACHINE"
-    while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start build, (N/n) to cancel: ")" confirm; then
-            error "Unable to read confirmation from stdin."
-            exit 1
-        fi
-        case "$confirm" in
-            [yY])
-                break
-                ;;
-            [nN])
-                warn "Build cancelled by user."
-                exit 2
-                ;;
-            *)
-                warn "Invalid input. Please type Y or N."
-                ;;
-        esac
-    done
-
-    # === Re-enter bitbake environment ===
-    cd "$OPENBMC_DIR"
-
-    local prev_opts
-    prev_opts=$(set +o | grep nounset)
-    set +u
-    # shellcheck disable=SC1091
-    source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null
-    eval "$prev_opts"
-
-    # === npm registry auto-detection ===
-    resolve_npm_registry
-    if [[ "$NPM_REGISTRY_RESOLVED" != "skip" ]]; then
-        export npm_config_registry="$NPM_REGISTRY_RESOLVED"
-        export npm_config_fetch_timeout=600000
-        export npm_config_fetch_retry_maxtimeout=120000
-        export npm_config_fetch_retry_mintimeout=30000
-        export npm_config_fetch_retry_factor=2
-        local _npm_vars="npm_config_registry npm_config_fetch_timeout npm_config_fetch_retry_maxtimeout npm_config_fetch_retry_mintimeout npm_config_fetch_retry_factor"
-        local _existing="${BB_ENV_PASSTHROUGH_ADDITIONS:-}"
-        BB_ENV_PASSTHROUGH_ADDITIONS="$_npm_vars"
-        if [[ -n "$_existing" ]]; then
-            BB_ENV_PASSTHROUGH_ADDITIONS="$_existing $BB_ENV_PASSTHROUGH_ADDITIONS"
-        fi
-        export BB_ENV_PASSTHROUGH_ADDITIONS
-        verbose "Exported npm config for bitbake passthrough"
-        verbose "  npm_config_registry=$npm_config_registry"
-    fi
-
-    # === Run bitbake ===
-    echo ""
-    step_header "Building $MACHINE"
-    info "Running: bitbake obmc-phosphor-image"
-    echo ""
-
-    if bitbake obmc-phosphor-image; then
-        echo ""
-        step_header "Build Succeeded"
-
-        local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
-        local image_file=""
-        image_file=$(ls "$deploy_dir/"*.static.mtd 2>/dev/null | head -1)
-
-        echo "  Machine : $MACHINE"
-        echo "  Image   : ${image_file:-<not found>}"
-        if [[ -n "$image_file" && -f "$image_file" ]]; then
-            local image_size
-            image_size=$(python3 - "$image_file" <<'PY'
-import os
-import sys
-
-size = os.path.getsize(sys.argv[1])
-units = ["B", "KiB", "MiB", "GiB", "TiB"]
-value = float(size)
-
-for unit in units:
-    if value < 1024.0 or unit == units[-1]:
-        if unit == "B":
-            print(f"{int(value)} {unit}")
-        elif value >= 10:
-            print(f"{value:.0f} {unit}")
-        else:
-            print(f"{value:.1f} {unit}")
-        break
-    value /= 1024.0
-PY
-)
-            echo "  Size    : $image_size"
-        fi
-        echo "  Deploy  : $deploy_dir"
-        echo ""
-        info "Build completed successfully."
-    else
-        local bb_exit=$?
-        echo ""
-        step_header "Build Failed"
-        echo ""
-        error "bitbake exited with code $bb_exit"
-        echo ""
-        echo "  BitBake error details are shown above."
-        echo ""
-        echo "  Common fixes:"
-        echo "    1. Re-run:         ob build  -- select same machine -- retry"
-        echo "    2. Clean & retry:  cd $OPENBMC_DIR && source setup $MACHINE"
-        echo "                       bitbake -c cleansstate <failed-recipe>"
-        echo "    3. Full log:       $BUILD_DIR/tmp/log/cooker/$MACHINE/"
-        echo ""
-        exit "$bb_exit"
-    fi
-}
-
-select_openbmc_repo_url() {
-    if [[ -n "$OPENBMC_REPO_URL" ]]; then
-        if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
-            error "Invalid OpenBMC repository URL: $OPENBMC_REPO_URL"
-            error "Supported formats: https://, http://, ssh://, git://, git@"
-            exit 1
-        fi
-        return 0
-    fi
-
-    if [[ -n "${OB_OPENBMC_URL:-}" ]]; then
-        OPENBMC_REPO_URL="$OB_OPENBMC_URL"
-        if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
-            error "Invalid OpenBMC repository URL from OB_OPENBMC_URL: $OPENBMC_REPO_URL"
-            exit 1
-        fi
-        return 0
-    fi
-
-    while true; do
-        echo ""
-        echo "Select the OpenBMC source repository:"
-        echo "  1) Community (https://github.com/openbmc/openbmc.git)"
-        echo "  2) Custom repository URL"
-        echo "  Q) Quit source selection (q/Q)"
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Choose [1/2/Q]: ")" selection; then
-            error "Unable to read repository source selection from stdin."
-            error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
-            exit 1
-        fi
-
-        case "$selection" in
-            1)
-                OPENBMC_REPO_URL="$DEFAULT_OPENBMC_REPO_URL"
-                SOURCE_LABEL="community"
-                return 0
-                ;;
-            2)
-                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter the full repository URL: ")" OPENBMC_REPO_URL; then
-                    error "Unable to read custom repository URL from stdin."
-                    error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
-                    exit 1
-                fi
-                if [[ -z "$OPENBMC_REPO_URL" ]]; then
-                    info "Returning to source selection."
-                    continue
-                fi
-                if is_valid_repo_url "$OPENBMC_REPO_URL"; then
-                    SOURCE_LABEL="custom"
-                    return 0
-                fi
-                warn "Invalid repository URL. Please enter a full URL such as https://example.com/openbmc.git"
-                ;;
-            [qQ])
-                warn "Source selection cancelled by user."
-                exit 0
-                ;;
-            *)
-                warn "Invalid selection: $selection. Please choose 1, 2, or Q."
-                ;;
-        esac
-    done
 }
 
 detect_harness_root() {
@@ -2671,6 +507,413 @@ resolve_npm_registry() {
     NPM_REGISTRY_RESOLVED="$chosen_url"
 }
 
+# Read first `key=value` match from a file. Echoes value (after first '=');
+# returns 0 if found / 1 if file missing or key absent. L3 — never exits.
+read_kv_field() {
+    local file="$1"
+    local key="$2"
+    [[ -f "$file" ]] || return 1
+    local line
+    line=$(grep -m1 "^${key//./\\.}=" "$file" 2>/dev/null) || return 1
+    [[ -z "$line" ]] && return 1
+    echo "${line#*=}"
+    return 0
+}
+
+read_lock_field() {
+    local key="$1"
+    read_kv_field "$SOURCE_LOCK_FILE" "$key"
+}
+
+# select_from_list <prompt> <total>
+# Reads a 1-based index in [1,total]; sets global SELECT_FROM_LIST_CHOICE on success.
+# Returns 0=selected / 2=cancelled (user entered 0) / 1=read failure.
+# Caller prints the numbered list first (formats vary across call sites). L3 — never exits.
+select_from_list() {
+    local prompt="$1"
+    local total="$2"
+    local selected
+    while true; do
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} ${prompt} (0 to cancel): ")" selected; then
+            error "Unable to read selection from stdin."
+            return 1
+        fi
+        [[ "$selected" == "0" ]] && return 2
+        if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
+            SELECT_FROM_LIST_CHOICE="$selected"
+            return 0
+        fi
+        warn "Please enter a number (1-${total})"
+    done
+}
+
+# confirm_action <verb> <object>
+# Prints confirmation banner, loops until Y/y (confirm) or N/n (cancel).
+# Returns 0=confirmed / 2=cancelled / 1=read failure. L3 — never exits.
+confirm_action() {
+    print_confirm_banner "$1" "$2"
+    local confirm
+    while true; do
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm, (N/n) to cancel: ")" confirm; then
+            error "Unable to read confirmation from stdin."
+            return 1
+        fi
+        case "$confirm" in
+            [yY]) return 0 ;;
+            [nN]) return 2 ;;
+            *) warn "Invalid input. Please type Y or N." ;;
+        esac
+    done
+}
+
+# prompt_for_absolute_path <prompt>
+# Reads+trims input, loops until non-empty / not an option / absolute path (/*).
+# Sets global PROMPT_PATH_RESULT on success. Returns 0=ok / 1=read failure.
+# Existence/content validation left to caller. L3 — never exits.
+prompt_for_absolute_path() {
+    local prompt="$1"
+    local input
+    while true; do
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} ${prompt}: ")" input; then
+            error "Unable to read input."
+            return 1
+        fi
+        input=$(trim_whitespace "$input")
+        if [[ -z "$input" ]]; then
+            error "Path cannot be empty."
+            continue
+        fi
+        if [[ "$input" == -* ]]; then
+            error "Path must be a filesystem path, not an option: $input"
+            continue
+        fi
+        if [[ "$input" != /* ]]; then
+            error "Must be an absolute path (starting with /). Got: $input"
+            continue
+        fi
+        PROMPT_PATH_RESULT="$input"
+        return 0
+    done
+}
+
+# require_path <path> <label> <hint> <exit_code>
+# Precondition guard: if <path> does not exist (-e), print
+# "<label> not found: <path>", then <hint> (if non-empty), then exit <exit_code>.
+# L3 helper; the internal exit is orchestration semantics — <exit_code> is supplied
+# by the caller per its own layer (L1 cmd_* use 3, L2 precondition sites use 3).
+require_path() {
+    local path="$1"
+    local label="$2"
+    local hint="$3"
+    local code="$4"
+    if [[ ! -e "$path" ]]; then
+        error "$label not found: $path"
+        if [[ -n "$hint" ]]; then
+            error "$hint"
+        fi
+        exit "$code"
+    fi
+}
+
+# === §3 仓库与 machine (repo source / machine resolution) ===
+
+read_source_label() {
+    local label=""
+    if [[ -f "$SOURCE_LOCK_FILE" ]]; then
+        label=$(read_lock_field source_label 2>/dev/null || true)
+        label=$(trim_whitespace "$label")
+    fi
+    if [[ -z "$label" ]]; then
+        label="community"
+    fi
+    echo "$label"
+}
+
+is_valid_repo_url() {
+    local repo_url="$1"
+    [[ "$repo_url" =~ ^https?:// ]] || [[ "$repo_url" =~ ^ssh:// ]] || [[ "$repo_url" =~ ^git:// ]] || [[ "$repo_url" =~ ^git@ ]]
+}
+
+normalize_repo_url() {
+    local repo_url="$1"
+    local normalized="$repo_url"
+    local host=""
+    local path=""
+
+    normalized="${normalized#https://}"
+    normalized="${normalized#http://}"
+    normalized="${normalized#ssh://}"
+    normalized="${normalized#git://}"
+
+    if [[ "$normalized" =~ ^([^@]+)@([^:]+):(.+)$ ]]; then
+        host="${BASH_REMATCH[2]}"
+        path="${BASH_REMATCH[3]}"
+        if [[ "$path" =~ ^([0-9]+)/(.*)$ ]]; then
+            normalized="$host/${path#*/}"
+        else
+            normalized="$host/$path"
+        fi
+    elif [[ "$normalized" =~ ^([^@]+)@(.+)$ ]]; then
+        normalized="${BASH_REMATCH[2]}"
+    fi
+
+    if [[ "$normalized" =~ ^\[?([^]/:]+)\]?:(.+)$ ]]; then
+        host="${BASH_REMATCH[1]}"
+        path="${BASH_REMATCH[2]}"
+        if [[ "$path" =~ ^([0-9]+)/(.*)$ ]]; then
+            normalized="$host/${path#*/}"
+        else
+            normalized="$host/$path"
+        fi
+    fi
+
+    normalized="${normalized%/}"
+    normalized="${normalized%.git}"
+
+    if [[ "$normalized" =~ ^([^/]+)/(.*)$ ]]; then
+        local host="${BASH_REMATCH[1]}"
+        local path="${BASH_REMATCH[2]}"
+        host="${host,,}"
+        path="${path,,}"
+        normalized="$host/$path"
+    else
+        normalized="${normalized,,}"
+    fi
+
+    echo "$normalized"
+}
+
+derive_source_label() {
+    local normalized
+
+    normalized="$(normalize_repo_url "$OPENBMC_REPO_URL")"
+    if [[ "$normalized" == "github.com/openbmc/openbmc" ]]; then
+        SOURCE_LABEL="community"
+    else
+        SOURCE_LABEL="custom"
+    fi
+}
+
+write_source_lock() {
+    local normalized_source
+    local timestamp
+
+    normalized_source="$(normalize_repo_url "$OPENBMC_REPO_URL")"
+    timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+    derive_source_label
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        info "[DRY-RUN] Would write source lock to $SOURCE_LOCK_FILE"
+        info "[DRY-RUN]   normalized_source=$normalized_source"
+        info "[DRY-RUN]   origin_url=$OPENBMC_REPO_URL"
+        info "[DRY-RUN]   source_label=$SOURCE_LABEL"
+        return 0
+    fi
+
+    mkdir -p "$CONFIGS_DIR"
+
+    cat > "$SOURCE_LOCK_FILE" <<EOF
+# openbmc source lock — auto-generated by 'ob init', do not edit by hand
+normalized_source=$normalized_source
+origin_url=$OPENBMC_REPO_URL
+source_label=$SOURCE_LABEL
+machine_first_init=$MACHINE
+created_at=$timestamp
+EOF
+}
+
+ensure_bootstrap_local_conf() {
+    local local_conf="$BUILD_DIR/conf/local.conf"
+
+    require_path "$local_conf" "local.conf" "" 3
+
+    # Detect GitLab IP for recipes that use ${GITLAB_IP} in SRC_URI.
+    # Priority: (1) github-gitlab-url.sh (2) git remote origin URL (3) empty (skip)
+    local gitlab_ip=""
+    local _rt_script=""
+    local _remote_url=""
+    for _candidate in "$OPENBMC_DIR"/meta-*/git-mirror-url.sh \
+                      "$OPENBMC_DIR"/meta-*/github-gitlab-url.sh; do
+        if [[ -f "$_candidate" ]]; then _rt_script="$_candidate"; break; fi
+    done
+    if [[ -f "$_rt_script" ]]; then
+        gitlab_ip=$(grep -oP '^(GITLAB_IP|GIT_MIRROR_HOST)=["'"'"']?\K[^"'"'"'\s]+' "$_rt_script" 2>/dev/null | head -1 || true)
+    fi
+    if [[ -z "$gitlab_ip" && -f "$OPENBMC_DIR/.git/config" ]]; then
+        _remote_url=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
+        if [[ "$_remote_url" == git@* ]]; then
+            gitlab_ip=$(echo "$_remote_url" | sed -E 's/^git@([^:]+):.*/\1/')
+        elif [[ "$_remote_url" == http://* || "$_remote_url" == https://* ]]; then
+            gitlab_ip=$(echo "$_remote_url" | sed -E 's#^https?://([^/:]+).*#\1#')
+        fi
+    fi
+
+    # If the remote uses SSH, but recipes reference the host via protocol=https,
+    # configure git to rewrite HTTPS URLs to SSH automatically.
+    # This handles GitLab servers where HTTPS is unavailable or requires auth
+    # that isn't configured in recipes, while SSH key access works out of the box.
+    # Only set when missing — user can override manually if needed.
+    if [[ -n "$gitlab_ip" ]]; then
+        local _existing_rewrite=""
+        _existing_rewrite=$(git config --global --get "url.git@${gitlab_ip}:.insteadOf" 2>/dev/null || true)
+        if [[ -z "$_existing_rewrite" ]]; then
+            git config --global "url.git@${gitlab_ip}:.insteadOf" "https://${gitlab_ip}/"
+            info "Configured git insteadOf: https://${gitlab_ip}/ → git@${gitlab_ip} (SSH rewrite for recipe fetches)"
+        else
+            verbose "Git insteadOf for ${gitlab_ip} already configured: ${_existing_rewrite} → git@${gitlab_ip}:"
+        fi
+    fi
+
+    # Add include to local.conf if not already present.
+    # The .inc file (managed by generate_build_config) contains all ob init settings.
+    local include_line="include externalsrc-$MACHINE.inc"
+
+    if grep -qF "$include_line" "$local_conf"; then
+        verbose "Include line already exists in local.conf, skipping."
+    else
+        cp "$local_conf" "${local_conf}.bak.$(date +%Y%m%d%H%M%S)"
+        echo "" >> "$local_conf"
+        echo "$include_line" >> "$local_conf"
+        info "Added '$include_line' to local.conf"
+    fi
+
+    verbose "Ensured ob init local.conf settings in $local_conf"
+}
+
+verify_source() {
+    local lock_source=""
+    local current_origin=""
+    local current_source=""
+    local requested_url="$OPENBMC_REPO_URL"
+    local requested_source=""
+    local lock_label=""
+
+    if [[ ! -d "$OPENBMC_DIR/.git" ]]; then
+        return 0
+    fi
+
+    if [[ ! -f "$SOURCE_LOCK_FILE" ]]; then
+        current_origin=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
+        if [[ -n "$current_origin" ]]; then
+            OPENBMC_REPO_URL="$current_origin"
+            SOURCE_LABEL=""
+            write_source_lock
+            if [[ -n "$requested_url" ]]; then
+                requested_source=$(normalize_repo_url "$requested_url")
+                current_source=$(normalize_repo_url "$current_origin")
+                if [[ "$requested_source" != "$current_source" ]]; then
+                    error "OpenBMC main repository source conflict detected."
+                    error "  Current harness source: $current_source"
+                    error "  Requested source:       $requested_source"
+                    error "A harness may only bind to one OpenBMC main repository source."
+                    error "To use a different source, copy ob-harness and run ob init in the new copy."
+                    exit 1
+                fi
+            fi
+            OPENBMC_REPO_URL="$requested_url"
+        else
+            warn "OpenBMC main repository exists but has no origin remote; skipping source lock bootstrap."
+        fi
+        return 0
+    fi
+
+    lock_source=$(read_lock_field normalized_source || true)
+    lock_label=$(read_lock_field source_label || true)
+    current_origin=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
+
+    if [[ -n "$current_origin" ]]; then
+        current_source=$(normalize_repo_url "$current_origin")
+        if [[ -n "$lock_source" ]] && [[ "$current_source" != "$lock_source" ]]; then
+            error "OpenBMC main repository source does not match the lock file."
+            error "  Locked source:  $lock_source"
+            error "  Actual origin:   $current_source"
+            error "Existing openbmc origin and openbmc-source.lock have drifted, likely due to a manual change."
+            error "Please verify the main repository source before continuing. If you need a different source, use a separate harness copy."
+            exit 1
+        fi
+    else
+        warn "OpenBMC main repository has no origin remote; skipping lock vs origin verification."
+    fi
+
+    if [[ -n "$OPENBMC_REPO_URL" ]]; then
+        requested_source=$(normalize_repo_url "$OPENBMC_REPO_URL")
+        if [[ -n "$lock_source" ]] && [[ "$requested_source" != "$lock_source" ]]; then
+            error "OpenBMC main repository source conflict detected."
+            error "  Current harness source: $lock_source${lock_label:+  ($lock_label)}"
+            error "  Requested source:       $requested_source"
+            error "A harness may only bind to one OpenBMC main repository source."
+            error "To use a different source, copy ob-harness and run ob init in the new copy."
+            exit 1
+        fi
+    fi
+
+    return 0
+}
+
+select_openbmc_repo_url() {
+    if [[ -n "$OPENBMC_REPO_URL" ]]; then
+        if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
+            error "Invalid OpenBMC repository URL: $OPENBMC_REPO_URL"
+            error "Supported formats: https://, http://, ssh://, git://, git@"
+            exit 3
+        fi
+        return 0
+    fi
+
+    if [[ -n "${OB_OPENBMC_URL:-}" ]]; then
+        OPENBMC_REPO_URL="$OB_OPENBMC_URL"
+        if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
+            error "Invalid OpenBMC repository URL from OB_OPENBMC_URL: $OPENBMC_REPO_URL"
+            exit 3
+        fi
+        return 0
+    fi
+
+    while true; do
+        echo ""
+        echo "Select the OpenBMC source repository:"
+        echo "  1) Community (https://github.com/openbmc/openbmc.git)"
+        echo "  2) Custom repository URL"
+        echo "  Q) Quit source selection (q/Q)"
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Choose [1/2/Q]: ")" selection; then
+            error "Unable to read repository source selection from stdin."
+            error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
+            exit 1
+        fi
+
+        case "$selection" in
+            1)
+                OPENBMC_REPO_URL="$DEFAULT_OPENBMC_REPO_URL"
+                SOURCE_LABEL="community"
+                return 0
+                ;;
+            2)
+                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter the full repository URL: ")" OPENBMC_REPO_URL; then
+                    error "Unable to read custom repository URL from stdin."
+                    error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
+                    exit 1
+                fi
+                if [[ -z "$OPENBMC_REPO_URL" ]]; then
+                    info "Returning to source selection."
+                    continue
+                fi
+                if is_valid_repo_url "$OPENBMC_REPO_URL"; then
+                    SOURCE_LABEL="custom"
+                    return 0
+                fi
+                warn "Invalid repository URL. Please enter a full URL such as https://example.com/openbmc.git"
+                ;;
+            [qQ])
+                warn "Source selection cancelled by user."
+                exit 2
+                ;;
+            *)
+                warn "Invalid selection: $selection. Please choose 1, 2, or Q."
+                ;;
+        esac
+    done
+}
+
 # Capture `source setup` (no args) output, extract available machine names
 list_available_machines() {
     [[ -d "$OPENBMC_DIR/.git" ]] || return 0
@@ -2779,7 +1022,7 @@ resolve_machine() {
 
     if [[ ! -t 0 ]]; then
         error "No valid machine and no interactive terminal. Pass a valid machine: ob init <machine>"
-        exit 1
+        exit 3
     fi
 
     # Print numbered list in columns (adapt to terminal width)
@@ -2831,29 +1074,1220 @@ resolve_machine() {
     echo ""
     info "Machine '$MACHINE' selected."
     echo ""
-    print_confirm_banner "init" "$MACHINE"
+    local ca_rc=0
+    confirm_action "init" "$MACHINE" || ca_rc=$?
+    if [[ "$ca_rc" -eq 2 ]]; then
+        warn "Init cancelled by user."
+        exit 2
+    elif [[ "$ca_rc" -ne 0 ]]; then
+        exit 1
+    fi
+    echo ""
+    info "Init confirmed for machine '$MACHINE'."
+    return 0
+}
+
+# === §4 QEMU (binary / firmware / ports / SoC / pid) ===
+
+derive_qemu_paths() {
+    local label arch
+    label=$(read_source_label)
+    arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
+    QEMU_BIN_DIR="$WORKSPACE_DIR/qemu-bin/$label"
+    QEMU_BIN_FILE="$QEMU_BIN_DIR/$arch"
+    QEMU_PIDS_DIR="$WORKSPACE_DIR/qemu-bin/.pids"
+    QEMU_PID_FILE="$QEMU_PIDS_DIR/${MACHINE}.pid"
+}
+
+derive_qemu_url_config_path() {
+    QEMU_URL_CONFIG_FILE="$WORKSPACE_DIR/qemu-bin/qemu-binary-urls.conf"
+}
+
+read_qemu_url_config() {
+    local source="$1"
+    local arch="$2"
+    local key="${source}.${arch}"
+    local url
+    derive_qemu_url_config_path
+    # read_kv_field returns 1 on missing file/key; keep prior "missing → empty" semantics.
+    url=$(read_kv_field "$QEMU_URL_CONFIG_FILE" "$key" 2>/dev/null) || url=""
+    trim_whitespace "$url"
+}
+
+write_qemu_url_config() {
+    local source="$1"
+    local arch="$2"
+    local url="$3"
+    local key
+    local key_re
+    local tmp
+
+    key="${source}.${arch}"
+    key_re="${key//./\\.}"
+    derive_qemu_url_config_path
+
+    mkdir -p "$(dirname "$QEMU_URL_CONFIG_FILE")"
+    if [[ ! -f "$QEMU_URL_CONFIG_FILE" ]]; then
+        echo "# qemu binary download URLs — auto-managed by 'ob start-qemu'" > "$QEMU_URL_CONFIG_FILE"
+        echo "# key: <source_label>.<QB_SYSTEM_NAME>" >> "$QEMU_URL_CONFIG_FILE"
+    fi
+
+    if grep -q "^${key_re}=" "$QEMU_URL_CONFIG_FILE"; then
+        tmp=$(mktemp "${TMPDIR:-/tmp}/qemu-url-conf-XXXXXX")
+        grep -v "^${key_re}=" "$QEMU_URL_CONFIG_FILE" > "$tmp"
+        echo "${key}=${url}" >> "$tmp"
+        mv "$tmp" "$QEMU_URL_CONFIG_FILE"
+    else
+        echo "${key}=${url}" >> "$QEMU_URL_CONFIG_FILE"
+    fi
+}
+
+write_qemu_binary_manifest() {
+    local install_source="$1"
+    local arch="$2"
+    local source_key="$3"
+    local source_value="$4"
+    local sha256="$5"
+    local build_number="${6:-}"
+    local manifest_path="${QEMU_BIN_FILE}.manifest"
+
+    cat > "$manifest_path" <<MANIFEST_EOF
+asset=binary
+source=${install_source}
+arch=${arch}
+binary_path=${QEMU_BIN_FILE}
+${source_key}=${source_value}
+installed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+sha256=${sha256}
+MANIFEST_EOF
+
+    if [[ -n "$build_number" ]]; then
+        echo "build_number=${build_number}" >> "$manifest_path"
+    fi
+}
+
+write_qemu_pcbios_manifest() {
+    local install_source="$1"
+    local pcbios_source_path="$2"
+    local manifest_path="$QEMU_BIN_DIR/pc-bios.manifest"
+
+    cat > "$manifest_path" <<MANIFEST_EOF
+asset=pc-bios
+source=${install_source}
+pcbios_path=${QEMU_BIN_DIR}/pc-bios
+pcbios_source=${pcbios_source_path}
+installed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+MANIFEST_EOF
+}
+
+# Query Jenkins lastSuccessfulBuild number for a given job URL.
+# Args: $1 = Jenkins job base URL (e.g. https://jenkins.openbmc.org/job/latest-qemu-x86)
+# Returns: build number via stdout (empty string on failure)
+query_jenkins_build_number() {
+    local job_url="$1"
+    local api_url="${job_url}/lastSuccessfulBuild/api/json?tree=number"
+    local raw
+    raw=$(curl -s --max-time 5 "$api_url" 2>/dev/null) || return 0
+    echo "$raw" | grep -o '"number":[0-9]*' | head -1 | cut -d: -f2
+}
+
+# download_qemu_binary_core <url> <extract_dir> <arch>
+# Shared download→detect→extract→locate→sha256 core for QEMU binaries
+# (used by download_and_replace_community_qemu and ensure_qemu_binary_community).
+# Sets globals DLQB_BIN_PATH (located binary) and DLQB_SHA256 on success.
+# Returns 0=success / 1=download, extract, or locate failure.
+# Caller owns: flock/backup/rollback/manifest/exit, the -x executable check,
+# and the final mv of DLQB_BIN_PATH to QEMU_BIN_FILE. L3 — never exits.
+download_qemu_binary_core() {
+    local url="$1"
+    local extract_dir="$2"
+    local arch="$3"
+
+    local tmp_download="${QEMU_BIN_DIR}/.dlqbc-partial-${arch}"
+    verbose "  URL: $url"
+
+    if ! curl -fSL -C - -o "$tmp_download" "$url"; then
+        return 1
+    fi
+
+    local file_type
+    file_type=$(file -b "$tmp_download" 2>/dev/null || echo "")
+
+    local binary=""
+    if echo "$file_type" | grep -qi "gzip\|xz"; then
+        verbose "  Detected archive, extracting..."
+        tar xf "$tmp_download" -C "$extract_dir/" --strip-components=1 2>/dev/null \
+            || tar xf "$tmp_download" -C "$extract_dir/" 2>/dev/null
+        rm -f "$tmp_download"
+
+        local candidate
+        for candidate in "$extract_dir/$arch" "$extract_dir/bin/$arch"; do
+            if [[ -f "$candidate" ]]; then
+                binary="$candidate"
+                break
+            fi
+        done
+
+        if [[ -z "$binary" ]]; then
+            return 1
+        fi
+    else
+        binary="$tmp_download"
+    fi
+
+    DLQB_BIN_PATH="$binary"
+    DLQB_SHA256=$(sha256sum "$binary" | awk '{print $1}')
+    return 0
+}
+
+# Download a new QEMU binary and safely replace the existing one.
+# Args: $1 = download URL, $2 = remote build number, $3 = arch
+# Returns: 0 on success, 1 on failure (caller should continue with old binary)
+download_and_replace_community_qemu() {
+    local qemu_url="$1"
+    local remote_build="$2"
+    local arch="$3"
+    local manifest="${QEMU_BIN_FILE}.manifest"
+
+    # ── flock: prevent concurrent updates ──
+    local lock_file="${QEMU_BIN_FILE}.update.lock"
+    exec 200>"$lock_file"
+    if ! flock -n 200; then
+        warn "Another QEMU binary update is in progress. Skipping."
+        exec 200>&-
+        return 1
+    fi
+
+    # ── Staging dir for extraction (partial path lives in download_qemu_binary_core) ──
+    local tmp_dir
+    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/qemu-update-XXXXXX")
+
+    info "Downloading QEMU binary (build #${remote_build})..."
+    if ! download_qemu_binary_core "$qemu_url" "$tmp_dir" "$arch"; then
+        warn "Failed to download/extract QEMU binary from: $qemu_url"
+        rm -rf "$tmp_dir"
+        flock -u 200 2>/dev/null; exec 200>&-
+        return 1
+    fi
+    local new_binary="$DLQB_BIN_PATH"
+    local new_sha256="$DLQB_SHA256"
+
+    # ── Verify new binary ──
+    chmod +x "$new_binary"
+    if ! [[ -x "$new_binary" ]]; then
+        warn "Downloaded file is not executable."
+        rm -rf "$tmp_dir"
+        flock -u 200 2>/dev/null; exec 200>&-
+        return 1
+    fi
+
+    # ── Backup old binary ──
+    local old_build
+    old_build=$(read_kv_field "$manifest" build_number 2>/dev/null) || old_build=""
+    local bak_suffix="${old_build:-unknown}"
+    local bak_file="${QEMU_BIN_FILE}-${bak_suffix}.bak"
+
+    info "Backing up current QEMU binary (build #${bak_suffix})..."
+    cp "$QEMU_BIN_FILE" "$bak_file"
+
+    # ── Replace ──
+    if ! mv "$new_binary" "$QEMU_BIN_FILE"; then
+        warn "Failed to replace QEMU binary."
+        if [[ -f "$bak_file" ]]; then
+            mv "$bak_file" "$QEMU_BIN_FILE"
+        fi
+        rm -rf "$tmp_dir"
+        flock -u 200 2>/dev/null; exec 200>&-
+        return 1
+    fi
+    chmod +x "$QEMU_BIN_FILE"
+
+    # ── Update manifest ──
+    local label
+    label=$(read_source_label)
+    write_qemu_binary_manifest "$label" "$arch" "url" "$qemu_url" "$new_sha256" "$remote_build"
+
+    # ── Cleanup ──
+    rm -rf "$tmp_dir"
+    rm -f "$bak_file"
+    flock -u 200 2>/dev/null; exec 200>&-
+
+    info "QEMU binary updated to build #${remote_build}."
+    verbose "  SHA256: $new_sha256"
+    return 0
+}
+
+# Check if a newer QEMU binary is available on Jenkins.
+# If update available and interactive, prompt user to update.
+# Non-interactive: notify only.
+# On any failure: silently continue with existing binary.
+check_jenkins_update() {
+    local manifest="${QEMU_BIN_FILE}.manifest"
+
+    # ── Guard: manifest must exist ──
+    [[ -f "$manifest" ]] || return 0
+
+    # ── Guard: build_number must be present ──
+    local local_build
+    local_build=$(read_kv_field "$manifest" build_number 2>/dev/null) || local_build=""
+    [[ -z "$local_build" ]] && return 0
+
+    # ── Guard: URL must be Jenkins ──
+    local manifest_url
+    manifest_url=$(read_kv_field "$manifest" url 2>/dev/null) || manifest_url=""
+    [[ "$manifest_url" != *"jenkins.openbmc.org"* ]] && return 0
+
+    # ── Guard: extract job URL ──
+    local job_url
+    job_url=$(echo "$manifest_url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||')
+
+    # ── Query Jenkins ──
+    local remote_build
+    remote_build=$(query_jenkins_build_number "$job_url")
+    [[ -z "$remote_build" ]] && return 0  # Jenkins unreachable
+
+    # ── Same version? ──
+    if [[ "$remote_build" == "$local_build" ]]; then
+        verbose "QEMU binary is up to date (build #${local_build})."
+        return 0
+    fi
+
+    # ── Update available ──
+    info "QEMU binary update available: build #${local_build} → #${remote_build}"
+
+    # ── Non-interactive: notify and skip ──
+    if [[ ! -t 0 ]]; then
+        info "Update skipped: non-interactive mode. Re-run in a terminal to update."
+        return 0
+    fi
+
+    # ── Interactive confirmation ──
+    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
+    echo ""
+    local ca_rc=0
+    confirm_action "update community QEMU binary" "build #${local_build} → #${remote_build}" || ca_rc=$?
+    if [[ "$ca_rc" -eq 0 ]]; then
+        echo ""
+        if ! download_and_replace_community_qemu "$manifest_url" "$remote_build" "$arch"; then
+            warn "QEMU binary update failed. Continuing with existing binary."
+        fi
+    elif [[ "$ca_rc" -eq 2 ]]; then
+        warn "Update cancelled by user."
+    fi
+    return 0
+}
+
+ensure_qemu_binary_community() {
+    derive_qemu_paths
+
+    # Already downloaded and executable?
+    if [[ -x "$QEMU_BIN_FILE" ]]; then
+        verbose "QEMU binary already exists: $QEMU_BIN_FILE"
+        check_jenkins_update
+        return 0
+    fi
+
+    local label
+    label=$(read_source_label)
+    mkdir -p "$QEMU_BIN_DIR"
+
+    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
+    local qemu_url=""
+
+    if [[ -n "${OB_QEMU_BINARY_URL:-}" ]]; then
+        qemu_url="$OB_QEMU_BINARY_URL"
+        write_qemu_url_config "$label" "$arch" "$qemu_url"
+    else
+        qemu_url="$(read_qemu_url_config "$label" "$arch")"
+    fi
+
+    if [[ -z "$qemu_url" ]]; then
+        if [[ "$label" == "community" && "$arch" == "qemu-system-arm" ]]; then
+            qemu_url="https://jenkins.openbmc.org/job/latest-qemu-x86/lastSuccessfulBuild/artifact/qemu/build/qemu-system-arm"
+            write_qemu_url_config "$label" "$arch" "$qemu_url"
+            info "Using OpenBMC Jenkins default QEMU URL (recorded in $QEMU_URL_CONFIG_FILE)"
+        else
+            if [[ "$label" == "community" && "$arch" == "qemu-system-aarch64" ]]; then
+                info "Community source provides no aarch64 QEMU binary."
+                info "Provide a custom download URL below, or press Enter / Ctrl-C to abort."
+            fi
+
+            derive_qemu_url_config_path
+            if [[ ! -t 0 ]]; then
+                error "QEMU binary URL not configured for '${label}.${arch}'."
+                error "Set OB_QEMU_BINARY_URL, or add a line '${label}.${arch}=<url>' to:"
+                error "  $QEMU_URL_CONFIG_FILE"
+                exit 3
+            fi
+
+            local input_url=""
+            read -r -p "$(echo -e "${PROMPT_PREFIX} Enter QEMU binary URL for ${label}.${arch}: ")" input_url || true
+            input_url="$(trim_whitespace "$input_url")"
+            if [[ -z "$input_url" ]]; then
+                info "No URL provided — aborting QEMU binary setup."
+                exit 2
+            fi
+            if [[ ! "$input_url" =~ ^https?:// ]]; then
+                error "Invalid URL (must start with http:// or https://): $input_url"
+                exit 3
+            fi
+
+            qemu_url="$input_url"
+            write_qemu_url_config "$label" "$arch" "$qemu_url"
+        fi
+    fi
+
+    info "Downloading QEMU binary..."
+    if ! download_qemu_binary_core "$qemu_url" "$QEMU_BIN_DIR" "$arch"; then
+        error "Failed to download/extract QEMU binary from: $qemu_url"
+        exit 1
+    fi
+
+    # Place the located binary at QEMU_BIN_FILE (download_qemu_binary_core
+    # leaves it at DLQB_BIN_PATH; caller owns the final move + executable bit).
+    if [[ "$DLQB_BIN_PATH" != "$QEMU_BIN_FILE" ]]; then
+        mv "$DLQB_BIN_PATH" "$QEMU_BIN_FILE"
+    fi
+    chmod +x "$QEMU_BIN_FILE"
+
+    local sha256="$DLQB_SHA256"
+
+    # Query Jenkins for build number (community source only)
+    local build_number=""
+    if [[ "$qemu_url" == *"jenkins.openbmc.org"* ]]; then
+        local job_url
+        job_url=$(echo "$qemu_url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||')
+        build_number=$(query_jenkins_build_number "$job_url")
+    fi
+
+    write_qemu_binary_manifest "$label" "$arch" "url" "$qemu_url" "$sha256" "$build_number"
+
+    info "QEMU binary ready: $QEMU_BIN_FILE"
+    verbose "  SHA256: $sha256"
+    if [[ -n "$build_number" ]]; then
+        verbose "  Build: #$build_number"
+    fi
+}
+
+# Dispatcher: route to community (URL download) or custom (local copy) setup
+ensure_qemu_binary() {
+    local label
+    label=$(read_source_label)
+    if [[ "$label" == "community" ]]; then
+        ensure_qemu_binary_community
+    else
+        ensure_qemu_binary_custom
+    fi
+}
+
+ensure_qemu_binary_custom() {
+    derive_qemu_paths
+
+    # Already present and executable?
+    if [[ -x "$QEMU_BIN_FILE" ]]; then
+        verbose "QEMU binary already exists: $QEMU_BIN_FILE"
+        return 0
+    fi
+
+    # Need interactive terminal for prompts
+    if [[ ! -t 0 ]]; then
+        error "QEMU binary not found at $QEMU_BIN_FILE"
+        error "Run 'ob start-qemu $MACHINE' in an interactive terminal to set up the binary."
+        exit 3
+    fi
+
+    mkdir -p "$QEMU_BIN_DIR"
+
+    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
+
+    # --- Step 1: QEMU binary ---
+    echo ""
+    info "QEMU binary for custom source not found."
+    echo ""
+
+    local input_binary=""
+    local resolved_binary_path=""
     while true; do
-        local confirm
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start init, (N/n) to cancel: ")" confirm; then
-            error "Unable to read confirmation from stdin."
+        local pfp_rc=0
+        prompt_for_absolute_path "Enter absolute path to QEMU binary ($arch)" || pfp_rc=$?
+        if [[ "$pfp_rc" -ne 0 ]]; then
             exit 1
         fi
-        case "$confirm" in
-            [yY])
-                echo ""
-                info "Init confirmed for machine '$MACHINE'."
-                return 0
-                ;;
-            [nN])
-                warn "Init cancelled by user."
-                exit 0
-                ;;
+        input_binary="$PROMPT_PATH_RESULT"
+
+        resolved_binary_path="$input_binary"
+        if [[ -d "$input_binary" ]]; then
+            resolved_binary_path="${input_binary%/}/$arch"
+            if [[ ! -f "$resolved_binary_path" ]]; then
+                error "Directory does not contain $arch: $input_binary"
+                continue
+            fi
+        elif [[ ! -f "$input_binary" ]]; then
+            error "File not found: $input_binary"
+            continue
+        fi
+
+        break
+    done
+
+    cp "$resolved_binary_path" "$QEMU_BIN_FILE"
+    chmod +x "$QEMU_BIN_FILE"
+    info "QEMU binary copied: $QEMU_BIN_FILE"
+
+    local input_pcbios=""
+    local resolved_pcbios_path=""
+    local target_pcbios="$QEMU_BIN_DIR/pc-bios"
+    if [[ "$SOC_TYPE" == "ast2700" ]]; then
+        echo ""
+
+        while true; do
+            local pfp_rc=0
+            prompt_for_absolute_path "Enter absolute path to pc-bios directory" || pfp_rc=$?
+            if [[ "$pfp_rc" -ne 0 ]]; then
+                exit 1
+            fi
+            input_pcbios="$PROMPT_PATH_RESULT"
+
+            if [[ ! -d "$input_pcbios" ]]; then
+                error "Directory not found: $input_pcbios"
+                continue
+            fi
+
+            resolved_pcbios_path="$input_pcbios"
+            if [[ ! -f "$resolved_pcbios_path/ast27x0_bootrom.bin" ]]; then
+                if [[ -f "$resolved_pcbios_path/pc-bios/ast27x0_bootrom.bin" ]]; then
+                    resolved_pcbios_path="$resolved_pcbios_path/pc-bios"
+                else
+                    error "Directory does not contain ast27x0_bootrom.bin: $input_pcbios"
+                    error "Provide the pc-bios directory itself, or a QEMU root directory that contains pc-bios/."
+                    continue
+                fi
+            fi
+
+            break
+        done
+
+        if [[ -d "$target_pcbios" ]]; then
+            rm -rf "$target_pcbios"
+        fi
+        cp -r "$resolved_pcbios_path" "$target_pcbios"
+        info "pc-bios directory copied: $target_pcbios"
+    elif [[ -d "$target_pcbios" ]]; then
+        verbose "Keeping existing pc-bios directory for non-AST2700 machine: $target_pcbios"
+    fi
+
+    local sha256=""
+    sha256=$(sha256sum "$QEMU_BIN_FILE" | awk '{print $1}')
+
+    write_qemu_binary_manifest "custom" "$arch" "binary_source" "$resolved_binary_path" "$sha256"
+    if [[ -n "$resolved_pcbios_path" ]]; then
+        write_qemu_pcbios_manifest "custom" "$resolved_pcbios_path"
+    fi
+
+    info "QEMU binary setup complete."
+    verbose "  Binary : $QEMU_BIN_FILE"
+    verbose "  SHA256 : $sha256"
+}
+
+find_ast2700_bootloaders() {
+    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
+
+    require_path "$deploy_dir" "Deploy directory" "Run 'ob build' for machine '$MACHINE' first." 3
+
+    BOOTLOADER_UBOOT_NODTB="$deploy_dir/u-boot-nodtb.bin"
+    BOOTLOADER_UBOOT_DTB="$deploy_dir/u-boot.dtb"
+    BOOTLOADER_BL31="$deploy_dir/bl31.bin"
+    BOOTLOADER_OPTEE="$deploy_dir/optee/tee-raw.bin"
+
+    # Validate each file
+    local -a missing=()
+    for desc_file in \
+        "u-boot-nodtb.bin:$BOOTLOADER_UBOOT_NODTB" \
+        "u-boot.dtb:$BOOTLOADER_UBOOT_DTB" \
+        "bl31.bin:$BOOTLOADER_BL31" \
+        "optee/tee-raw.bin:$BOOTLOADER_OPTEE"
+    do
+        local desc="${desc_file%%:*}"
+        local fpath="${desc_file#*:}"
+        if [[ ! -f "$fpath" ]]; then
+            missing+=("$desc ($fpath)")
+        fi
+    done
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        error "AST2700 bootloader files not found in deploy directory:"
+        for m in "${missing[@]}"; do
+            error "  Missing: $m"
+        done
+        error "Ensure 'ob build' completed successfully for '$MACHINE'."
+        exit 3
+    fi
+
+    # Get u-boot-nodtb.bin size for DTB load offset calculation
+    BOOTLOADER_UBOOT_SIZE=$(stat --format=%s -L "$BOOTLOADER_UBOOT_NODTB" 2>/dev/null || echo "0")
+
+    verbose "AST2700 bootloaders:"
+    verbose "  u-boot-nodtb.bin : $BOOTLOADER_UBOOT_NODTB ($BOOTLOADER_UBOOT_SIZE bytes)"
+    verbose "  u-boot.dtb       : $BOOTLOADER_UBOOT_DTB"
+    verbose "  bl31.bin         : $BOOTLOADER_BL31"
+    verbose "  tee-raw.bin      : $BOOTLOADER_OPTEE"
+}
+
+build_qemu_cmd() {
+    local image_file="$1"
+    local ssh_port="$2"
+    local redfish_port="$3"
+    local ipmi_port="$4"
+    local http_port="$5"
+    local serial_log="$6"
+
+    # Port forwarding string
+    local hostfwd_args=""
+    hostfwd_args+="hostfwd=tcp::${ssh_port}-:22,"
+    hostfwd_args+="hostfwd=tcp::${redfish_port}-:443,"
+    hostfwd_args+="hostfwd=udp::${ipmi_port}-:623"
+    if [[ -n "$http_port" ]]; then
+        hostfwd_args+=",hostfwd=tcp::${http_port}-:80"
+    fi
+
+    # Start building command array
+    QEMU_CMD=(
+        "$QEMU_BIN_FILE"
+        "-machine" "$QB_MACHINE_NAME"
+    )
+
+    # SoC-specific parameters
+    if [[ "$SOC_TYPE" == "ast2700" ]]; then
+        find_ast2700_bootloaders
+        QEMU_CMD+=(
+            "-device" "loader,force-raw=on,addr=0x400000000,file=$BOOTLOADER_UBOOT_NODTB"
+            "-device" "loader,force-raw=on,addr=$((0x400000000 + BOOTLOADER_UBOOT_SIZE)),file=$BOOTLOADER_UBOOT_DTB"
+            "-device" "loader,force-raw=on,addr=0x430000000,file=$BOOTLOADER_BL31"
+            "-device" "loader,force-raw=on,addr=0x430080000,file=$BOOTLOADER_OPTEE"
+            "-device" "loader,cpu-num=0,addr=0x430000000"
+            "-device" "loader,cpu-num=1,addr=0x430000000"
+            "-device" "loader,cpu-num=2,addr=0x430000000"
+            "-device" "loader,cpu-num=3,addr=0x430000000"
+            "-smp" "4"
+        )
+    fi
+    # AST2600: bootloader is embedded in MTD image, no extra params needed
+
+    # QB_MEM (-m flag): include only if resolved from bitbake
+    if [[ -n "$QB_MEM_SIZE_FLAG" ]]; then
+        local -a qemu_mem_args=()
+        read -r -a qemu_mem_args <<< "$QB_MEM_SIZE_FLAG"
+        QEMU_CMD+=("${qemu_mem_args[@]}")
+    fi
+
+    local serial_log="$6"
+    local serial_sock="$7"
+
+    # Common tail: drive, network, serial, display
+    QEMU_CMD+=(
+        "-drive" "file=$image_file,format=raw,if=mtd"
+        "-net" "nic,netdev=net0"
+        "-netdev" "user,id=net0,$hostfwd_args"
+        "-chardev" "socket,id=serial0,path=$serial_sock,server=on,wait=off,logfile=$serial_log"
+        "-serial" "chardev:serial0"
+        "-serial" "null"
+        "-monitor" "none"
+        "-display" "none"
+    )
+    if [[ -d "$QEMU_PCBIOS_DIR" ]]; then
+        QEMU_CMD+=("-L" "$QEMU_PCBIOS_DIR")
+    fi
+    QEMU_CMD+=("-daemonize")
+}
+
+#
+# QEMU searches for firmware files in this order (with -L <dir>):
+#   1. <cwd>/<name>
+#   2. <dir>/<name>                        (the -L path)
+#   3. <QEMU_BIN_DIR>/../share/qemu-firmware/<name>
+#   4. <QEMU_BIN_DIR>/../share/qemu/<name>
+#
+# Strategy:
+# Ensure QEMU firmware directory (pc-bios) is available.
+# For custom QEMU, the user provides pc-bios/ during binary setup.
+# For community QEMU, pc-bios/ may or may not exist — QEMU will fall back
+# to its built-in firmware paths.
+ensure_qemu_firmware() {
+    QEMU_PCBIOS_DIR="$QEMU_BIN_DIR/pc-bios"
+
+    if [[ "$SOC_TYPE" != "ast2700" ]]; then
+        return 0
+    fi
+
+    if [[ ! -d "$QEMU_PCBIOS_DIR" ]]; then
+        warn "QEMU pc-bios directory not found: $QEMU_PCBIOS_DIR"
+        warn "Custom QEMU requires pc-bios/. Ensure it was provided during binary setup."
+        return 0
+    fi
+
+    require_path "$QEMU_PCBIOS_DIR/ast27x0_bootrom.bin" "AST2700 bootrom" "Provide the pc-bios directory itself, or a QEMU root directory that contains pc-bios/." 3
+}
+
+resolve_qb_vars() {
+    # Validate build environment exists
+    require_path "$BUILD_DIR" "Build directory" "Run 'ob init $MACHINE' first." 3
+
+    require_path "$OPENBMC_DIR/setup" "OpenBMC setup script" "" 3
+
+    info "Resolving QEMU variables via BitBake (this takes a few seconds)..."
+
+    local bitbake_output
+    bitbake_output=$(cd "$OPENBMC_DIR" && set +u; source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null && bitbake -e 2>/dev/null)
+
+    if [[ -z "$bitbake_output" ]]; then
+        error "Failed to run 'bitbake -e' for machine '$MACHINE'."
+        error "Ensure the build environment is healthy (try 'ob init $MACHINE' if unsure)."
+        exit 1
+    fi
+
+    QB_MACHINE_NAME=""
+    QB_MEM_SIZE_FLAG=""
+    QB_SYSTEM_NAME=""
+
+    # Extract QB_MACHINE
+    local qb_machine_raw
+    qb_machine_raw=$(echo "$bitbake_output" | grep '^QB_MACHINE=' | head -1 | cut -d= -f2-)
+    qb_machine_raw=$(trim_whitespace "$qb_machine_raw")
+    # Strip quotes
+    qb_machine_raw="${qb_machine_raw#\"}"
+    qb_machine_raw="${qb_machine_raw%\"}"
+    qb_machine_raw="${qb_machine_raw#\'}"
+    qb_machine_raw="${qb_machine_raw%\'}"
+
+    if [[ -z "$qb_machine_raw" ]]; then
+        warn "QB_MACHINE not defined for machine '$MACHINE' — will derive from machine name or SoC fallback."
+        QB_MACHINE_NAME=""
+    else
+        # Extract the machine name from "-machine <name>"
+        QB_MACHINE_NAME=$(echo "$qb_machine_raw" | sed 's/^-machine[[:space:]]*//' | awk '{print $1}')
+        if [[ -z "$QB_MACHINE_NAME" ]]; then
+            warn "Could not parse QEMU machine name from QB_MACHINE='$qb_machine_raw' — will use fallback."
+            QB_MACHINE_NAME=""
+        fi
+    fi
+
+    # Extract QB_MEM
+    local qb_mem_raw
+    qb_mem_raw=$(echo "$bitbake_output" | grep '^QB_MEM=' | head -1 | cut -d= -f2-)
+    qb_mem_raw=$(trim_whitespace "$qb_mem_raw")
+    qb_mem_raw="${qb_mem_raw#\"}"
+    qb_mem_raw="${qb_mem_raw%\"}"
+    qb_mem_raw="${qb_mem_raw#\'}"
+    qb_mem_raw="${qb_mem_raw%\'}"
+
+    if [[ -z "$qb_mem_raw" ]]; then
+        verbose "QB_MEM not defined for machine '$MACHINE' — QEMU will use default memory."
+        QB_MEM_SIZE_FLAG=""
+    else
+        QB_MEM_SIZE_FLAG="$qb_mem_raw"
+    fi
+
+    # Extract QB_SYSTEM_NAME (qemu-system-arm | qemu-system-aarch64)
+    local qb_system_raw
+    qb_system_raw=$(echo "$bitbake_output" | grep '^QB_SYSTEM_NAME=' | head -1 | cut -d= -f2-)
+    qb_system_raw=$(trim_whitespace "$qb_system_raw")
+    qb_system_raw="${qb_system_raw#\"}"
+    qb_system_raw="${qb_system_raw%\"}"
+    qb_system_raw="${qb_system_raw#\'}"
+    qb_system_raw="${qb_system_raw%\'}"
+
+    if [[ -z "$qb_system_raw" ]]; then
+        warn "QB_SYSTEM_NAME not defined for machine '$MACHINE' — will detect from SoC fallback."
+        QB_SYSTEM_NAME=""
+    else
+        QB_SYSTEM_NAME="$qb_system_raw"
+    fi
+
+    verbose "  QB_MACHINE → -machine $QB_MACHINE_NAME"
+    verbose "  QB_MEM → $QB_MEM_SIZE_FLAG"
+    verbose "  QB_SYSTEM_NAME → $QB_SYSTEM_NAME"
+}
+
+resolve_machine_conf_include() {
+    local current_file="$1"
+    local include_spec="$2"
+
+    if [[ -z "$include_spec" ]]; then
+        return 1
+    fi
+
+    if [[ "$include_spec" == /* && -f "$include_spec" ]]; then
+        echo "$include_spec"
+        return 0
+    fi
+
+    local layer_root="${current_file%%/conf/*}"
+    if [[ -n "$layer_root" && -f "$layer_root/$include_spec" ]]; then
+        echo "$layer_root/$include_spec"
+        return 0
+    fi
+
+    find "$OPENBMC_DIR" -path "*/$include_spec" -type f 2>/dev/null | head -1
+}
+
+machine_conf_chain_contains() {
+    local start_file="$1"
+    local pattern="$2"
+
+    [[ -f "$start_file" ]] || return 1
+
+    local -a queue=("$start_file")
+    local -a seen=()
+
+    while [[ ${#queue[@]} -gt 0 ]]; do
+        local current="${queue[0]}"
+        queue=("${queue[@]:1}")
+
+        [[ -f "$current" ]] || continue
+
+        local canonical=""
+        canonical=$(readlink -f "$current" 2>/dev/null || echo "$current")
+
+        local visited=0
+        local seen_file
+        for seen_file in "${seen[@]}"; do
+            if [[ "$seen_file" == "$canonical" ]]; then
+                visited=1
+                break
+            fi
+        done
+        if [[ "$visited" -eq 1 ]]; then
+            continue
+        fi
+        seen+=("$canonical")
+
+        if grep -Eq "$pattern" "$current" 2>/dev/null; then
+            return 0
+        fi
+
+        while IFS= read -r include_spec; do
+            local resolved_include=""
+            resolved_include=$(resolve_machine_conf_include "$current" "$include_spec")
+            if [[ -n "$resolved_include" ]]; then
+                queue+=("$resolved_include")
+            fi
+        done < <(
+            sed -nE 's/^[[:space:]]*(require|include)[[:space:]]+([^[:space:]#]+).*$/\2/p' "$current" 2>/dev/null
+        )
+    done
+
+    return 1
+}
+
+detect_soc_type() {
+    # 1. If QB_SYSTEM_NAME already set by bitbake, infer directly
+    if [[ -n "$QB_SYSTEM_NAME" ]]; then
+        case "$QB_SYSTEM_NAME" in
+            qemu-system-aarch64) SOC_TYPE="ast2700" ;;
+            qemu-system-arm)     SOC_TYPE="ast2600" ;;
             *)
-                warn "Invalid input. Please type Y or N."
+                warn "Unknown QB_SYSTEM_NAME '$QB_SYSTEM_NAME' — cannot infer SoC type."
+                SOC_TYPE=""
                 ;;
         esac
+        if [[ -n "$SOC_TYPE" ]]; then
+            verbose "SoC detected from QB_SYSTEM_NAME: $SOC_TYPE"
+            return 0
+        fi
+    fi
+
+    # 2. Deploy directory file detection
+    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
+    local deploy_hint=""
+    if [[ -d "$deploy_dir" ]]; then
+        if [[ -f "$deploy_dir/bl31-ast2700.bin" ]]; then
+            deploy_hint="ast2700"
+        else
+            deploy_hint="ast2600"
+        fi
+    fi
+    verbose "SoC deploy hint: ${deploy_hint:-<none>} (from $deploy_dir)"
+
+    # 3. Machine conf include chain detection
+    local conf_hint=""
+    local machine_conf=""
+    machine_conf=$(find "$OPENBMC_DIR" -path "*/conf/machine/$MACHINE.conf" -type f 2>/dev/null | head -1 || true)
+
+    if [[ -n "$machine_conf" && -f "$machine_conf" ]]; then
+        if machine_conf_chain_contains "$machine_conf" 'ast2700-sdk\.inc|ast2700[^[:space:]#]*\.inc'; then
+            conf_hint="ast2700"
+        elif machine_conf_chain_contains "$machine_conf" 'ast2600[^[:space:]#]*\.inc|ast2600-default'; then
+            conf_hint="ast2600"
+        fi
+    fi
+    verbose "SoC conf hint: ${conf_hint:-<none>} (from machine conf include chain)"
+
+    # 4. Cross-validate
+    if [[ -n "$deploy_hint" && -n "$conf_hint" && "$deploy_hint" != "$conf_hint" ]]; then
+        error "SoC type conflict: deploy dir says '$deploy_hint', machine conf says '$conf_hint'"
+        error "Resolve the mismatch before continuing."
+        exit 1
+    fi
+
+    # 5. Determine SOC_TYPE
+    if [[ -n "$deploy_hint" ]]; then
+        SOC_TYPE="$deploy_hint"
+    elif [[ -n "$conf_hint" ]]; then
+        SOC_TYPE="$conf_hint"
+    else
+        error "Cannot determine SoC type for machine '$MACHINE'."
+        error "Neither QB_SYSTEM_NAME, deploy artifacts, nor machine conf provide SoC information."
+        exit 3
+    fi
+
+    # 6. Backfill QB_SYSTEM_NAME if still empty
+    if [[ -z "$QB_SYSTEM_NAME" ]]; then
+        case "$SOC_TYPE" in
+            ast2700) QB_SYSTEM_NAME="qemu-system-aarch64" ;;
+            ast2600) QB_SYSTEM_NAME="qemu-system-arm" ;;
+        esac
+        verbose "Backfilled QB_SYSTEM_NAME=$QB_SYSTEM_NAME from SoC detection"
+    fi
+
+    info "SoC detected: $SOC_TYPE (arch: $QB_SYSTEM_NAME)"
+}
+
+derive_qemu_machine_name() {
+    # If QB_MACHINE_NAME already resolved from bitbake, use it directly
+    if [[ -n "$QB_MACHINE_NAME" ]]; then
+        verbose "QEMU machine name from QB_MACHINE: $QB_MACHINE_NAME"
+        return 0
+    fi
+
+    # Fallback: extract first segment before '-' and append '-bmc'
+    # e.g. b865g8-bytedance → b865g8-bmc, k709g8-bytedance → k709g8-bmc
+    local prefix="${MACHINE%%-*}"
+    if [[ "$prefix" == "$MACHINE" ]]; then
+        error "Cannot derive QEMU machine name from '$MACHINE' (no '-' separator)."
+        error "Define QB_MACHINE in your machine conf, or use a machine name with 'xxx-yyy' format."
+        exit 3
+    fi
+
+    QB_MACHINE_NAME="${prefix}-bmc"
+    info "QEMU machine name derived: $QB_MACHINE_NAME (from machine '$MACHINE')"
+}
+
+check_ports_available() {
+    local -a port_args=("$@")
+    local -a conflicts=()
+
+    local i
+    for (( i=0; i<${#port_args[@]}; i+=2 )); do
+        local proto="${port_args[$i]}"   # "tcp" or "udp"
+        local port="${port_args[$((i+1))]}"
+
+        local occupants=""
+        occupants=$(get_port_occupants "$proto" "$port")
+
+        if [[ -n "$occupants" ]]; then
+            local pid_info
+            pid_info=$(echo "$occupants" | head -1 | grep -oP 'pid=\K[0-9]+' | head -1 || echo "?")
+            conflicts+=("$proto $port — used by process $pid_info")
+        fi
+    done
+
+    if [[ ${#conflicts[@]} -gt 0 ]]; then
+        echo ""
+        error "Port(s) already in use:"
+        local c
+        for c in "${conflicts[@]}"; do
+            echo -e "  ${RED}$c${NC}"
+        done
+        echo ""
+        echo "  Set a different port:"
+        echo "    ob start-qemu $MACHINE --ssh-port <port> --redfish-port <port> --ipmi-port <port>"
+        echo "  Or export:"
+        echo "    export OB_QEMU_SSH_PORT=<port>"
+        echo "    export OB_QEMU_REDFISH_PORT=<port>"
+        echo "    export OB_QEMU_IPMI_PORT=<port>"
+        exit 3
+    fi
+}
+
+get_port_occupants() {
+    local proto="$1"
+    local port="$2"
+
+    if [[ "$proto" == "tcp" ]]; then
+        ss -tlnpH "sport = :$port" 2>/dev/null | grep -v "^State" || true
+    else
+        ss -ulnpH "sport = :$port" 2>/dev/null | grep -v "^State" || true
+    fi
+}
+
+prompt_for_available_port() {
+    local port_var_name="$1"
+    local service_label="$2"
+    local proto="$3"
+    shift 3
+
+    local -n port_ref="$port_var_name"
+    local -a reserved_ports=("$@")
+
+    while true; do
+        local reserved_port=""
+        local candidate
+        for candidate in "${reserved_ports[@]}"; do
+            if [[ -n "$candidate" && "$candidate" == "$port_ref" ]]; then
+                reserved_port="$candidate"
+                break
+            fi
+        done
+
+        local occupants=""
+        occupants=$(get_port_occupants "$proto" "$port_ref")
+
+        if [[ -z "$reserved_port" && -z "$occupants" ]]; then
+            return 0
+        fi
+
+        if [[ ! -t 0 ]]; then
+            return 1
+        fi
+
+        echo ""
+        if [[ -n "$reserved_port" ]]; then
+            warn "$service_label port $port_ref/$proto conflicts with another requested $proto port."
+        else
+            local pid_info
+            pid_info=$(echo "$occupants" | head -1 | grep -oP 'pid=\K[0-9]+' | head -1 || echo "?")
+            warn "$service_label port $port_ref/$proto is already in use by process $pid_info."
+        fi
+
+        local input_port=""
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter new $service_label $proto port: ")" input_port; then
+            error "Unable to read port from stdin."
+            exit 1
+        fi
+        input_port=$(trim_whitespace "$input_port")
+
+        if [[ -z "$input_port" ]]; then
+            error "$service_label port cannot be empty."
+            continue
+        fi
+
+        if [[ ! "$input_port" =~ ^[0-9]+$ ]]; then
+            error "$service_label port must be a number: $input_port"
+            continue
+        fi
+
+        if (( input_port < 1 || input_port > 65535 )); then
+            error "$service_label port must be between 1 and 65535: $input_port"
+            continue
+        fi
+
+        port_ref="$input_port"
     done
 }
+
+resolve_qemu_ports_interactive() {
+    local -n ssh_ref="$1"
+    local -n redfish_ref="$2"
+    local -n ipmi_ref="$3"
+    local -n http_ref="$4"
+
+    if [[ ! -t 0 ]]; then
+        return 0
+    fi
+
+    if ! prompt_for_available_port ssh_ref "SSH" "tcp" "$redfish_ref" "$http_ref"; then
+        return 1
+    fi
+    if ! prompt_for_available_port redfish_ref "Redfish" "tcp" "$ssh_ref" "$http_ref"; then
+        return 1
+    fi
+    if ! prompt_for_available_port ipmi_ref "IPMI" "udp"; then
+        return 1
+    fi
+    if [[ -n "$http_ref" ]]; then
+        if ! prompt_for_available_port http_ref "HTTP" "tcp" "$ssh_ref" "$redfish_ref"; then
+            return 1
+        fi
+    fi
+
+    return 0
+}
+
+read_pid_file() {
+    if [[ ! -f "$QEMU_PID_FILE" ]]; then
+        return 1
+    fi
+
+    PIDFILE_PID=""
+    PIDFILE_USER=""
+    PIDFILE_MACHINE=""
+    PIDFILE_BINARY=""
+    PIDFILE_STARTED_AT=""
+    PIDFILE_SSH_PORT=""
+    PIDFILE_REDFISH_PORT=""
+    PIDFILE_IPMI_PORT=""
+    PIDFILE_HTTP_PORT=""
+    PIDFILE_SERIAL_LOG=""
+
+    while IFS='=' read -r key value; do
+        case "$key" in
+            pid)          PIDFILE_PID="$value" ;;
+            user)         PIDFILE_USER="$value" ;;
+            machine)      PIDFILE_MACHINE="$value" ;;
+            binary)       PIDFILE_BINARY="$value" ;;
+            started_at)   PIDFILE_STARTED_AT="$value" ;;
+            ssh_port)     PIDFILE_SSH_PORT="$value" ;;
+            redfish_port) PIDFILE_REDFISH_PORT="$value" ;;
+            ipmi_port)    PIDFILE_IPMI_PORT="$value" ;;
+            http_port)    PIDFILE_HTTP_PORT="$value" ;;
+            serial_log)   PIDFILE_SERIAL_LOG="$value" ;;
+        esac
+    done < "$QEMU_PID_FILE"
+
+    return 0
+}
+
+validate_pid() {
+    # return 0=running&match, 1=exited, 2=pid recycled — diagnostic only, NOT part of exit-code protocol
+    local pid="$1"
+    local expected_binary="$2"
+    local expected_machine="$3"
+
+    if [[ ! -d "/proc/$pid" ]]; then
+        return 1  # Process exited
+    fi
+
+    local cmdline
+    cmdline=$(cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ' || true)
+
+    if [[ "$cmdline" != *"$expected_binary"* ]] || [[ "$cmdline" != *"$expected_machine"* ]]; then
+        return 2  # PID recycled — different process
+    fi
+
+    return 0  # Running and matches
+}
+
+# Parse "Offending <TYPE> key in <file>:<line>" from an ssh changed-key stderr blob.
+# Stdout: "<file> <line>" on match; empty otherwise. Always exits 0 (pure parser,
+# safe under `set -euo pipefail`).
+parse_hostkey_offending() {
+    local stderr_blob="$1"
+    local re='Offending [A-Z0-9]+ key in ([^:]+):([0-9]+)'
+    if [[ "$stderr_blob" =~ $re ]]; then
+        printf '%s %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
+    fi
+}
+
+# Detect a stale SSH host key for [localhost]:<port> in the user's real
+# known_hosts and offer to clear it. Runs ONE mirror ssh probe (BatchMode, no
+# password): host-key check happens before auth, so no password is needed.
+# Silent unless a *changed*-key conflict is found. Safe under `set -euo pipefail`.
+# Args: $1 = ssh_port
+check_ssh_hostkey_conflict() {
+    local port="$1"
+    [[ -z "$port" ]] && return 0
+
+    local target="[localhost]:${port}"
+
+    # ── Local pre-screen: does known_hosts hold an entry for the target? ──
+    # Pure local file read — independent of sshd / network. Silent if none.
+    local kh_probe=""
+    kh_probe=$(ssh-keygen -F "$target" 2>/dev/null || true)
+    if [[ -z "$kh_probe" ]]; then
+        return 0  # No entry → nothing can conflict; stay silent.
+    fi
+
+    # ── Probe sshd to confirm whether the entry is actually stale ──
+    # Mirror the user's manual ssh: real known_hosts, default strict checking.
+    # Wrap in 'if' so set -e does not propagate ssh's non-zero exit.
+    local probe_out=""
+    if ! probe_out=$(ssh -o BatchMode=yes -o ConnectTimeout=3 \
+                        -p "$port" root@localhost true 2>&1); then
+        :
+    fi
+
+    # Track A — cryptographically confirmed stale: sshd up, key mismatch.
+    if [[ "$probe_out" == *"REMOTE HOST IDENTIFICATION HAS CHANGED"* ]]; then
+        _clear_stale_hostkey_menu "$target" "$probe_out"
+        return 0
+    fi
+
+    # Entry still matches the live key (sshd up, probe reached auth). No cleanup.
+    if [[ "$probe_out" == *"Permission denied"* ]]; then
+        verbose "Host key for ${target} still matches current image; no cleanup needed."
+        return 0
+    fi
+
+    # Track B — sshd not reachable / status unknown. Entry exists but we can't
+    # confirm it's stale. Warn + give the clear command; do NOT auto-delete —
+    # the entry may still be valid if the user only re-ran start-qemu (no rebuild).
+    warn "Found a known_hosts entry for ${target}, but BMC sshd is not reachable yet — cannot confirm whether it's stale."
+    if [[ "$probe_out" == *"Connection refused"* || "$probe_out" == *"Connection timed out"* ]]; then
+        warn "BMC sshd not ready on port ${port} (still booting)."
+    fi
+    echo "    If you just rebuilt the image, this entry is stale and manual ssh will report a host key error."
+    echo "    Clear it yourself when ready:"
+    echo "      ssh-keygen -R '${target}'"
+    echo "    (ob won't auto-delete — only you know whether you rebuilt the image.)"
+    return 0
+}
+
+# Interactive menu to clear a cryptographically-confirmed stale SSH host key.
+# Only called once ssh has proved the known_hosts entry mismatches the live key,
+# so removal is justified by proof (zero risk of deleting a still-valid entry).
+# Args: $1 = target ("[localhost]:<port>"), $2 = ssh probe stderr blob.
+_clear_stale_hostkey_menu() {
+    local target="$1" probe_out="$2"
+    local parsed="" file="" line="" display_cmd="" confirm=""
+
+    parsed=$(parse_hostkey_offending "$probe_out")
+    if [[ -n "$parsed" ]]; then
+        read -r file line <<< "$parsed"
+    fi
+
+    warn "Stale SSH host key for ${target} in your known_hosts (image rebuilt -> host key regenerated); manual ssh will be rejected."
+    if [[ -n "$file" && -n "$line" ]]; then
+        echo "    Offending entry (${file}:${line}):"
+        sed -n "${line}p" "$file" 2>/dev/null | sed 's/^/      /' || true
+        display_cmd="ssh-keygen -f \"${file}\" -R \"${target}\""
+    else
+        display_cmd="ssh-keygen -R \"${target}\""
+    fi
+    echo "    Removes only the ${target} entry; original backed up as known_hosts.old."
+    echo "    Clear command: ${display_cmd}"
+
+    if ! command -v ssh-keygen >/dev/null 2>&1; then
+        warn "ssh-keygen not found; run the clear command above manually."
+        return 0
+    fi
+
+    if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to clear the stale key, anything else to skip: ")" confirm; then
+        info "Non-interactive mode; run the clear command above manually."
+        return 0
+    fi
+
+    local rc=0
+    case "$confirm" in
+        [Yy]*)
+            if [[ -n "$file" ]]; then
+                ssh-keygen -f "$file" -R "$target" >/dev/null 2>&1 || rc=$?
+            else
+                ssh-keygen -R "$target" >/dev/null 2>&1 || rc=$?
+            fi
+            if [[ "$rc" -eq 0 ]]; then
+                info "Cleared stale host key for ${target} (backup: known_hosts.old)."
+            else
+                warn "ssh-keygen -R exited ${rc}; run the clear command above manually."
+            fi
+            ;;
+        *)
+            info "Skipped. Run manually: ${display_cmd}"
+            ;;
+    esac
+    return 0
+}
+
+# === §5 构建流程 (init pipeline: dep graph / sub-repos / lockfile / config) ===
 
 prerequisites_check() {
     step_header "Step 1/8: Checking prerequisites..."
@@ -2861,7 +2295,7 @@ prerequisites_check() {
     # OS check
     if [[ "$(uname -s)" != "Linux" ]]; then
         error "This script must run on Linux. Current OS: $(uname -s)"
-        exit 1
+        exit 3
     fi
     verbose "OS: $(uname -s) OK"
 
@@ -2869,7 +2303,7 @@ prerequisites_check() {
     for tool in git python3; do
         if ! command -v "$tool" &>/dev/null; then
             error "Required tool not found: $tool"
-            exit 1
+            exit 3
         fi
         verbose "Tool: $tool OK"
     done
@@ -3091,10 +2525,7 @@ clone_sub_repos() {
         return 0
     fi
 
-    if [[ ! -f "$deps_json" ]]; then
-        error "deps.json not found. Previous step may have failed."
-        exit 1
-    fi
+    require_path "$deps_json" "deps.json" "Previous step may have failed." 3
 
     local effective_dl_dir=""
     effective_dl_dir=$(resolve_effective_dl_dir)
@@ -3310,9 +2741,20 @@ generate_build_config() {
         info "WSL detected — parallelism limited to -j${parallel_n} (memory budget)"
     fi
 
+    # Detect user-defined DL_DIR/SSTATE_DIR in local.conf so the generated .inc never
+    # overrides them (e.g. NFS shared cache). Done OUTSIDE the redirect block below so the
+    # helper's own stdout cannot leak into the .inc file.
+    local _user_dl_dir=""
+    local _user_sstate_dir=""
+    _user_dl_dir=$(read_local_conf_var "$local_conf" "DL_DIR" 2>/dev/null || true)
+    _user_sstate_dir=$(read_local_conf_var "$local_conf" "SSTATE_DIR" 2>/dev/null || true)
+    [[ -n "$_user_dl_dir" ]] && info "DL_DIR already set in local.conf ($_user_dl_dir) — not overriding in .inc"
+    [[ -n "$_user_sstate_dir" ]] && info "SSTATE_DIR already set in local.conf ($_user_sstate_dir) — not overriding in .inc"
+
     # Generate .inc file — ob init managed configuration.
-    # All variables use ??= (weak default) unless a stronger operator is required.
-    # User can override any ??= variable in local.conf with a plain = assignment.
+    # Most variables use ??= (weak default). DL_DIR/SSTATE_DIR are the exception: they use a
+    # conditional = (written only when absent in local.conf) because ??= cannot override
+    # bitbake.conf's ?= default and would silently break do_unpack ("tar: Cannot open").
     {
         echo "# Auto-generated by ob init $MACHINE at $timestamp"
         echo "# Do not edit manually. Re-run 'ob init $MACHINE' to regenerate."
@@ -3328,9 +2770,24 @@ generate_build_config() {
         echo 'CONNECTIVITY_CHECK_URIS = ""'
         echo ""
 
-        echo "# Build cache directories. User can override in local.conf if needed (e.g., NFS shared cache)."
-        echo "DL_DIR ??= \"$WORKSPACE_DIR/downloads\""
-        echo "SSTATE_DIR ??= \"$WORKSPACE_DIR/sstate-cache\""
+        echo "# Build cache directories. Written here only if NOT already defined in local.conf."
+        echo "# Uses = (not ??=): bitbake.conf sets these with ?=, and ??= is too weak to override it."
+        if [[ -z "$_user_dl_dir" ]]; then
+            echo "DL_DIR = \"$WORKSPACE_DIR/downloads\""
+        else
+            echo "# DL_DIR defined in local.conf ($_user_dl_dir) — not overridden."
+        fi
+        if [[ -z "$_user_sstate_dir" ]]; then
+            echo "SSTATE_DIR = \"$WORKSPACE_DIR/sstate-cache\""
+        else
+            echo "# SSTATE_DIR defined in local.conf ($_user_sstate_dir) — not overridden."
+        fi
+
+        echo ""
+        echo "# Hash equivalency database for shared sstate reuse across builds."
+        echo "# When SSTATE_DIR is shared, put the hash database there too, not in build-specific dirs."
+        echo "# See: https://docs.yoctoproject.org/bitbake/latest/manual/concepts.html#hashing"
+        echo "BB_HASHSERVE_DB_DIR = \"\${SSTATE_DIR}\""
 
         echo ""
         echo "# npm network timeout defaults for Node.js recipes (e.g. webui-vue)."
@@ -3419,100 +2876,461 @@ print_report() {
     echo "Safe to Ctrl+C at any time; re-run will resume from where it left off."
 }
 
-# ──────────────────────────────────────────────
-# SSH host-key conflict detection (start-qemu helpers)
-# ──────────────────────────────────────────────
+# === §6 命令编排 (cmd_* orchestrators) ===
 
-# Parse "Offending <TYPE> key in <file>:<line>" from an ssh changed-key stderr blob.
-# Stdout: "<file> <line>" on match; empty otherwise. Always exits 0 (pure parser,
-# safe under `set -euo pipefail`).
-parse_hostkey_offending() {
-    local stderr_blob="$1"
-    local re='Offending [A-Z0-9]+ key in ([^:]+):([0-9]+)'
-    if [[ "$stderr_blob" =~ $re ]]; then
-        printf '%s %s\n' "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"
-    fi
-}
+status_section_main_repo() {
+    step_header "OpenBMC Main Repository"
 
-# Detect a stale SSH host key for [localhost]:<port> in the user's real
-# known_hosts and offer to clear it. Runs ONE mirror ssh probe (BatchMode, no
-# password): host-key check happens before auth, so no password is needed.
-# Silent unless a *changed*-key conflict is found. Safe under `set -euo pipefail`.
-# Args: $1 = ssh_port
-check_ssh_hostkey_conflict() {
-    local port="$1"
-    [[ -z "$port" ]] && return 0
-
-    local target="[localhost]:${port}"
-    local probe_out="" parsed=""
-    local file="" line=""
-    local display_cmd="" confirm=""
-    local rc=0
-
-    # Mirror the user's manual ssh: real known_hosts, default strict checking.
-    # Wrap in 'if' so set -e does not propagate ssh's non-zero exit (host-key
-    # failure / Permission denied / unreachable are all expected here).
-    if ! probe_out=$(ssh -o BatchMode=yes -o ConnectTimeout=3 \
-                        -p "$port" root@localhost true 2>&1); then
-        :
+    if [[ ! -d "$OPENBMC_DIR/.git" ]]; then
+        echo "  Status       : missing"
+        return 0
     fi
 
-    # Only a *changed* key is a conflict worth acting on.
-    if [[ "$probe_out" != *"REMOTE HOST IDENTIFICATION HAS CHANGED"* ]]; then
-        if [[ "$probe_out" == *"Connection refused"* || "$probe_out" == *"Connection timed out"* ]]; then
-            warn "BMC sshd not reachable on port ${port}; if you rebuilt the image and manual ssh later reports a host key error, run: ssh-keygen -R '[localhost]:${port}'"
+    # Source (origin URL + label)
+    local origin_url=""
+    local source_label=""
+    origin_url=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
+    if [[ -f "$SOURCE_LOCK_FILE" ]]; then
+        source_label=$(read_lock_field source_label 2>/dev/null || true)
+    fi
+    local source_display="${origin_url:-<no origin>}${source_label:+ ($source_label)}"
+
+    # Branch & commit
+    local branch=""
+    local commit_line=""
+    branch=$(git -C "$OPENBMC_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+    commit_line=$(git -C "$OPENBMC_DIR" log --oneline -1 2>/dev/null || true)
+
+    # Upstream comparison (network, best-effort)
+    local upstream_display="⚠️ unreachable (skipped)"
+    if timeout 10 git -C "$OPENBMC_DIR" fetch origin --quiet 2>/dev/null; then
+        local ahead behind
+        ahead=$(git -C "$OPENBMC_DIR" rev-list --count "origin/${branch}..HEAD" 2>/dev/null || echo "0")
+        behind=$(git -C "$OPENBMC_DIR" rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo "0")
+        if [[ "$ahead" -eq 0 && "$behind" -eq 0 ]]; then
+            upstream_display="✅ up-to-date"
+        elif [[ "$behind" -gt 0 ]]; then
+            upstream_display="⬇️  behind ${behind}${ahead:+, ⬆️  ahead ${ahead}}"
+        else
+            upstream_display="⬆️  ahead ${ahead}"
         fi
-        return 0
     fi
 
-    parsed=$(parse_hostkey_offending "$probe_out")
-    if [[ -n "$parsed" ]]; then
-        read -r file line <<< "$parsed"
+    # First init time
+    local first_init=""
+    if [[ -f "$SOURCE_LOCK_FILE" ]]; then
+        local raw_time
+        raw_time=$(read_lock_field created_at 2>/dev/null || true)
+        if [[ -n "$raw_time" ]]; then
+            # Format ISO to readable: 2026-06-06T17:13:41Z → 2026-06-06 17:13 UTC
+            first_init=$(format_timestamp "$raw_time")
+        fi
     fi
 
-    warn "Stale SSH host key for ${target} in your known_hosts (image rebuilt -> host key regenerated); manual ssh will be rejected."
-    if [[ -n "$file" && -n "$line" ]]; then
-        echo "    Offending entry (${file}:${line}):"
-        sed -n "${line}p" "$file" 2>/dev/null | sed 's/^/      /' || true
-        display_cmd="ssh-keygen -f \"${file}\" -R \"${target}\""
-    else
-        display_cmd="ssh-keygen -R \"${target}\""
-    fi
-    echo "    Removes only the ${target} entry; original backed up as known_hosts.old."
-    echo "    Clear command: ${display_cmd}"
-
-    if ! command -v ssh-keygen >/dev/null 2>&1; then
-        warn "ssh-keygen not found; run the clear command above manually."
-        return 0
-    fi
-
-    if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to clear the stale key, anything else to skip: ")" confirm; then
-        info "Non-interactive mode; run the clear command above manually."
-        return 0
-    fi
-
-    case "$confirm" in
-        [Yy]*)
-            if [[ -n "$file" ]]; then
-                ssh-keygen -f "$file" -R "$target" >/dev/null 2>&1 || rc=$?
-            else
-                ssh-keygen -R "$target" >/dev/null 2>&1 || rc=$?
-            fi
-            if [[ "$rc" -eq 0 ]]; then
-                info "Cleared stale host key for ${target} (backup: known_hosts.old)."
-            else
-                warn "ssh-keygen -R exited ${rc}; run the clear command above manually."
-            fi
-            ;;
-        *)
-            info "Skipped. Run manually: ${display_cmd}"
-            ;;
-    esac
+    echo "  Status       : present"
+    echo "  Source       : $source_display"
+    echo "  Local path   : $OPENBMC_DIR"
+    echo "  Branch       : ${branch:-<unknown>}"
+    echo "  Commit       : ${commit_line:-<unknown>}"
+    echo "  Upstream     : $upstream_display"
+    echo "  First init   : ${first_init:-<unknown>}"
 }
 
-# ──────────────────────────────────────────────
-# ob start-qemu
-# ──────────────────────────────────────────────
+status_section_machines() {
+    step_header "Machines"
+
+    # Discover machines: from .init-done and .lock files, merged and deduplicated
+    local -a machines=()
+    local -A seen_machines=()
+
+    for f in "$CONFIGS_DIR"/*.init-done "$CONFIGS_DIR"/*.lock; do
+        [[ -f "$f" ]] || continue
+        local mname
+        mname=$(basename "$f" | sed -E 's/\.(init-done|lock)$//')
+        # Skip the main repo source lock (not a per-machine lock)
+        [[ "$mname" == "openbmc-source" ]] && continue
+        if [[ -z "${seen_machines[$mname]:-}" ]]; then
+            seen_machines["$mname"]=1
+            machines+=("$mname")
+        fi
+    done
+
+    if [[ ${#machines[@]} -eq 0 ]]; then
+        echo "  (none)"
+        return 0
+    fi
+
+    # Sort machine names
+    local -a sorted_machines=()
+    while IFS= read -r line; do
+        [[ -n "$line" ]] && sorted_machines+=("$line")
+    done < <(printf '%s\n' "${machines[@]}" | sort)
+
+    # --- Summary table ---
+    # Collect per-machine data
+    local -A m_init=() m_repos=() m_build=() m_image=()
+
+    for m in "${sorted_machines[@]}"; do
+        # Init status
+        if [[ -f "$CONFIGS_DIR/$m.init-done" ]]; then
+            m_init["$m"]="✅ done"
+        elif [[ -f "$CONFIGS_DIR/$m.lock" ]]; then
+            m_init["$m"]="⏳ partial"
+        else
+            m_init["$m"]="—"
+        fi
+
+        # Repos count
+        if [[ -f "$CONFIGS_DIR/$m.lock" ]]; then
+            m_repos["$m"]=$(python3 -c "import json; print(len(json.load(open('$CONFIGS_DIR/$m.lock'))['sub_repos']))" 2>/dev/null || echo "?")
+        else
+            m_repos["$m"]="—"
+        fi
+
+        # Build status — glob for *.static.mtd to handle custom image names
+        local image_path=""
+        image_path=$(ls "$OPENBMC_DIR/build/$m/tmp/deploy/images/$m/"*.static.mtd 2>/dev/null | head -1 || true)
+        if [[ -n "$image_path" && -f "$image_path" ]]; then
+            m_build["$m"]="🔨 succeeded"
+            m_image["$m"]="$image_path"
+        elif [[ -d "$OPENBMC_DIR/build/$m" ]]; then
+            m_build["$m"]="❌ failed"
+        else
+            m_build["$m"]="— never"
+        fi
+    done
+
+    # Print summary table header
+    printf "  %-22s %-10s %s\n" "Machine" "Init" "Build"
+    for m in "${sorted_machines[@]}"; do
+        local m_padded
+        printf -v m_padded "%-22s" "$m"
+        printf "  %b%-10s %s\n" "${YELLOW}${m_padded}${NC}" "${m_init[$m]}" "${m_build[$m]}"
+    done
+
+    # --- Per-machine expansion ---
+    for m in "${sorted_machines[@]}"; do
+        # Only expand machines that have a .lock file (meaningful data)
+        [[ -f "$CONFIGS_DIR/$m.lock" ]] || continue
+
+        echo ""
+        echo "  ── $m ──────────────────────────────────────"
+
+        # Init time
+        local init_time=""
+        if [[ -f "$CONFIGS_DIR/$m.init-done" ]]; then
+            local raw_init_time
+            raw_init_time=$(head -1 "$CONFIGS_DIR/$m.init-done" 2>/dev/null || true)
+            if [[ -n "$raw_init_time" ]]; then
+                init_time=$(format_timestamp "$raw_init_time")
+            fi
+        fi
+        echo "    Init time    : ${init_time:--}"
+
+        # Repos
+        echo "    Repos        : ${m_repos[$m]}"
+
+        # Image details (only when build succeeded)
+        if [[ -n "${m_image[$m]:-}" ]]; then
+            local build_time=""
+            local _bt_epoch=""
+            _bt_epoch=$(stat -c '%Y' "${m_image[$m]}" 2>/dev/null) || true
+            if [[ -n "$_bt_epoch" ]]; then
+                local _bt_iso
+                _bt_iso=$(date -u -d "@$_bt_epoch" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null) || true
+                build_time=$(format_timestamp "$_bt_iso")
+            else
+                build_time="-"
+            fi
+            echo "    Build time   : $build_time"
+            echo "    Image name   : $(basename "${m_image[$m]}")"
+            echo "    Image path   : $(dirname "${m_image[$m]}")/"
+        fi
+    done
+}
+
+status_section_tips() {
+    local repo_exists="$1"
+    local has_init_done="$2"
+    local has_never_built="$3"
+
+    local tip=""
+
+    if [[ "$repo_exists" -eq 0 ]]; then
+        tip="💡 Run 'ob init' to get started."
+    elif [[ "$has_init_done" -eq 0 ]]; then
+        tip="💡 Run 'ob init' to initialize a machine."
+    elif [[ "$has_never_built" -eq 1 ]]; then
+        tip="💡 Run 'ob build' to build a machine."
+    fi
+
+    if [[ -n "$tip" ]]; then
+        echo ""
+        echo "  $tip"
+    fi
+}
+
+cmd_status() {
+    local repo_exists=0
+    [[ -d "$OPENBMC_DIR/.git" ]] && repo_exists=1
+
+    # Section 1: Main repo info (always shown)
+    status_section_main_repo
+
+    echo ""
+
+    # Section 2: Machine list + expansion (always shown, even if repo missing — may have residual data)
+    status_section_machines
+
+    # Section 3: Dynamic tips
+    local has_init_done=0
+    local has_never_built=0
+    for f in "$CONFIGS_DIR"/*.init-done; do
+        [[ -f "$f" ]] || continue
+        has_init_done=1
+        local mname
+        mname=$(basename "$f" .init-done)
+        local image_path=""
+        image_path=$(ls "$OPENBMC_DIR/build/$mname/tmp/deploy/images/$mname/"*.static.mtd 2>/dev/null | head -1 || true)
+        if [[ -z "$image_path" ]]; then
+            has_never_built=1
+        fi
+        break
+    done
+
+    status_section_tips "$repo_exists" "$has_init_done" "$has_never_built"
+
+    # Section 4: QEMU instances (only shown when instances exist)
+    local _pids_dir="$WORKSPACE_DIR/qemu-bin/.pids"
+    local _has_qemu=0
+    local -a _qemu_lines=()
+
+    for _pf in "$_pids_dir"/*.pid; do
+        [[ -f "$_pf" ]] || continue
+
+        local _qm="" _qp="" _qbin="" _qstart="" _qsport="" _qrport="" _qiport=""
+        _qm=$(basename "$_pf" .pid)
+
+        # Read PID file fields
+        _qp=$(read_kv_field "$_pf" pid) || _qp=""
+        _qbin=$(read_kv_field "$_pf" binary) || _qbin=""
+        _qstart=$(read_kv_field "$_pf" started_at) || _qstart=""
+        _qsport=$(read_kv_field "$_pf" ssh_port) || _qsport=""
+        _qrport=$(read_kv_field "$_pf" redfish_port) || _qrport=""
+        _qiport=$(read_kv_field "$_pf" ipmi_port) || _qiport=""
+
+        # Validate process is alive
+        if [[ -n "$_qp" ]] && [[ -d "/proc/$_qp" ]]; then
+            _has_qemu=1
+            _qemu_lines+=("  $_qm   PID $_qp   SSH($_qsport) Redfish($_qrport) IPMI($_qiport/UDP)   ✅ running")
+        else
+            # Stale PID file — clean up silently
+            rm -f "$_pf"
+        fi
+    done
+
+    if [[ "$_has_qemu" -eq 1 ]]; then
+        echo ""
+        step_header "QEMU Instances"
+        local _ql
+        for _ql in "${_qemu_lines[@]}"; do
+            echo "$_ql"
+        done
+    fi
+}
+
+cmd_build() {
+    # === Prerequisites ===
+    require_path "$OPENBMC_DIR/.git" "OpenBMC main repository" "Run 'ob init' first." 3
+
+    require_path "$SOURCE_LOCK_FILE" "Source lock" "Run 'ob init' first." 3
+
+    # === Discover init-done machines ===
+    local -a machines=()
+    local -a init_times=()
+    local -a repo_counts=()
+
+    for init_done_file in "$CONFIGS_DIR"/*.init-done; do
+        [[ -f "$init_done_file" ]] || continue
+        local mname
+        mname=$(basename "$init_done_file" .init-done)
+        machines+=("$mname")
+
+        local init_time raw_init_time
+        if ! IFS= read -r raw_init_time < "$init_done_file"; then
+            raw_init_time=""
+        fi
+        init_time=$(format_timestamp "$raw_init_time")
+        init_times+=("$init_time")
+
+        local lockfile="$CONFIGS_DIR/$mname.lock"
+        local repo_count=0
+        if [[ -f "$lockfile" ]]; then
+            repo_count=$(python3 -c "import json; print(len(json.load(open('$lockfile'))['sub_repos']))" 2>/dev/null || echo "?")
+        else
+            repo_count="?"
+        fi
+        repo_counts+=("$repo_count")
+    done
+
+    if [[ ${#machines[@]} -eq 0 ]]; then
+        step_header "Initialized Machines"
+        echo ""
+        echo "  (none)"
+        echo ""
+        error "No machines are ready to build."
+        error "Run 'ob init' first to initialize a machine."
+        exit 3
+    fi
+
+    # === Read main repo info ===
+    local lock_origin_url lock_source_label
+    lock_origin_url=$(read_lock_field origin_url || echo "<unknown>")
+    lock_source_label=$(read_lock_field source_label || echo "")
+
+    # === Display ===
+    step_header "OpenBMC Repository"
+    echo "  Source : $lock_origin_url${lock_source_label:+ ($lock_source_label)}"
+    echo "  Path   : $OPENBMC_DIR"
+    echo ""
+
+    step_header "Initialized Machines"
+
+    local total=${#machines[@]}
+    local idx_width=${#total}
+    local i
+    for (( i=0; i<total; i++ )); do
+        printf "  %${idx_width}d) %-20s %s    %s repos\n" \
+            "$((i + 1))" "${machines[$i]}" "${init_times[$i]}" "${repo_counts[$i]}"
+    done
+
+    echo ""
+    info "If the machine you want is not listed, run 'init' task or './ob init' first."
+    echo ""
+
+    # === Interactive selection ===
+    if [[ ! -t 0 ]]; then
+        error "No interactive terminal. ob build requires interactive mode."
+        exit 3
+    fi
+
+    local sfl_rc=0
+    select_from_list "Select a machine to build [1-${total}]" "$total" || sfl_rc=$?
+    if [[ "$sfl_rc" -eq 2 ]]; then
+        warn "Build cancelled by user."
+        exit 2
+    elif [[ "$sfl_rc" -ne 0 ]]; then
+        exit 1
+    fi
+    local chosen="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
+
+    MACHINE="$chosen"
+    BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
+
+    echo ""
+    info "Selected: $MACHINE"
+    info "Target  : obmc-phosphor-image"
+    info "Estimated time: 1-4 hours depending on machine and cache state."
+    echo ""
+    local ca_rc=0
+    confirm_action "build" "$MACHINE" || ca_rc=$?
+    if [[ "$ca_rc" -eq 2 ]]; then
+        warn "Build cancelled by user."
+        exit 2
+    elif [[ "$ca_rc" -ne 0 ]]; then
+        exit 1
+    fi
+
+    # === Re-enter bitbake environment ===
+    cd "$OPENBMC_DIR"
+
+    local prev_opts
+    prev_opts=$(set +o | grep nounset)
+    set +u
+    # shellcheck disable=SC1091
+    source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null
+    eval "$prev_opts"
+
+    # === npm registry auto-detection ===
+    resolve_npm_registry
+    if [[ "$NPM_REGISTRY_RESOLVED" != "skip" ]]; then
+        export npm_config_registry="$NPM_REGISTRY_RESOLVED"
+        export npm_config_fetch_timeout=600000
+        export npm_config_fetch_retry_maxtimeout=120000
+        export npm_config_fetch_retry_mintimeout=30000
+        export npm_config_fetch_retry_factor=2
+        local _npm_vars="npm_config_registry npm_config_fetch_timeout npm_config_fetch_retry_maxtimeout npm_config_fetch_retry_mintimeout npm_config_fetch_retry_factor"
+        local _existing="${BB_ENV_PASSTHROUGH_ADDITIONS:-}"
+        BB_ENV_PASSTHROUGH_ADDITIONS="$_npm_vars"
+        if [[ -n "$_existing" ]]; then
+            BB_ENV_PASSTHROUGH_ADDITIONS="$_existing $BB_ENV_PASSTHROUGH_ADDITIONS"
+        fi
+        export BB_ENV_PASSTHROUGH_ADDITIONS
+        verbose "Exported npm config for bitbake passthrough"
+        verbose "  npm_config_registry=$npm_config_registry"
+    fi
+
+    # === Run bitbake ===
+    echo ""
+    step_header "Building $MACHINE"
+    info "Running: bitbake obmc-phosphor-image"
+    echo ""
+
+    if bitbake obmc-phosphor-image; then
+        echo ""
+        step_header "Build Succeeded"
+
+        local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
+        local image_file=""
+        image_file=$(ls "$deploy_dir/"*.static.mtd 2>/dev/null | head -1)
+
+        echo "  Machine : $MACHINE"
+        echo "  Image   : ${image_file:-<not found>}"
+        if [[ -n "$image_file" && -f "$image_file" ]]; then
+            local image_size
+            image_size=$(python3 - "$image_file" <<'PY'
+import os
+import sys
+
+size = os.path.getsize(sys.argv[1])
+units = ["B", "KiB", "MiB", "GiB", "TiB"]
+value = float(size)
+
+for unit in units:
+    if value < 1024.0 or unit == units[-1]:
+        if unit == "B":
+            print(f"{int(value)} {unit}")
+        elif value >= 10:
+            print(f"{value:.0f} {unit}")
+        else:
+            print(f"{value:.1f} {unit}")
+        break
+    value /= 1024.0
+PY
+)
+            echo "  Size    : $image_size"
+        fi
+        echo "  Deploy  : $deploy_dir"
+        echo ""
+        info "Build completed successfully."
+    else
+        local bb_exit=$?
+        echo ""
+        step_header "Build Failed"
+        echo ""
+        error "bitbake exited with code $bb_exit"
+        echo ""
+        echo "  BitBake error details are shown above."
+        echo ""
+        echo "  Common fixes:"
+        echo "    1. Re-run:         ob build  -- select same machine -- retry"
+        echo "    2. Clean & retry:  cd $OPENBMC_DIR && source setup $MACHINE"
+        echo "                       bitbake -c cleansstate <failed-recipe>"
+        echo "    3. Full log:       $BUILD_DIR/tmp/log/cooker/$MACHINE/"
+        echo ""
+        exit 1
+    fi
+}
 
 cmd_start_qemu() {
     detect_harness_root
@@ -3550,22 +3368,15 @@ cmd_start_qemu() {
         done
         echo ""
 
-        local selected
-        while true; do
-            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine [1-${total}] (0 to cancel): ")" selected; then
-                error "Unable to read selection from stdin."
-                exit 1
-            fi
-            if [[ "$selected" == "0" ]]; then
-                warn "Start QEMU cancelled by user."
-                exit 2
-            fi
-            if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
-                MACHINE="${machines[$((selected - 1))]}"
-                break
-            fi
-            warn "Please enter a number (1-${total})"
-        done
+        local sfl_rc=0
+        select_from_list "Select a machine [1-${total}]" "$total" || sfl_rc=$?
+        if [[ "$sfl_rc" -eq 2 ]]; then
+            warn "Start QEMU cancelled by user."
+            exit 2
+        elif [[ "$sfl_rc" -ne 0 ]]; then
+            exit 1
+        fi
+        MACHINE="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
     fi
 
     # Re-derive paths after machine resolution
@@ -3597,11 +3408,7 @@ cmd_start_qemu() {
     local image_file=""
     # Locate .static.mtd in deploy directory
     local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
-    if [[ ! -d "$deploy_dir" ]]; then
-        error "Image deploy directory not found: $deploy_dir"
-        error "Run 'ob build' for machine '$MACHINE' first."
-        exit 3
-    fi
+    require_path "$deploy_dir" "Image deploy directory" "Run 'ob build' for machine '$MACHINE' first." 3
 
     # Look for the static MTD image
     image_file=$(find "$deploy_dir" -maxdepth 1 -name "*.static.mtd" -type f 2>/dev/null | head -1 || true)
@@ -3643,7 +3450,7 @@ cmd_start_qemu() {
                 fi
                 if [[ "$answer" != "y" && "$answer" != "Y" ]]; then
                     info "Aborted."
-                    exit 0
+                    exit 2
                 fi
                 kill "$PIDFILE_PID" 2>/dev/null || true
                 sleep 2
@@ -3691,28 +3498,16 @@ cmd_start_qemu() {
     echo ""
 
     # ── Safety confirmation (same pattern as ob init / ob build) ──
-    print_confirm_banner "start QEMU for" "$MACHINE"
-    while true; do
-        local confirm
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Type (Y/y) to confirm and start QEMU, (N/n) to cancel: ")" confirm; then
-            error "Unable to read confirmation from stdin."
-            exit 1
-        fi
-        case "$confirm" in
-            [yY])
-                echo ""
-                info "QEMU start confirmed for machine '$MACHINE'."
-                break
-                ;;
-            [nN])
-                warn "QEMU start cancelled by user."
-                exit 0
-                ;;
-            *)
-                warn "Invalid input. Please type Y or N."
-                ;;
-        esac
-    done
+    local ca_rc=0
+    confirm_action "start QEMU for" "$MACHINE" || ca_rc=$?
+    if [[ "$ca_rc" -eq 2 ]]; then
+        warn "QEMU start cancelled by user."
+        exit 2
+    elif [[ "$ca_rc" -ne 0 ]]; then
+        exit 1
+    fi
+    echo ""
+    info "QEMU start confirmed for machine '$MACHINE'."
 
     # ── Emergency escape window ──
     warn "Launching QEMU in 3 seconds..."
@@ -3751,10 +3546,6 @@ cmd_start_qemu() {
     _qemu_post_launch "$QB_MACHINE_NAME" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log" "$serial_sock"
 }
 
-# ──────────────────────────────────────────────
-# Post-launch: write PID, wait, print summary
-# ──────────────────────────────────────────────
-
 _qemu_post_launch() {
     local qb_machine_name="$1"
     local ssh_port="$2"
@@ -3767,9 +3558,11 @@ _qemu_post_launch() {
     # ── Write PID file ──
     sleep 1
     local qemu_pid=""
-    qemu_pid=$(pgrep -f "qemu-system.*-machine.*$qb_machine_name" 2>/dev/null | head -1 || true)
+    # 用 serial socket 路径（每实例唯一）+ 当前用户过滤定位 PID，避免多用户同 SoC
+    # （如 ast2700a1-evb）machine 名相同导致 pgrep 误匹配到他人 QEMU。fallback 用 binary 路径。
+    qemu_pid=$(pgrep -u "$(whoami)" -f "$serial_sock" 2>/dev/null | head -1 || true)
     if [[ -z "$qemu_pid" ]]; then
-        qemu_pid=$(pgrep -f "$QEMU_BIN_FILE.*$MACHINE" 2>/dev/null | head -1 || true)
+        qemu_pid=$(pgrep -u "$(whoami)" -f "$QEMU_BIN_FILE" 2>/dev/null | head -1 || true)
     fi
 
     mkdir -p "$QEMU_PIDS_DIR"
@@ -3842,10 +3635,6 @@ PIDFILE_EOF
     echo ""
 }
 
-# ──────────────────────────────────────────────
-# ob stop-qemu
-# ──────────────────────────────────────────────
-
 cmd_stop_qemu() {
     detect_harness_root
 
@@ -3870,7 +3659,7 @@ cmd_stop_qemu() {
 
         if [[ ${#available[@]} -eq 0 ]]; then
             info "No QEMU instances found."
-            return 0
+            exit 0
         fi
 
         if [[ ! -t 0 ]]; then
@@ -3898,26 +3687,20 @@ cmd_stop_qemu() {
         done
         echo ""
 
-        local selected
-        while true; do
-            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select instance to stop [1-${total}] (0 to cancel): ")" selected; then
-                exit 1
-            fi
-            if [[ "$selected" == "0" ]]; then
-                warn "Stop QEMU cancelled by user."
-                exit 2
-            fi
-            if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
-                targets+=("${available[$((selected - 1))]}")
-                break
-            fi
-            warn "Please enter a number (1-${total})"
-        done
+        local sfl_rc=0
+        select_from_list "Select instance to stop [1-${total}]" "$total" || sfl_rc=$?
+        if [[ "$sfl_rc" -eq 2 ]]; then
+            warn "Stop QEMU cancelled by user."
+            exit 2
+        elif [[ "$sfl_rc" -ne 0 ]]; then
+            exit 1
+        fi
+        targets+=("${available[$((SELECT_FROM_LIST_CHOICE - 1))]}")
     fi
 
     if [[ ${#targets[@]} -eq 0 ]]; then
         info "No QEMU instances to stop."
-        return 0
+        exit 0
     fi
 
     # ── Stop each target ──
@@ -4001,7 +3784,6 @@ cmd_stop_qemu() {
     done
 }
 
-# === Main ===
 cmd_init() {
     # Step 1/8: 前置检查。
     prerequisites_check
@@ -4141,13 +3923,9 @@ cmd_menu() {
             1)
                 local init_rc=0
                 (cmd_init) || init_rc=$?
-                if [[ "$init_rc" -eq 0 ]]; then
-                    : # Init succeeded — cmd_init already printed the report
-                elif [[ "$init_rc" -eq 2 ]]; then
-                    : # User cancelled — cmd_init already printed the warning
-                else
-                    echo ""
-                    error "Initialization failed."
+                echo ""
+                if [[ "$init_rc" -ne 0 && "$init_rc" -ne 2 && "$init_rc" -ne 3 ]]; then
+                    error "Initialization failed (exit code: $init_rc)."
                 fi
                 read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
                 ;;
@@ -4155,24 +3933,13 @@ cmd_menu() {
                 local build_rc=0
                 (cmd_build) || build_rc=$?
                 echo ""
-                if [[ "$build_rc" -eq 0 ]]; then
-                    : # Build succeeded — cmd_build already printed the report
-                elif [[ "$build_rc" -eq 2 ]]; then
-                    : # User cancelled — cmd_build already printed the warning
-                elif [[ "$build_rc" -eq 3 ]]; then
-                    : # Prerequisite not met — cmd_build already printed the error
-                else
+                if [[ "$build_rc" -ne 0 && "$build_rc" -ne 2 && "$build_rc" -ne 3 ]]; then
                     error "Build failed (exit code: $build_rc)."
                 fi
                 read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
                 ;;
             3)
-                if (cmd_status); then
-                    : # Status succeeded — cmd_status already printed the report
-                else
-                    echo ""
-                    error "Status query failed."
-                fi
+                (cmd_status) # Status always succeeds — report already printed above
                 read -r -p "$(echo -e "${PROMPT_PREFIX} Press Enter to continue...") " _dummy
                 ;;
             4)
@@ -4212,6 +3979,157 @@ cmd_menu() {
     done
 }
 
+# === §7 入口 (parse_args / usage / main) ===
+
+parse_args() {
+    if [[ $# -lt 1 ]]; then
+        COMMAND=""
+        return 0
+    fi
+
+    # Handle global --help/-h before dispatching to subcommands
+    if [[ "$1" == "-h" || "$1" == "--help" ]]; then
+        usage
+        exit 0
+    fi
+
+    COMMAND="$1"
+    shift
+
+    case "$COMMAND" in
+        init)
+            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+                MACHINE="$1"
+                shift
+            fi
+            ;;
+        status)
+            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+                MACHINE="$1"
+                shift
+            fi
+            ;;
+        build)
+            # No arguments accepted for build
+            ;;
+        start-qemu)
+            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+                MACHINE="$1"
+                shift
+            fi
+            ;;
+        stop-qemu)
+            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+                MACHINE="$1"
+                shift
+            fi
+            ;;
+        *)
+            error "Unknown command: $COMMAND"
+            usage
+            exit 1
+            ;;
+    esac
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -d|-D|--dry-run)    DRY_RUN=1; shift ;;
+            -s|-S|--skip-deps)   SKIP_DEPS=1; shift ;;
+            -u|-U|--url)
+                if [[ $# -lt 2 ]]; then
+                    error "Missing value for --url"
+                    usage
+                    exit 1
+                fi
+                OPENBMC_REPO_URL="$2"
+                shift 2
+                ;;
+            -v|-V|--verbose)  VERBOSE=1; shift ;;
+            -h|-H|--help)     usage; exit 0 ;;
+            --ssh-port)
+                if [[ $# -lt 2 ]]; then error "Missing value for --ssh-port"; exit 1; fi
+                QEMU_SSH_PORT="$2"; shift 2 ;;
+            --redfish-port)
+                if [[ $# -lt 2 ]]; then error "Missing value for --redfish-port"; exit 1; fi
+                QEMU_REDFISH_PORT="$2"; shift 2 ;;
+            --ipmi-port)
+                if [[ $# -lt 2 ]]; then error "Missing value for --ipmi-port"; exit 1; fi
+                QEMU_IPMI_PORT="$2"; shift 2 ;;
+            --http-port)
+                if [[ $# -lt 2 ]]; then error "Missing value for --http-port"; exit 1; fi
+                QEMU_HTTP_PORT="$2"; shift 2 ;;
+            --serial-log)
+                if [[ $# -lt 2 ]]; then error "Missing value for --serial-log"; exit 1; fi
+                QEMU_SERIAL_LOG="$2"; shift 2 ;;
+            --no-wait)  QEMU_NO_WAIT=1; shift ;;
+            --force)    QEMU_FORCE=1; shift ;;
+            --all)      QEMU_STOP_ALL=1; shift ;;
+            *)             error "Unknown option: $1"; usage; exit 1 ;;
+        esac
+    done
+}
+
+usage() {
+    cat <<EOF
+Usage: ob [command] [options] [arguments]
+
+Run without arguments to enter interactive menu mode.
+
+Commands:
+  init         [<machine>]    One-click initialize OpenBMC dev environment
+  build                        Select an initialized machine and build its image
+  status                       Show current OpenBMC source binding status
+  start-qemu   [<machine>]    Launch QEMU with built BMC image
+  stop-qemu    [<machine>]    Stop a running QEMU instance
+
+Global Options:
+  -d, --dry-run         Print actions without executing
+  -s, --skip-deps       Reuse existing deps.json, skip dependency resolution (init only)
+  -u, --url <url>       Use a custom OpenBMC repository URL (init only)
+  -v, --verbose         Verbose output
+  -h, --help            Show this help
+
+start-qemu Options:
+  --ssh-port <port>       SSH port forwarding    (default: 2222)
+  --redfish-port <port>   Redfish port forwarding (default: 2443)
+  --ipmi-port <port>      IPMI port forwarding    (default: 2623, UDP)
+  --http-port <port>      HTTP port forwarding    (no default; set to enable)
+  --serial-log <path>     Serial log file path    (default: ~/tmp/qemu-<machine>-serial.log)
+  --no-wait               Don't wait for BMC to become ready
+  --force                 Kill existing instance without confirmation
+
+stop-qemu Options:
+  --force                 Stop without confirmation
+  --all                   Stop all running QEMU instances
+
+Exit Codes:
+  0   Success (or benign no-op)
+  1   Failure — broken, or usage error (e.g. unknown option)
+  2   Cancelled by user (not a failure)
+  3   Precondition missing (e.g. machine not initialized / not built);
+      satisfy it via ob (run the suggested 'ob ...' first), then retry
+
+Environment Variables (lower priority than command-line options):
+  OB_QEMU_SSH_PORT        SSH port override
+  OB_QEMU_REDFISH_PORT    Redfish port override
+  OB_QEMU_IPMI_PORT       IPMI port override
+  OB_QEMU_HTTP_PORT       HTTP port override
+  OB_QEMU_SERIAL_LOG      Serial log path override
+  OB_QEMU_BINARY_URL      Custom QEMU binary download URL
+  OB_NPM_REGISTRY         Override npm registry URL (set empty to disable auto-detection)
+
+Examples:
+  ob init                          # List machines and choose interactively
+  ob init romulus                  # Initialize romulus machine
+  ob init romulus -d               # Preview what would be done
+  ob init romulus --url https://example.com/openbmc.git
+  ob start-qemu romulus            # Launch romulus in QEMU
+  ob start-qemu romulus --ssh-port 22223
+  ob stop-qemu romulus             # Stop romulus QEMU instance
+  ob stop-qemu --all               # Stop all running instances
+EOF
+}
+
 main() {
     SECONDS=0
     parse_args "$@"
@@ -4227,12 +4145,12 @@ main() {
 
     if [[ "$COMMAND" == "status" ]]; then
         cmd_status
-        return 0
+        return $?
     fi
 
     if [[ "$COMMAND" == "build" ]]; then
         cmd_build
-        return 0
+        return $?
     fi
 
     if [[ "$COMMAND" == "start-qemu" ]]; then

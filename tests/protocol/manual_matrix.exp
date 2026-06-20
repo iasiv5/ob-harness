@@ -1,0 +1,101 @@
+#!/usr/bin/env expect
+#
+# 手动矩阵核心测试 —— 覆盖 smoke_ob.sh 不及的 TTY 交互分支（不需运行中 QEMU）。
+#
+# 【什么时候用】
+#   - 改了 ob 的交互提示 / 菜单 / 取消逻辑，或退出码协议后，验证行为没变
+#   - 想确认非 TTY 检测、菜单 Q/status、用户取消（exit 2）分支正确
+#   - smoke 跑过了，还想再覆盖一层交互层时
+#
+# 【怎么用】
+#   前提：装了 expect。取消分支另需 workspace 里有 init+build 过的 machine（无则自动 skip+warn）。
+#   $ expect tests/manual_matrix.exp
+#   退出：FAIL=0 → exit 0；FAIL>0 → exit 1。
+#
+# 【覆盖项】（退出码协议：0=成功 / 1=硬错误 / 2=用户取消 / 3=前提不满足）
+#   非 TTY/参数： --help(0) · unknown command(1) · build 空工作区(3) · init 非 TTY(3)
+#   菜单(PTY)：   menu Q(0) · menu status(0)
+#   取消(PTY)：   init cancel(2) · build cancel(2) · start-qemu cancel(2)   [需 workspace]
+#
+# 【原理/注意】
+#   - ob 的三种交互提示，expect 需分别 -re 匹配：
+#       confirm_action  : "Type (Y/y) to confirm, (N/n) to cancel"
+#       select_from_list: "... (0 to cancel)"
+#       单次 read       : "Stop this instance? [y/N]" / "Kill and restart? [y/N]"（见 qemu 段）
+#   - 交互用内联 spawn（非 proc 包装的 split/eval）——后者在 expect 里 spawn_id 作用域
+#     不可靠，内联形态经实测稳定。
+#
+# 【由来】smoke_ob.sh 只测非交互路径；本脚本补齐 TTY 交互与取消分支，需 expect 手动跑。
+
+set timeout 30
+log_user 0
+set PASS 0; set FAIL 0; set SKIP 0
+
+proc chk {label got exp} {
+    global PASS FAIL
+    if {$got == $exp} { incr PASS; puts "ok   $label => exit $got" } else { incr FAIL; puts "FAIL $label => exit $got (expected $exp)" }
+}
+
+# 非交互：stdin 重定向 /dev/null，ob 检测非 TTY → 走前提/参数分支
+proc run_plain {cmd} {
+    spawn bash -c $cmd
+    expect eof
+    catch wait r
+    return [lindex $r 3]
+}
+
+# === 非 TTY / 参数（不需 workspace）===
+chk "--help"          [run_plain "./ob --help </dev/null 2>/dev/null"] 0
+chk "unknown command" [run_plain "./ob bogus-cmd </dev/null 2>/dev/null"] 1
+chk "build empty ws"  [run_plain "./ob build </dev/null 2>/dev/null"] 3
+chk "init non-TTY"    [run_plain "./ob init </dev/null 2>/dev/null"] 3
+
+# === 菜单 Q (quit) ===
+spawn ./ob
+expect -re "Choose"; send "Q\r"
+expect eof; catch wait r
+chk "menu Q (quit)" [lindex $r 3] 0
+
+# === 菜单 status (3) → 回菜单 → Q ===
+spawn ./ob
+expect -re "Choose"; send "3\r"
+expect -re "Enter|continue"; send "\r"
+expect -re "Choose"; send "Q\r"
+expect eof; catch wait r
+chk "menu 3 (status)" [lindex $r 3] 0
+
+# === 取消分支（需 init+build machine）===
+set has_ws 0
+if {![catch {exec sh -c {ls workspace/configs/*.init-done >/dev/null 2>&1 && ls workspace/openbmc/build/*/tmp/deploy/images/*/*.static.mtd >/dev/null 2>&1}}]} {
+    set has_ws 1
+}
+
+if {$has_ws} {
+    # init cancel：列 machine → 0 取消
+    spawn ./ob init cancel-test
+    expect -re "0 to cancel"; send "0\r"
+    expect eof; catch wait r
+    chk "init cancel" [lindex $r 3] 2
+
+    # build cancel：选 machine(1) → confirm N
+    spawn ./ob build
+    expect -re "0 to cancel"; send "1\r"
+    expect -re "Type.*to confirm"; send "N\r"
+    expect eof; catch wait r
+    chk "build cancel" [lindex $r 3] 2
+
+    # start-qemu cancel：需过 bitbake -e（慢）
+    set timeout 300
+    spawn ./ob start-qemu b865g8-bytedance
+    expect -re "0 to cancel"; send "1\r"
+    expect -re "Type.*to confirm"; send "N\r"
+    expect eof; catch wait r
+    chk "start-qemu cancel" [lindex $r 3] 2
+    set timeout 30
+} else {
+    incr SKIP 3
+    puts "skip init/build/start-qemu 取消（workspace 无 init+build machine）"
+}
+
+puts "\nPASS=$PASS FAIL=$FAIL SKIP=$SKIP"
+exit [expr {$FAIL > 0 ? 1 : 0}]

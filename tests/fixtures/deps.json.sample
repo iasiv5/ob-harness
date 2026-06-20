@@ -1,0 +1,4 @@
+[
+  {"name": "repo1", "clone_url": "https://github.com/example/repo1.git", "src_uri": "git://github.com/example/repo1.git;branch=main", "srcrev": "abc123", "recipe": "recipe1"},
+  {"name": "repo2", "clone_url": "https://github.com/example/repo2.git", "src_uri": "git://github.com/example/repo2.git", "srcrev": "def456", "recipe": "recipe2"}
+]

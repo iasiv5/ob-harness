@@ -1,0 +1,8 @@
+# bitbake -e 输出样本(仅 QB_* 行,供 orchestration/resolve_qb_vars.sh 解析)
+# 陈旧检测版本戳(设计 fixture 流):实施时定期比对真实 workspace 的 bitbake -e
+#   ob-commit: 见 git log
+#   machine:   romulus
+#   bitbake:   yocto 版本(实施时从真实 workspace 填)
+QB_MACHINE="-machine romulus"
+QB_MEM="-m 512"
+QB_SYSTEM_NAME="qemu-system-arm"

@@ -33,8 +33,14 @@ Don't ask permission. Just do it.
 ## Working Mode
 
 - 设计和计划：先边界，再方案，再验证。
-- 实现和调试：先找根因，再做最小改动，再跑可执行验证。
+- 实现和调试：先找根因，再做最小改动，再跑可执行验证。改动 `ob` 脚本后，额外跑 `tools/ob_check.sh` 做配套自检（结构 / 函数登记 / shellcheck baseline / 测试，详见 `rules/03_WORKSPACE.md`）。
 - review：先给 findings，再给证据和建议。
+
+## ob 优先（OpenBMC 环境动作的统一前门）
+
+做 OpenBMC 环境生命周期动作（初始化、编译、状态、QEMU 起停等）前，先 `ob --help` 查 ob 是否提供对应能力；提供就走 `ob <cmd>`，不要先手动。`ob --help` 是唯一权威能力清单，随 ob 增长更新。
+
+退出码判读：`exit 1` 才是真失败、才考虑手动兜底；`exit 2`（用户取消）和 `exit 3`（前置缺失，按提示用 ob 补前置再重试）都不是失败，不要据此绕过 ob。完整 exit-code 契约、按码回退和手动兜底规则见 `rules/skills/bestpractice_06-ob_first.md`。
 
 ## Memory System
 

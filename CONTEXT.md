@@ -43,3 +43,19 @@ _Avoid_: QEMU 配置变量, QEMU 参数
 **confirmation banner**:
 `ob` 在面向用户的破坏性确认前输出的视觉块：横线边框 + 3 行重复 `warn`，内容形如 `You are about to <verb>: >>> <object> <<<`。它只负责视觉强调，不含确认逻辑——Y/N 循环、3 秒倒计时、批量处理由各确认点自行管理。覆盖门槛是"破坏性够分量"，太轻的确认（如清理一条 stale SSH host key）不套。
 _Avoid_: 三次重复提示, heavy gate, 确认门
+
+**function semantic layer**:
+`ob` 脚本内部对函数的调用层级标注，自上而下为 L1（`cmd_*` 命令编排，用 `exit 3` 表前提不满足）、L2（前置检查点，如 `require_path`，exit code 由调用方传入）、L3（底层通用工具，如 `log`/`select_from_list`/`read_kv_field`，**绝不 exit，只 return 码**）。标注写在函数注释里（如 `# L3 — never exits`）。这是函数的**语义属性**，与测试无关。
+_Avoid_: 调用层级, 函数分级；勿与 test layer（protocol/unit/orchestration/integration，曾用 L0–L3）混用
+
+**test layer**:
+`ob` 测试体系的分层，自下而上为 protocol（退出码协议，非交互）、unit（纯函数单测，零依赖毫秒级）、orchestration（编排函数，PATH 注入 stub）、integration（真实集成，init→build→QEMU 全流程）。曾用 L0–L3 编号，为脱离与「function semantic layer」的 L1/L2/L3 撞名而改语义名。
+_Avoid_: 测试等级, 覆盖等级, L0–L3（旧称已弃）, function semantic layer
+
+**ob 优先 (ob-first)**:
+做 OpenBMC 环境生命周期动作（init/build/status/start-qemu/stop-qemu 及未来子命令）前，先查 `ob --help` 是否提供对应能力；提供则走 `ob <cmd>`，仅当 exit 1 真实失败且 ob 确无此能力时才手动兜底。`ob --help` 是唯一权威能力清单。
+_Avoid_: tool-first, ob first, 能力清单（并入本条）
+
+**exit-code 契约**:
+`ob` 所有 `cmd_*` 统一退出码：0=成功/良性无操作，1=真实失败（坏了或用法错），2=用户主动取消（非失败），3=前置缺失（修复方式是用 ob 补前置）。agent 仅在 exit 1 触发回退；补充 `function semantic layer` 条目里关于 exit 3 的说法。
+_Avoid_: 返回码约定, exit status

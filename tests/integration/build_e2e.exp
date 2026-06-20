@@ -1,0 +1,57 @@
+#!/usr/bin/env expect
+# Integration E2E build driver. Heavy by design: it can run bitbake for hours.
+# Default is skip; set OB_RUN_BUILD_E2E=1 to opt in.
+
+if {![info exists env(OB_RUN_BUILD_E2E)] || $env(OB_RUN_BUILD_E2E) ne "1"} {
+    puts "skip build_e2e.exp (set OB_RUN_BUILD_E2E=1 to run real build)"
+    exit 0
+}
+
+if {[info exists env(OB_INTEGRATION_MACHINE)]} {
+    set MACHINE $env(OB_INTEGRATION_MACHINE)
+} elseif {[info exists env(QEMU_MACHINE)]} {
+    set MACHINE $env(QEMU_MACHINE)
+} else {
+    set first [exec sh -c {for f in workspace/configs/*.init-done; do [ -f "$f" ] || continue; basename "$f" .init-done; exit 0; done; exit 0}]
+    set MACHINE $first
+}
+
+if {$MACHINE eq ""} {
+    puts "skip build_e2e.exp (no initialized machine)"
+    exit 0
+}
+
+if {![file exists "workspace/configs/$MACHINE.init-done"] || ![file exists "workspace/openbmc/.git"]} {
+    puts "skip build_e2e.exp (missing preinitialized workspace for $MACHINE)"
+    exit 0
+}
+
+set index [exec sh -c {m="$1"; i=0; for f in workspace/configs/*.init-done; do [ -f "$f" ] || continue; i=$((i+1)); n=$(basename "$f" .init-done); [ "$n" = "$m" ] && { echo "$i"; exit 0; }; done; exit 1} _ $MACHINE]
+
+set timeout 14400
+log_user 1
+
+spawn ./ob build
+expect {
+    -re "Select a machine to build" { send "$index\r" }
+    timeout { puts "FAIL build_e2e.exp: no machine selection prompt"; exit 1 }
+}
+expect {
+    -re "Type.*to confirm" { send "Y\r" }
+    timeout { puts "FAIL build_e2e.exp: no confirmation prompt"; exit 1 }
+}
+expect eof
+catch wait result
+set rc [lindex $result 3]
+if {$rc != 0} {
+    puts "FAIL build_e2e.exp: ob build exited $rc"
+    exit 1
+}
+
+if {[catch {exec sh -c {m="$1"; ls "workspace/openbmc/build/$m/tmp/deploy/images/$m/"*.static.mtd >/dev/null 2>&1} _ $MACHINE}]} {
+    puts "FAIL build_e2e.exp: no .static.mtd image for $MACHINE"
+    exit 1
+}
+
+puts "ok   build_e2e.exp ($MACHINE)"
+exit 0

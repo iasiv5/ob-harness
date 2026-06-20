@@ -24,6 +24,7 @@
 - [AI 辅助调试诊断](skills/bestpractice_03-ai_debugging_diagnosis.md) — 遇到构建失败、运行异常或接口报错时优先参考。
 - [时间敏感信息验证](skills/bestpractice_04-temporal_info_verification.md) — 涉及版本号、spec 引用、发布时间等可能过时的信息时使用。
 - [Yocto 编译中 npm 网络超时](skills/bestpractice_05-npm_network_timeout_in_yocto.md) — `do_compile` 阶段 npm install 报 ETIMEDOUT 时的诊断与修复策略。
+- [ob 优先（统一前门）](skills/bestpractice_06-ob_first.md) — 做 OpenBMC 环境动作前，先查 ob 是否提供该能力并优先调用 `ob <cmd>`。
 
 ---
 
