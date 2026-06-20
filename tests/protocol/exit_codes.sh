@@ -57,11 +57,27 @@ assert_ob_rc() {
     fi
 }
 
+assert_build_machine_parse() {
+    local expected_machine="$1" label="$2"
+
+    local actual_machine=""
+    actual_machine=$( (
+        OB_NO_MAIN=1 source "$OB"
+        set +e
+        parse_args build "$expected_machine"
+        printf '%s' "$MACHINE"
+    ) )
+
+    assert_eq "$label" "$actual_machine" "$expected_machine"
+}
+
 # Empty isolated workspace protocol:
 #   status and stop-qemu are informational when nothing exists, so they return 0.
 #   init/build/start-qemu report missing prerequisites as 3.
 assert_ob_rc 3 "init dry-run non-TTY without repo" init romulus -d --url https://github.com/openbmc/openbmc.git
 assert_ob_rc 3 "build empty workspace" build
+assert_ob_rc 3 "build <machine> positional accepted (empty ws)" build romulus
+assert_build_machine_parse "romulus" "parse_args assigns MACHINE for build <machine>"
 assert_ob_rc 0 "status empty workspace" status
 assert_ob_rc 3 "start-qemu missing init-done" start-qemu romulus
 assert_ob_rc 0 "stop-qemu no instances" stop-qemu

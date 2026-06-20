@@ -3145,100 +3145,122 @@ cmd_build() {
 
     require_path "$SOURCE_LOCK_FILE" "Source lock" "Run 'ob init' first." 3
 
-    # === Discover init-done machines ===
-    local -a machines=()
-    local -a init_times=()
-    local -a repo_counts=()
-
-    for init_done_file in "$CONFIGS_DIR"/*.init-done; do
-        [[ -f "$init_done_file" ]] || continue
-        local mname
-        mname=$(basename "$init_done_file" .init-done)
-        machines+=("$mname")
-
-        local init_time raw_init_time
-        if ! IFS= read -r raw_init_time < "$init_done_file"; then
-            raw_init_time=""
+    local interactive_selection=0
+    if [[ -n "$MACHINE" ]]; then
+        if [[ ! -f "$CONFIGS_DIR/$MACHINE.init-done" ]]; then
+            error "Machine '$MACHINE' is not initialized (no completed init-done marker - a previous init may have been interrupted)."
+            error "Run 'ob init $MACHINE' first."
+            exit 3
         fi
-        init_time=$(format_timestamp "$raw_init_time")
-        init_times+=("$init_time")
 
-        local lockfile="$CONFIGS_DIR/$mname.lock"
-        local repo_count=0
-        if [[ -f "$lockfile" ]]; then
-            repo_count=$(python3 -c "import json; print(len(json.load(open('$lockfile'))['sub_repos']))" 2>/dev/null || echo "?")
-        else
-            repo_count="?"
+        BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
+    else
+        # === Discover init-done machines ===
+        local -a machines=()
+        local -a init_times=()
+        local -a repo_counts=()
+
+        for init_done_file in "$CONFIGS_DIR"/*.init-done; do
+            [[ -f "$init_done_file" ]] || continue
+            local mname
+            mname=$(basename "$init_done_file" .init-done)
+            machines+=("$mname")
+
+            local init_time raw_init_time
+            if ! IFS= read -r raw_init_time < "$init_done_file"; then
+                raw_init_time=""
+            fi
+            init_time=$(format_timestamp "$raw_init_time")
+            init_times+=("$init_time")
+
+            local lockfile="$CONFIGS_DIR/$mname.lock"
+            local repo_count=0
+            if [[ -f "$lockfile" ]]; then
+                repo_count=$(python3 -c "import json; print(len(json.load(open('$lockfile'))['sub_repos']))" 2>/dev/null || echo "?")
+            else
+                repo_count="?"
+            fi
+            repo_counts+=("$repo_count")
+        done
+
+        if [[ ${#machines[@]} -eq 0 ]]; then
+            step_header "Initialized Machines"
+            echo ""
+            echo "  (none)"
+            echo ""
+            error "No initialized machines found."
+            error "Run 'ob init <machine>' first."
+            exit 3
         fi
-        repo_counts+=("$repo_count")
-    done
 
-    if [[ ${#machines[@]} -eq 0 ]]; then
+        # === Read main repo info ===
+        local lock_origin_url lock_source_label
+        lock_origin_url=$(read_lock_field origin_url || echo "<unknown>")
+        lock_source_label=$(read_lock_field source_label || echo "")
+
+        # === Display ===
+        step_header "OpenBMC Repository"
+        echo "  Source : $lock_origin_url${lock_source_label:+ ($lock_source_label)}"
+        echo "  Path   : $OPENBMC_DIR"
+        echo ""
+
         step_header "Initialized Machines"
+
+        local total=${#machines[@]}
+        local idx_width=${#total}
+        local i
+        for (( i=0; i<total; i++ )); do
+            printf "  %${idx_width}d) %-20s %s    %s repos\n" \
+                "$((i + 1))" "${machines[$i]}" "${init_times[$i]}" "${repo_counts[$i]}"
+        done
+
         echo ""
-        echo "  (none)"
+        info "If the machine you want is not listed, run 'init' task or './ob init' first."
         echo ""
-        error "No machines are ready to build."
-        error "Run 'ob init' first to initialize a machine."
-        exit 3
+
+        # === Interactive selection ===
+        if [[ ! -t 0 ]]; then
+            error "No machine specified and no interactive terminal. Run 'ob status' to list initialized machines."
+            error "Specify a machine: ob build <machine>"
+            exit 3
+        fi
+
+        local sfl_rc=0
+        select_from_list "Select a machine to build [1-${total}]" "$total" || sfl_rc=$?
+        if [[ "$sfl_rc" -eq 2 ]]; then
+            warn "Build cancelled by user."
+            exit 2
+        elif [[ "$sfl_rc" -ne 0 ]]; then
+            exit 1
+        fi
+        local chosen="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
+
+        MACHINE="$chosen"
+        BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
+        interactive_selection=1
     fi
-
-    # === Read main repo info ===
-    local lock_origin_url lock_source_label
-    lock_origin_url=$(read_lock_field origin_url || echo "<unknown>")
-    lock_source_label=$(read_lock_field source_label || echo "")
-
-    # === Display ===
-    step_header "OpenBMC Repository"
-    echo "  Source : $lock_origin_url${lock_source_label:+ ($lock_source_label)}"
-    echo "  Path   : $OPENBMC_DIR"
-    echo ""
-
-    step_header "Initialized Machines"
-
-    local total=${#machines[@]}
-    local idx_width=${#total}
-    local i
-    for (( i=0; i<total; i++ )); do
-        printf "  %${idx_width}d) %-20s %s    %s repos\n" \
-            "$((i + 1))" "${machines[$i]}" "${init_times[$i]}" "${repo_counts[$i]}"
-    done
-
-    echo ""
-    info "If the machine you want is not listed, run 'init' task or './ob init' first."
-    echo ""
-
-    # === Interactive selection ===
-    if [[ ! -t 0 ]]; then
-        error "No interactive terminal. ob build requires interactive mode."
-        exit 3
-    fi
-
-    local sfl_rc=0
-    select_from_list "Select a machine to build [1-${total}]" "$total" || sfl_rc=$?
-    if [[ "$sfl_rc" -eq 2 ]]; then
-        warn "Build cancelled by user."
-        exit 2
-    elif [[ "$sfl_rc" -ne 0 ]]; then
-        exit 1
-    fi
-    local chosen="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
-
-    MACHINE="$chosen"
-    BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
 
     echo ""
     info "Selected: $MACHINE"
     info "Target  : obmc-phosphor-image"
     info "Estimated time: 1-4 hours depending on machine and cache state."
     echo ""
-    local ca_rc=0
-    confirm_action "build" "$MACHINE" || ca_rc=$?
-    if [[ "$ca_rc" -eq 2 ]]; then
-        warn "Build cancelled by user."
-        exit 2
-    elif [[ "$ca_rc" -ne 0 ]]; then
-        exit 1
+
+    if [[ "$interactive_selection" -eq 1 ]]; then
+        local ca_rc=0
+        confirm_action "build" "$MACHINE" || ca_rc=$?
+        if [[ "$ca_rc" -eq 2 ]]; then
+            warn "Build cancelled by user."
+            exit 2
+        elif [[ "$ca_rc" -ne 0 ]]; then
+            exit 1
+        fi
+    fi
+
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        info "[DRY-RUN] Would source setup $MACHINE $BUILD_DIR"
+        info "[DRY-RUN] Would run: bitbake obmc-phosphor-image (machine=$MACHINE)"
+        exit 0
     fi
 
     # === Re-enter bitbake environment ===
@@ -3348,8 +3370,20 @@ cmd_start_qemu() {
         done
 
         if [[ ${#machines[@]} -eq 0 ]]; then
-            error "No built machines found."
-            error "Run 'ob init <machine>' then 'ob build' first."
+            local any_initdone=0
+            for init_done_file in "$CONFIGS_DIR"/*.init-done; do
+                [[ -f "$init_done_file" ]] || continue
+                any_initdone=1
+                break
+            done
+
+            if [[ "$any_initdone" -eq 1 ]]; then
+                error "No built machines found (initialized but not built)."
+                error "Run 'ob build' first."
+            else
+                error "No initialized machines found."
+                error "Run 'ob init <machine>' first."
+            fi
             exit 3
         fi
 
@@ -3718,6 +3752,15 @@ cmd_stop_qemu() {
         validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"
         pid_status=$?
 
+        if [[ "$DRY_RUN" -eq 1 ]]; then
+            case "$pid_status" in
+                0) info "[DRY-RUN] Would stop QEMU for '$MACHINE' (PID $PIDFILE_PID)" ;;
+                1) info "[DRY-RUN] Would clean stale PID file for '$MACHINE' (process exited)" ;;
+                2) info "[DRY-RUN] Would clean stale PID file for '$MACHINE' (PID recycled)" ;;
+            esac
+            continue
+        fi
+
         if [[ $pid_status -eq 1 ]]; then
             info "QEMU process for '$MACHINE' (PID $PIDFILE_PID) has already exited."
             rm -f "$QEMU_PID_FILE"
@@ -4010,7 +4053,10 @@ parse_args() {
             fi
             ;;
         build)
-            # No arguments accepted for build
+            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+                MACHINE="$1"
+                shift
+            fi
             ;;
         start-qemu)
             if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
@@ -4077,7 +4123,7 @@ Run without arguments to enter interactive menu mode.
 
 Commands:
   init         [<machine>]    One-click initialize OpenBMC dev environment
-  build                        Select an initialized machine and build its image
+    build        [<machine>]    Build an initialized machine's image (interactive if omitted)
   status                       Show current OpenBMC source binding status
   start-qemu   [<machine>]    Launch QEMU with built BMC image
   stop-qemu    [<machine>]    Stop a running QEMU instance
@@ -4123,6 +4169,8 @@ Examples:
   ob init romulus                  # Initialize romulus machine
   ob init romulus -d               # Preview what would be done
   ob init romulus --url https://example.com/openbmc.git
+    ob build romulus                 # Build romulus non-interactively
+    ob build romulus -d              # Preview the build without running bitbake
   ob start-qemu romulus            # Launch romulus in QEMU
   ob start-qemu romulus --ssh-port 22223
   ob stop-qemu romulus             # Stop romulus QEMU instance

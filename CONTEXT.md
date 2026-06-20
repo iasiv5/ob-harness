@@ -1,6 +1,6 @@
 # ob-harness
 
-OpenBMC 开发环境的一键初始化、源码管理、编译和 QEMU 仿真工具链。核心命令是 `ob init`（准备 BitBake 构建环境、解析依赖、克隆源码、注入构建配置）、`ob build`（交互选择已初始化的 machine，执行 bitbake 编译）、`ob start-qemu`（构建产物通过 QEMU 仿真真实 BMC 硬件启动）和 `ob stop-qemu`（安全停止 QEMU 实例）。
+OpenBMC 开发环境的一键初始化、源码管理、编译和 QEMU 仿真工具链。核心命令是 `ob init`（准备 BitBake 构建环境、解析依赖、克隆源码、注入构建配置）、`ob build`（交互选择已初始化的 machine，或用 `ob build <machine>` 非交互直构，执行 bitbake 编译）、`ob start-qemu`（构建产物通过 QEMU 仿真真实 BMC 硬件启动）和 `ob stop-qemu`（安全停止 QEMU 实例）。
 
 ## Language
 
@@ -41,8 +41,8 @@ BitBake 变量（`QB_MACHINE`、`QB_MEM` 等），定义在 OpenBMC machine conf
 _Avoid_: QEMU 配置变量, QEMU 参数
 
 **confirmation banner**:
-`ob` 在面向用户的破坏性确认前输出的视觉块：横线边框 + 3 行重复 `warn`，内容形如 `You are about to <verb>: >>> <object> <<<`。它只负责视觉强调，不含确认逻辑——Y/N 循环、3 秒倒计时、批量处理由各确认点自行管理。覆盖门槛是"破坏性够分量"，太轻的确认（如清理一条 stale SSH host key）不套。
-_Avoid_: 三次重复提示, heavy gate, 确认门
+`ob` 在面向用户的高代价或破坏性动作前输出的视觉块：横线边框 + 3 行重复 `warn`，内容形如 `You are about to <verb>: >>> <object> <<<`。它只负责视觉强调，不含确认逻辑——Y/N 循环、3 秒倒计时、批量处理由各确认点自行管理。**是否触发取决于路径风险，不单看操作本身**：从列表交互选择、或撞上需杀掉的运行实例这类有误伤风险的路径才确认；显式表达意图的快路径（如 `ob init <machine>`、正常起 QEMU）一律跳过、无需 `--force`。够分量才配 banner（init 拉 20-30GB、build 1-4 小时、kill 运行中的 QEMU），太轻的（如清理一条 stale SSH host key）不套。
+_Avoid_: 三次重复提示, heavy gate, 确认门, 破坏性够分量（旧口径，已收紧为路径风险）
 
 **function semantic layer**:
 `ob` 脚本内部对函数的调用层级标注，自上而下为 L1（`cmd_*` 命令编排，用 `exit 3` 表前提不满足）、L2（前置检查点，如 `require_path`，exit code 由调用方传入）、L3（底层通用工具，如 `log`/`select_from_list`/`read_kv_field`，**绝不 exit，只 return 码**）。标注写在函数注释里（如 `# L3 — never exits`）。这是函数的**语义属性**，与测试无关。
@@ -59,3 +59,7 @@ _Avoid_: tool-first, ob first, 能力清单（并入本条）
 **exit-code 契约**:
 `ob` 所有 `cmd_*` 统一退出码：0=成功/良性无操作，1=真实失败（坏了或用法错），2=用户主动取消（非失败），3=前置缺失（修复方式是用 ob 补前置）。agent 仅在 exit 1 触发回退；补充 `function semantic layer` 条目里关于 exit 3 的说法。
 _Avoid_: 返回码约定, exit status
+
+**remedy line**:
+`ob` 在 exit 3（前置缺失）报错里给调用方（尤其 agent）的**下一步指令**。exit-3 输出固定两段式：先**诊断行**说明哪条前置没满足（如 `Machine 'X' has not been initialized.`），再**恰好一行 remedy line**——含字面的下一条 `ob` 命令、无需推断即可执行（如 `Run 'ob init X' first.`）。agent 的 exit-3 协议据此恒定：按码分支 → 读诊断行定位前置 → 扫 remedy line 照它执行。
+_Avoid_: 提示语, hint, 错误提示

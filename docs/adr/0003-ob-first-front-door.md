@@ -11,3 +11,7 @@ Status: accepted
 3. **能力清单另建结构化接口（`ob help --json` / `ob commands`）** — 更贴 A12，但与 `usage()` 形成双源、需同步，`--help` 已被发现漂移过一次（`--skip-deps` 缺失），双源只会加剧漂移。除非将来实测 agent 解析不了散文，否则维持单源。
 4. **用 hook 强制（SessionStart 提醒 / PreToolUse 命令拦截）** — SessionStart 与常驻 `AGENTS.md` 守卫重复，且现有 hook 在 Linux 下是 no-op；PreToolUse 拦截可行性未证实且误报率高，会挡正当的裸 `bitbake` 调试。正确落点是约定层 + CI 闸，不是 hook。
 5. **完整协议常驻每会话加载（写进 AGENTS.md 或新 `rules/07_*.md`）** — 可靠性最高，但真正需要常驻的只有几行守卫，全表常驻让每会话付额外上下文成本。退而取两层：守卫常驻、细节按需。
+
+## 消费侧契约：诊断行 + remedy line
+
+「ob 优先」要求 agent 按退出码回退，但 `exit 3` 是多义码（缺 machine / 未 init / 未 build），光看码不知补哪条。故约定 `exit 3` 输出固定两段式：先**诊断行**说明哪条前置没满足，再**恰好一行 remedy line**，内含字面的下一条 `ob` 命令（如 `Run 'ob init romulus' first.`），agent 无需推断即可补救——exit-3 协议恒定为“按码分支 → 读诊断行定位前置 → 扫 remedy line 照它执行”。这是上面 Considered Option 3（不另建 JSON 结构化接口）的正向落点：不靠结构化输出，而靠“退出码骨架 + remedy line”把“成败 + 下一步”喂给 agent。术语见 `CONTEXT.md` 的 `remedy line`，并受 protocol 测试约束（关键 `exit 3` 路径须打印含字面 `ob` 命令的 remedy line）。remedy line **恰好含一条 `ob` 命令、不串接第二条**——多步前置由单命令循环逐轮接力（补一步 → 重试 → 下一轮 remedy 指向下一步），而非在一行里列链（列链需调用方判断哪条才是这一步，恰好违背无需推断原则）。本轮收敛：`ob` start-qemu 的 no-built-machines 分支原 remedy 含两命令（`ob init ... then ob build`）且在已 init 未 build 时语义不准，已拆为两条单命令子分支（无 init-done → `Run 'ob init <machine>' first.`；init-done 未 built → `Run 'ob build' first.`），消除全 `ob` 唯一的多命令 remedy 离群点。
