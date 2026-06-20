@@ -4156,6 +4156,7 @@ Exit Codes:
       satisfy it via ob (run the suggested 'ob ...' first), then retry
 
 Environment Variables (lower priority than command-line options):
+  OB_OPENBMC_URL          Custom OpenBMC repository URL (init, non-interactive mode)
   OB_QEMU_SSH_PORT        SSH port override
   OB_QEMU_REDFISH_PORT    Redfish port override
   OB_QEMU_IPMI_PORT       IPMI port override
