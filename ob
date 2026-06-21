@@ -725,7 +725,7 @@ EOF
 ensure_bootstrap_local_conf() {
     local local_conf="$BUILD_DIR/conf/local.conf"
 
-    require_path "$local_conf" "local.conf" "" 3
+    require_path "$local_conf" "local.conf" "Run 'ob init' first." 3
 
     # Detect GitLab IP for recipes that use ${GITLAB_IP} in SRC_URI.
     # Priority: (1) github-gitlab-url.sh (2) git remote origin URL (3) empty (skip)
@@ -1732,7 +1732,7 @@ resolve_qb_vars() {
     # Validate build environment exists
     require_path "$BUILD_DIR" "Build directory" "Run 'ob init $MACHINE' first." 3
 
-    require_path "$OPENBMC_DIR/setup" "OpenBMC setup script" "" 3
+    require_path "$OPENBMC_DIR/setup" "OpenBMC setup script" "Run 'ob init' first." 3
 
     info "Resolving QEMU variables via BitBake (this takes a few seconds)..."
 
@@ -2525,7 +2525,7 @@ clone_sub_repos() {
         return 0
     fi
 
-    require_path "$deps_json" "deps.json" "Previous step may have failed." 3
+    require_path "$deps_json" "deps.json" "Run 'ob init' first." 3
 
     local effective_dl_dir=""
     effective_dl_dir=$(resolve_effective_dl_dir)
