@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """ob exit-契约扫描器 —— 只读静态体检工具。
 
-断言 ob 的 exit 纪律（ADR-0003 / exit-code 契约），目前实现 X：
+断言 ob 的 exit 纪律（ADR-0003 / exit-code 契约）：
   X: 每个真·bash 进程 exit 的字面值 ∈ {0,1,2,3}；唯一允许的非字面 exit
      是 require_path 的 exit "$code"。
-  Y: （Task 2 增补）§2 函数绝不 exit，除 EXIT_EXCEPTIONS。
-  Z: （Task 3 增补）exit-3 remedy 覆盖。
+  Y: §2 函数绝不 exit，除 EXIT_EXCEPTIONS（对偶式自维护）。
+  Z: exit-3 remedy 覆盖——(a) require_path 精确（非空）；(b) direct exit 3
+     弱守（仅防 totally-bare）+ 回溯诊断软告警。
 
 零副作用，随时可跑。
 
@@ -29,8 +30,9 @@
 """
 import os
 import re
-import sys
+import shlex
 import subprocess
+import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EXTRACT_FUNCS = os.path.join(ROOT, 'tools', 'extract_funcs.py')
@@ -43,6 +45,25 @@ EXIT_RE = re.compile(r'(?:^|[\s;`&|])exit(?=$|[\s;)&|])(?:\s+([^\s;|&)]+))?')
 LEGAL_LITERAL = {'0', '1', '2', '3'}
 # §2（utility 段）内允许 exit 的例外集。对偶式 Y：§2 函数绝不 exit，除此 3 个。
 EXIT_EXCEPTIONS = {'fn_quit', 'resolve_npm_registry', 'require_path'}
+
+# Z 的「向前看 vs 回溯诊断」软告警启发（尽力而为、非权威，供人工审核）。
+_BACKWARD_PHRASES = ('previous step', 'may have failed', 'earlier', 'prior step', 'last step')
+_BACKWARD_FIRST = {'invalid', 'neither', 'required', 'missing', 'unable',
+                   'supported', 'error', 'failed', 'this'}
+_FORWARD_WORDS = ("run '", 'provide', 'use ', 'ensure', 'define', 'specify',
+                  'pass ', 'set ', 'configure', 'install', 'or use')
+
+
+def _looks_backward(s):
+    """启发：remedy 疑似回溯诊断（非向前看）。尽力而为，仅作 WARN 提示。"""
+    low = re.sub(r'[^\w\s]', ' ', s).lower()
+    low = re.sub(r'\s+', ' ', low).strip()
+    if any(w in low for w in _FORWARD_WORDS):
+        return False
+    if any(p in low for p in _BACKWARD_PHRASES):
+        return True
+    first = low.split(' ', 1)[0] if low else ''
+    return first in _BACKWARD_FIRST
 
 
 def parse_funcs(path):
@@ -151,6 +172,56 @@ def check_Y(funcs, lines):
     return findings
 
 
+def check_Z(funcs, lines):
+    """Z：返回 (findings_FAIL, warnings_WARN)。
+
+    (a) require_path 精确（FAIL）：code==3 且 remedy 非空；非空但回溯诊断 → WARN。
+    (b) direct exit 3 弱守（FAIL 仅 totally-bare）：同函数内 exit 前无 error/info/warn
+        → FAIL；有但回溯诊断 → WARN。require_path 体内的 exit 不单独判（由 (a) 覆盖）。
+    """
+    findings = []
+    warnings = []
+    # (a) require_path 调用点：用 shlex 正确切分含空格的引号参数；
+    #     `^\s*require_path\s`（后随空白）区分调用与 require_path() 定义。
+    for i, raw in enumerate(lines, 1):
+        if not re.match(r'\s*require_path\s', raw):
+            continue
+        try:
+            toks = shlex.split(raw, posix=True)
+        except ValueError:
+            continue
+        if len(toks) < 5 or toks[0] != 'require_path':
+            continue
+        hint, code = toks[3], toks[4]
+        if code != '3':
+            findings.append((i, 'require_path', f'caller exit code {code!r} != 3'))
+            continue
+        if not hint:
+            findings.append((i, 'require_path', 'empty remedy (3rd arg) — add a forward-looking next step'))
+        elif _looks_backward(hint):
+            warnings.append((i, 'require_path', f'remedy looks backward-looking: {hint!r}'))
+    # (b) direct exit 3（非 require_path 体内）
+    for name, start, end in funcs:
+        if end is None or name == 'require_path':
+            continue
+        body = lines[start - 1:end]
+        for ln, tok in real_bash_exits(body, start):
+            if tok != '3':
+                continue
+            msg = None
+            for j in range(ln - 1, start - 1, -1):
+                mm = (re.search(r'(?:error|info|warn)\s+"([^"]*)"', lines[j - 1])
+                      or re.search(r"(?:error|info|warn)\s+'([^']*)'", lines[j - 1]))
+                if mm:
+                    msg = mm.group(1)
+                    break
+            if msg is None:
+                findings.append((ln, name, 'direct exit 3 with no preceding error/info/warn (totally-bare)'))
+            elif _looks_backward(msg):
+                warnings.append((ln, name, f'exit-3 preceding msg looks backward-looking: {msg!r}'))
+    return findings, warnings
+
+
 def main(argv):
     args = [a for a in argv[1:] if a != '--']
     seed_y = '--seed-y' in args
@@ -200,6 +271,19 @@ def main(argv):
         failed = True
     else:
         print('Y: PASS')
+
+    zf, zw = check_Z(funcs, lines)
+    if zf:
+        print('Z: FAIL')
+        for lineno, name, msg in zf:
+            print(f'  {lineno}  {name}: {msg}')
+        failed = True
+    else:
+        print('Z: PASS')
+    if zw:
+        print(f'Z WARN ({len(zw)}, advisory — review for forward-looking remedy):')
+        for lineno, name, msg in zw:
+            print(f'  {lineno}  {name}: {msg}')
 
     return 1 if failed else 0
 
