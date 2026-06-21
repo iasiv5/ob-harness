@@ -45,8 +45,8 @@ _Avoid_: QEMU 配置变量, QEMU 参数
 _Avoid_: 三次重复提示, heavy gate, 确认门, 破坏性够分量（旧口径，已收紧为路径风险）
 
 **function semantic layer**:
-`ob` 脚本内部对函数的调用层级标注，自上而下为 L1（`cmd_*` 命令编排，用 `exit 3` 表前提不满足）、L2（前置检查点，如 `require_path`，exit code 由调用方传入）、L3（底层通用工具，如 `log`/`select_from_list`/`read_kv_field`，**绝不 exit，只 return 码**）。标注写在函数注释里（如 `# L3 — never exits`）。这是函数的**语义属性**，与测试无关。
-_Avoid_: 调用层级, 函数分级；勿与 test layer（protocol/unit/orchestration/integration，曾用 L0–L3）混用
+`ob` 内部对函数角色的**概念性**调用层级词汇：L1（`cmd_*` 命令编排）、L2（前置检查点，如 `require_path`，exit code 由调用方传入）、L3（底层通用工具，如 `log`/`select_from_list`/`read_kv_field`）——讨论代码用的启发式，**不是代码强制遵守的结构边界**（exit 实际分布在远多于 L1 的函数里，tier 也未在注释里物化为标注；真正可检查的纪律见 `exit-code 契约`，不是 tier 归属）。
+_Avoid_: 调用层级, 函数分级, 把它当作硬性结构边界；勿与 test layer（protocol/unit/orchestration/integration，曾用 L0–L3）混用
 
 **test layer**:
 `ob` 测试体系的分层，自下而上为 protocol（退出码协议，非交互）、unit（纯函数单测，零依赖毫秒级）、orchestration（编排函数，PATH 注入 stub）、integration（真实集成，init→build→QEMU 全流程）。曾用 L0–L3 编号，为脱离与「function semantic layer」的 L1/L2/L3 撞名而改语义名。
@@ -61,5 +61,5 @@ _Avoid_: tool-first, ob first, 能力清单（并入本条）
 _Avoid_: 返回码约定, exit status
 
 **remedy line**:
-`ob` 在 exit 3（前置缺失）报错里给调用方（尤其 agent）的**下一步指令**。exit-3 输出固定两段式：先**诊断行**说明哪条前置没满足（如 `Machine 'X' has not been initialized.`），再**恰好一行 remedy line**——含字面的下一条 `ob` 命令、无需推断即可执行（如 `Run 'ob init X' first.`）。agent 的 exit-3 协议据此恒定：按码分支 → 读诊断行定位前置 → 扫 remedy line 照它执行。
-_Avoid_: 提示语, hint, 错误提示
+`ob` 在 exit 3（前置缺失）报错里给调用方（主要是智能 agent）的**下一步描述**。输出固定两段式：先**诊断行**说明哪条前置没满足（如 `Machine 'X' has not been initialized.`），再**恰好一行 remedy line**——描述满足该前置所需的下一步。常见形态是 `Run 'ob init X' first.`，但**不锁死为 ob 命令**：消费者是智能 agent，可自行决定用 ob 解决、通知用户或自行探索。要求非空且向前看（是「下一步」，而非「上一步可能失败了」这类纯回溯诊断）。
+_Avoid_: 提示语, hint, 错误提示, 锁死为 ob 命令
