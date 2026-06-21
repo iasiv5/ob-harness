@@ -41,6 +41,8 @@ LOG_FNS = {'echo', 'warn', 'info', 'error', 'printf', 'verbose'}
 # 参数捕获停在 shell 元字符（;|&)）与空白，避免吃进 `exit 1;` 的分号。
 EXIT_RE = re.compile(r'(?:^|[\s;`&|])exit(?=$|[\s;)&|])(?:\s+([^\s;|&)]+))?')
 LEGAL_LITERAL = {'0', '1', '2', '3'}
+# §2（utility 段）内允许 exit 的例外集。对偶式 Y：§2 函数绝不 exit，除此 3 个。
+EXIT_EXCEPTIONS = {'fn_quit', 'resolve_npm_registry', 'require_path'}
 
 
 def parse_funcs(path):
@@ -103,6 +105,52 @@ def check_X(funcs, lines):
     return findings
 
 
+def find_section_range(lines, n):
+    """返回 §n 段的 [start, end) 行号(1-indexed)；找不到返回 (None, None)。"""
+    start = end = None
+    pat = re.compile(rf'^# === §{n}\b')
+    pat_next = re.compile(rf'^# === §{n + 1}\b')
+    for i, l in enumerate(lines, 1):
+        if start is None and pat.match(l):
+            start = i
+        elif start is not None and pat_next.match(l):
+            end = i
+            break
+    return start, end
+
+
+def section2_exiters(funcs, lines):
+    """返回 {name: exits}：§2 中含真 bash exit 的函数。无 §2 锚点返回 None。"""
+    s2_start, s2_end = find_section_range(lines, 2)
+    if s2_start is None:
+        return None
+    exiters = {}
+    for name, start, end in funcs:
+        if not (s2_start <= start < s2_end) or end is None:
+            continue
+        ex = real_bash_exits(lines[start - 1:end], start)
+        if ex:
+            exiters[name] = ex
+    return exiters
+
+
+def check_Y(funcs, lines):
+    """Y（对偶式）：{§2 真exit函数} == EXIT_EXCEPTIONS。无 §2 锚点返回 None（n/a）。"""
+    exiters = section2_exiters(funcs, lines)
+    if exiters is None:
+        return None
+    func_start = {n: s for n, s, _ in funcs}
+    findings = []
+    s2set = set(exiters)
+    for name in sorted(s2set - EXIT_EXCEPTIONS):
+        findings.append((exiters[name][0][0], name,
+                         '§2 function unexpectedly exits (add to EXIT_EXCEPTIONS, or remove the exit)'))
+    for name in sorted(EXIT_EXCEPTIONS - s2set):
+        findings.append((func_start.get(name), name,
+                         'in EXIT_EXCEPTIONS but no longer exits in §2 (stale exception)'))
+    return findings
+
+
 def main(argv):
     args = [a for a in argv[1:] if a != '--']
     seed_y = '--seed-y' in args
@@ -122,18 +170,38 @@ def main(argv):
         print(f'note: {len(unknown)} function(s) with undetermined end, body scan skipped: {unknown}')
 
     if seed_y:
-        print('(--seed-y: implemented in Task 2)')
+        exiters = section2_exiters(funcs, lines)
+        if exiters is None:
+            print('(no §2 markers found)')
+        else:
+            print('§2 functions containing a real bash exit (seed for EXIT_EXCEPTIONS):')
+            for n in sorted(exiters):
+                print(f'  {n}')
         return 0
+
+    failed = False
 
     xf = check_X(funcs, lines)
     if xf:
         print('X: FAIL')
         for lineno, name, msg in xf:
             print(f'  {lineno}  {name}: {msg}')
+        failed = True
     else:
         print('X: PASS')
 
-    return 1 if xf else 0
+    yf = check_Y(funcs, lines)
+    if yf is None:
+        print('Y: n/a (no §2 markers)')
+    elif yf:
+        print('Y: FAIL')
+        for lineno, name, msg in yf:
+            print(f'  {lineno}  {name}: {msg}')
+        failed = True
+    else:
+        print('Y: PASS')
+
+    return 1 if failed else 0
 
 
 if __name__ == '__main__':
