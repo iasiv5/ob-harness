@@ -1,6 +1,13 @@
-# OpenBMC workspace: source trees, builds, lockfiles
+# OpenBMC 工作区：源码树、构建产物、lockfile（整体忽略，仅保留 .gitkeep 占位）
 workspace/*
 !workspace/.gitkeep
+
+# Python：虚拟环境与字节码缓存
 .venv/
 __pycache__/
+
+# 运行态文件：AI heartbeat 状态（运行时生成，不入库）
 periodic_jobs/ai_heartbeat/state/heartbeat_status.json
+
+# 临时一次性项目（见 rules/03_WORKSPACE.md 命名规则：tmp_<name>/）
+tmp_*/
