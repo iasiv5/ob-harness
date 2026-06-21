@@ -91,7 +91,7 @@ for v in sections.values():
 assert set(order) == classified, f'mismatch missing={set(order)-classified} extra={classified-set(order)}'
 
 titles = {
-    2: '# === §2 通用工具 (Utility / L3) — L3 函数绝不 exit ===',
+    2: '# === §2 通用工具 (Utility / L3) — L3 函数绝不 exit（例外：fn_quit / resolve_npm_registry / require_path）===',
     3: '# === §3 仓库与 machine (repo source / machine resolution) ===',
     4: '# === §4 QEMU (binary / firmware / ports / SoC / pid) ===',
     5: '# === §5 构建流程 (init pipeline: dep graph / sub-repos / lockfile / config) ===',

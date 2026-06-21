@@ -54,7 +54,7 @@ BOLD='\033[1m'
 NC='\033[0m' # No Color
 PROMPT_PREFIX='\033[38;2;255;210;80mob-harness>\033[0m'
 
-# === §2 通用工具 (Utility / L3) — L3 函数绝不 exit ===
+# === §2 通用工具 (Utility / L3) — L3 函数绝不 exit（例外：fn_quit / resolve_npm_registry / require_path）===
 
 log()   { echo -e "$*"; }
 
@@ -855,6 +855,7 @@ select_openbmc_repo_url() {
         if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
             error "Invalid OpenBMC repository URL: $OPENBMC_REPO_URL"
             error "Supported formats: https://, http://, ssh://, git://, git@"
+            error "Provide a valid repository URL via --url <url> or OB_OPENBMC_URL, then retry."
             exit 3
         fi
         return 0
@@ -864,6 +865,7 @@ select_openbmc_repo_url() {
         OPENBMC_REPO_URL="$OB_OPENBMC_URL"
         if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
             error "Invalid OpenBMC repository URL from OB_OPENBMC_URL: $OPENBMC_REPO_URL"
+            error "Set OB_OPENBMC_URL to a valid URL, or rerun 'ob init' interactively."
             exit 3
         fi
         return 0
@@ -2303,6 +2305,7 @@ prerequisites_check() {
     for tool in git python3; do
         if ! command -v "$tool" &>/dev/null; then
             error "Required tool not found: $tool"
+            error "Install '$tool' on this host, then retry."
             exit 3
         fi
         verbose "Tool: $tool OK"
