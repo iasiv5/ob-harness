@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/ob_check.sh — ob 改动后一站式配套自检。
-# 聚合: extract_funcs GAPS / reorder mismatch / shellcheck baseline(multiset) / run_all。
-# 固定顺序: extract_funcs → reorder → baseline → run_all (GAPS=0 是 reorder 前提)。
+# 聚合: extract_funcs GAPS / reorder mismatch / shellcheck baseline(multiset) / exit-contract / run_all。
+# 固定顺序: extract_funcs → reorder → baseline → exit-contract → run_all (GAPS=0 是 reorder 前提)。
 # 用法: tools/ob_check.sh
 #       OB_CHECK_SKIP_TESTS=1 tools/ob_check.sh    # 跳过 run_all(被 run_all 递归调用时用,如 smoke)
 #       OB_CHECK_READONLY=1 tools/ob_check.sh      # 只报告不改文件(smoke/CI 用,避免经 run_all 架空 baseline 门禁)
@@ -71,7 +71,15 @@ case "$decision" in
         bad "shellcheck baseline 判定异常: $verdict" ;;
 esac
 
-# ── 4. run_all(除非 OB_CHECK_SKIP_TESTS=1,避免被 run_all 递归调用时死循环) ──
+# ── 4. exit-contract(静态 X/Y/Z)──
+if python3 tools/exit_contract.py ob >/tmp/ob_check_ec.out 2>&1; then
+    ok "exit-contract (X/Y/Z green)"
+else
+    bad "exit-contract 违反(详 /tmp/ob_check_ec.out):"
+    cat /tmp/ob_check_ec.out
+fi
+
+# ── 5. run_all(除非 OB_CHECK_SKIP_TESTS=1,避免被 run_all 递归调用时死循环) ──
 if [[ "${OB_CHECK_SKIP_TESTS:-0}" == "1" ]]; then
     echo "• skip run_all (OB_CHECK_SKIP_TESTS=1)"
 else
