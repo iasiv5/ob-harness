@@ -53,6 +53,7 @@ assert_contains "inc externalsrc" "$body" 'INHERIT += "externalsrc"'
 assert_contains "inc DL_DIR"      "$body" 'DL_DIR = "'
 assert_contains "inc SSTATE_DIR"  "$body" 'SSTATE_DIR = "'
 assert_contains "inc npm timeout" "$body" 'npm_config_fetch_timeout ??= "600000"'
+assert_contains "inc PREMIRRORS"  "$body" 'PREMIRRORS = "'
 
 # --- generate_build_config: user already defines DL_DIR/SSTATE_DIR in local.conf → not overridden ---
 # 关键回归防护: ob 必须尊重用户已定义的 DL_DIR/SSTATE_DIR, 不在 .inc 写赋值 (否则覆盖用户配置,
