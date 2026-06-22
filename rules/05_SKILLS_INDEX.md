@@ -25,6 +25,7 @@
 - [时间敏感信息验证](skills/bestpractice_04-temporal_info_verification.md) — 涉及版本号、spec 引用、发布时间等可能过时的信息时使用。
 - [Yocto 编译中 npm 网络超时](skills/bestpractice_05-npm_network_timeout_in_yocto.md) — `do_compile` 阶段 npm install 报 ETIMEDOUT 时的诊断与修复策略。
 - [ob 优先（统一前门）](skills/bestpractice_06-ob_first.md) — 做 OpenBMC 环境动作前，先查 ob 是否提供该能力并优先调用 `ob <cmd>`。
+- [Bash strict mode 管道退出码陷阱](skills/bestpractice_07-bash_strict_mode_pipes.md) — 在 `set -euo pipefail` 下写 `cmd | grep/awk/head` 管道时，避免下游非零退出码被 pipefail 当硬错误中止脚本。
 
 ---
 
