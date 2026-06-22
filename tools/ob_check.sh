@@ -26,15 +26,22 @@ if [[ "${ob_gaps:-?}" == "0" ]]; then
 else
     bad "extract_funcs ob GAPS=${ob_gaps:-?}(函数间有顶层语句,先清理)"
 fi
+lib_count=$((${#OB_SOURCES[@]} - 1))   # lib 文件数(跳过 ob)
 lib_violations=0
-for f in "${OB_SOURCES[@]:1}"; do   # 跳过 ob,只查 lib
+for f in "${OB_SOURCES[@]:1}"; do
     if ! python3 tools/extract_funcs.py "$f" >/dev/null 2>&1; then
         bad "extract_funcs lib 三段违规: $f"
         python3 tools/extract_funcs.py "$f" 2>&1 | grep -E '_(TOPLEVEL)|^GAP' | head -3
         lib_violations=$((lib_violations+1))
     fi
 done
-[[ "$lib_violations" == "0" ]] && ok "extract_funcs lib 三段全清(lib 空=无 lib 文件,跳过)"
+if [[ "$lib_violations" == "0" ]]; then
+    if [[ "$lib_count" == "0" ]]; then
+        ok "extract_funcs lib 三段全清(无 lib 文件,跳过)"
+    else
+        ok "extract_funcs lib 三段全清($lib_count 个 lib 文件)"
+    fi
+fi
 
 # ── 2. shellcheck baseline(合成 flat + 纯文本 multiset;不 per-file 避 SC2034 跨文件假阳) ──
 flat=/tmp/ob_check_sc.flat
@@ -82,7 +89,8 @@ esac
 
 # ── 3. exit-contract(多文件:默认扫 ob + lib/*.sh) ──
 if python3 tools/exit_contract.py >/tmp/ob_check_ec.out 2>&1; then
-    ok "exit-contract ok (X/Y/Z; Y=n/a 在 lib/util.sh 拆出前属预期)"
+    yz=$(grep -oE 'Y: (PASS|n/a)' /tmp/ob_check_ec.out | head -1)
+    ok "exit-contract ok (X/Y/Z green; $yz)"
 else
     bad "exit-contract 违反(详 /tmp/ob_check_ec.out):"
     cat /tmp/ob_check_ec.out
