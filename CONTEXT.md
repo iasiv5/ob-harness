@@ -63,3 +63,7 @@ _Avoid_: 返回码约定, exit status
 **remedy line**:
 `ob` 在 exit 3（前置缺失）报错里给调用方（主要是智能 agent）的**下一步描述**。输出固定两段式：先**诊断行**说明哪条前置没满足（如 `Machine 'X' has not been initialized.`），再**恰好一行 remedy line**——描述满足该前置所需的下一步。常见形态是 `Run 'ob init X' first.`，但**不锁死为 ob 命令**：消费者是智能 agent，可自行决定用 ob 解决、通知用户或自行探索。要求非空且向前看（是「下一步」，而非「上一步可能失败了」这类纯回溯诊断）。
 _Avoid_: 提示语, hint, 错误提示, 锁死为 ob 命令
+
+**ob-managed variable**:
+`ob init` 注入到 `externalsrc-<machine>.inc` 的变量（当前 DL_DIR、SSTATE_DIR、PREMIRRORS）。注入规则：仅当 local.conf 中**无该变量的赋值行**时才注入——判定用 `read_local_conf_var` 的 exit code（有赋值行=用户接管，含空值；无赋值行=ob 写默认），**不**用值是否非空（`-n`）。即用户一旦显式赋值即视为接管、ob 不覆盖；无赋值行时 ob 写入默认（workspace 共享缓存、清华 mirror 等）。空值的语义是"用户有意禁用/留空"，不是"配置缺失"——理由见 [ADR-0005](docs/adr/0005-local-conf-var-detection-exit-code.md)。
+_Avoid_: ob 配置变量, 自动配置变量, 把空值当"未配置", `-n` 判定（已统一为 exit code）
