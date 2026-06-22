@@ -14,6 +14,7 @@ cleanup() {
 trap cleanup EXIT
 
 cp "$ROOT/ob" "$TMPROOT/ob"
+cp -a "$ROOT/lib" "$TMPROOT/lib"   # ob 入口 source lib/*.sh,须成套复制
 mkdir -p "$TMPROOT/workspace/configs" "$TMPROOT/workspace/openbmc"
 git -C "$TMPROOT/workspace/openbmc" init -q
 git -C "$TMPROOT/workspace/openbmc" remote add origin https://github.com/openbmc/openbmc.git
