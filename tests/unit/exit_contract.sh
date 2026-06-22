@@ -39,15 +39,17 @@ bad() {
 EOF
 assert_rc 1 "exit 4 caught (X)" python3 "$EXIT_CONTRACT" "$TMP/x.sh"
 
-# --- 3. Y 真阳 (rc 1): §2 函数 exit 但不在 EXIT_EXCEPTIONS ---
-cat >"$TMP/y.sh" <<'EOF'
-# === §2 util ===
+# --- 3. Y 真阳 (rc 1): util.sh 函数 exit 但不在 EXIT_EXCEPTIONS (Y-c basename) ---
+mkdir -p "$TMP/lib"
+cat >"$TMP/lib/util.sh" <<'EOF'
+#!/usr/bin/env bash
 myhelper() {
     exit 1
 }
-# === §3 ===
 EOF
-assert_rc 1 "§2 unexpected exit caught (Y dual)" python3 "$EXIT_CONTRACT" "$TMP/y.sh"
+: >"$TMP/ob"   # 空入口桩
+assert_rc 1 "util.sh unexpected exit caught (Y-c basename)" \
+    python3 "$EXIT_CONTRACT" "$TMP/ob" "$TMP/lib/util.sh"
 
 # --- 4. Z 空 remedy 真阳 (rc 1): require_path 第 3 入参空 ---
 cat >"$TMP/z1.sh" <<'EOF'
