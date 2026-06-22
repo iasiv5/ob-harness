@@ -954,7 +954,7 @@ require_openbmc_repo() {
     fi
     info "No OpenBMC main repository found at $OPENBMC_DIR."
     info "A small main repository must be cloned first to list/validate machines (a few minutes)."
-    clone_openbmc
+    return 3   # repo 未就绪:信号交给调用方(cmd_init)编排 clone_openbmc
 }
 
 # Print "Previously initialized" separator showing init-done machines
@@ -3864,7 +3864,7 @@ cmd_init() {
 
     # Step 2/8: 准备主仓库并解析 machine。
     # 首次运行时 clone 主仓；重跑时做 source 校验并复用已有仓库。
-    require_openbmc_repo
+    require_openbmc_repo || clone_openbmc
 
     # [OEM] Step 2 扩展动作：如当前主仓需要 vendor bootstrap，继续补齐其子目录。
     run_repo_init_script
