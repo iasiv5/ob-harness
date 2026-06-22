@@ -4126,8 +4126,8 @@ Run without arguments to enter interactive menu mode.
 
 Commands:
   init         [<machine>]    One-click initialize OpenBMC dev environment
-    build        [<machine>]    Build an initialized machine's image (interactive if omitted)
-  status                       Show current OpenBMC source binding status
+  build        [<machine>]    Build an initialized machine's image (interactive if omitted)
+  status                      Show current OpenBMC source binding status
   start-qemu   [<machine>]    Launch QEMU with built BMC image
   stop-qemu    [<machine>]    Stop a running QEMU instance
 
@@ -4173,8 +4173,8 @@ Examples:
   ob init romulus                  # Initialize romulus machine
   ob init romulus -d               # Preview what would be done
   ob init romulus --url https://example.com/openbmc.git
-    ob build romulus                 # Build romulus non-interactively
-    ob build romulus -d              # Preview the build without running bitbake
+  ob build romulus                 # Build romulus non-interactively
+  ob build romulus -d              # Preview the build without running bitbake
   ob start-qemu romulus            # Launch romulus in QEMU
   ob start-qemu romulus --ssh-port 22223
   ob stop-qemu romulus             # Stop romulus QEMU instance
