@@ -19,8 +19,9 @@
     TOTAL N                 函数总数
     GAPS 0                  函数之间夹杂的非注释顶层语句数(ob 入口也要求 0)
     [HEADER_TOPLEVEL ...]   lib 文件首个函数前有执行语句(shebang/注释除外)
+    GAP ...                 lib 文件函数之间有执行语句
     [FOOTER_TOPLEVEL ...]   lib 文件最后函数后有执行语句(空行/注释除外)
-  任一 HEADER/FOOTER_TOPLEVEL → 退出码 1。
+  任一 HEADER_TOPLEVEL/GAP/FOOTER_TOPLEVEL → 退出码 1。
 
 【GAPS=0 的含义】
   函数定义之间不得夹杂物。bash 函数顺序不影响执行（调用都在 main 里），所以只要
@@ -83,6 +84,9 @@ print('GAPS', gaps)
 is_lib = 'lib' in path.replace('\\', '/').split('/')
 violations = 0
 if is_lib:
+    if gaps:
+        violations += gaps
+
     # header: 首个函数前只允许 shebang/空行/注释
     first_start = func_starts[0][0] if func_starts else len(lines) + 1
     for s in lines[:first_start - 1]:
