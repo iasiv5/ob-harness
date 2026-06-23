@@ -346,21 +346,20 @@ require_openbmc_repo() {
 # with their original index from the full machine list.
 # Args:
 #   $1: machine name array (nameref)
-#   $2: CONFIGS_DIR path
 print_previously_initialized() {
     local -n _mpi_arr="$1"
-    local _mpi_configs_dir="$2"
 
-    # Discover init-done machines
+    # Discover init-done machines from machine_state records.
     local -A _mpi_done=()
-    local _mpi_f _mpi_mname _mpi_raw_time _mpi_fmt_time
-    for _mpi_f in "$_mpi_configs_dir"/*.init-done; do
-        [[ -f "$_mpi_f" ]] || continue
-        _mpi_mname=$(basename "$_mpi_f" .init-done)
-        _mpi_raw_time=$(head -1 "$_mpi_f" 2>/dev/null || true)
+    local _mpi_record _mpi_mname _mpi_raw_time _mpi_fmt_time
+    while IFS= read -r _mpi_record; do
+        [[ -n "$_mpi_record" ]] || continue
+        [[ "$(machine_state_record_field "$_mpi_record" init)" == "done" ]] || continue
+        _mpi_mname=$(machine_state_record_field "$_mpi_record" machine)
+        _mpi_raw_time=$(machine_state_record_field "$_mpi_record" init_time)
         _mpi_fmt_time=$(format_timestamp "$_mpi_raw_time")
         _mpi_done["$_mpi_mname"]="$_mpi_fmt_time"
-    done
+    done < <(machine_state_list_records)
 
     # No init-done machines → nothing to show
     if [[ ${#_mpi_done[@]} -eq 0 ]]; then
@@ -396,7 +395,7 @@ resolve_machine() {
     # Fast path: machine specified and valid
     if [[ -n "$MACHINE" ]] && echo "$machines" | grep -qx -- "$MACHINE"; then
         print_available_machines
-        print_previously_initialized machine_arr "$CONFIGS_DIR"
+        print_previously_initialized machine_arr
         info "Machine '$MACHINE' confirmed."
         return 0
     fi
@@ -426,7 +425,7 @@ resolve_machine() {
         done
     } | column -c "$term_cols" 2>/dev/null
 
-    print_previously_initialized machine_arr "$CONFIGS_DIR"
+    print_previously_initialized machine_arr
 
     local selected
     local chosen=""

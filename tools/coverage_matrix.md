@@ -20,7 +20,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | source lock 读写 | read_source_label;write_source_lock;normalize_repo_url;derive_source_label | unit/source_lock.sh;unit/url.sh | |
 | 前置检查 | prerequisites_check | orchestration/prerequisites_check.sh | exit 函数 |
 | 子仓库克隆 | clone_sub_repos | orchestration/clone_sub_repos.sh | |
-| lockfile 生成 | generate_lockfile | orchestration/generate_config.sh | |
+| machine snapshot 生成 | generate_machine_snapshot;machine_state_write_snapshot | orchestration/generate_config.sh;unit/machine_state.sh | |
 | build config 生成 | generate_build_config | orchestration/generate_config.sh | |
 
 ## build

@@ -4,8 +4,8 @@
 断言 ob + lib/*.sh 的 exit 纪律（ADR-0003 / exit-code 契约）：
   X: 每个真·bash 进程 exit 的字面值 ∈ {0,1,2,3}；唯一允许的非字面 exit
      是 require_path 的 exit "$code"。
-  Y: basename 为 util.sh 的文件里,函数绝不 exit,除 EXIT_EXCEPTIONS（对偶式自维护）。
-     无 util.sh 文件时 Y: n/a（lib 尚未拆出,窗口期预期）。
+  Y: leaf-pure basename 集合里的文件中,函数绝不 exit,除该 basename 配置的例外
+      （对偶式自维护）。无 leaf-pure 文件时 Y: n/a（lib 尚未拆出,窗口期预期）。
   Z: exit-3 remedy 覆盖——(a) require_path 精确（非空）；(b) direct exit 3
      弱守（仅防 totally-bare）+ 回溯诊断软告警。require_path 调用点与 direct
      exit 3 均**跨所有扫描文件**判定（Z 需全局视野,故工具走多文件全表,不 per-file）。
@@ -19,7 +19,7 @@
 【怎么用】
   $ python3 tools/exit_contract.py            # 默认扫 <ROOT>/ob + <ROOT>/lib/*.sh
   $ python3 tools/exit_contract.py <f1> <f2>.. # 扫指定文件(可多,debug 单文件用)
-  $ python3 tools/exit_contract.py --seed-y   # 打印 util.sh 真exit集
+    $ python3 tools/exit_contract.py --seed-y   # 打印 util.sh 真exit集
   退出码：0 = 全绿；1 = 有违反；2 = 文件未找到。
 
 【真·bash exit 判定】
@@ -48,8 +48,12 @@ LOG_FNS = {'echo', 'warn', 'info', 'error', 'printf', 'verbose'}
 # 参数捕获停在 shell 元字符（;|&)）与空白，避免吃进 `exit 1;` 的分号。
 EXIT_RE = re.compile(r'(?:^|[\s;`&|])exit(?=$|[\s;)&|])(?:\s+([^\s;|&)]+))?')
 LEGAL_LITERAL = {'0', '1', '2', '3'}
-# util 层允许 exit 的例外集。对偶式 Y：util.sh 函数绝不 exit，除此 3 个。
+# util 层允许 exit 的例外集。对偶式 Y：leaf-pure 函数绝不 exit，除各 basename 的例外。
 EXIT_EXCEPTIONS = {'fn_quit', 'resolve_npm_registry', 'require_path'}
+LEAF_EXIT_EXCEPTIONS_BY_BASENAME = {
+    'util.sh': EXIT_EXCEPTIONS,
+    'machine_state.sh': set(),
+}
 
 # Z 的「向前看 vs 回溯诊断」软告警启发（尽力而为、非权威，供人工审核）。
 _BACKWARD_PHRASES = ('previous step', 'may have failed', 'earlier', 'prior step', 'last step')
@@ -144,18 +148,18 @@ def check_X(all_funcs, file_lines):
     return findings
 
 
-def util_sh_exiters(all_funcs, file_lines):
-    """返回 {name: exits}：basename 为 util.sh 的文件中含真 bash exit 的函数。
+def leaf_exiters(all_funcs, file_lines, basename):
+    """返回 {name: exits}：basename 匹配文件中含真 bash exit 的函数。
 
-    Y-c 文件归属:不靠 §2 注释锚点(会漂移),靠文件名。无 util.sh 返回 None。
+    Y-c 文件归属:不靠 §2 注释锚点(会漂移),靠文件名。无匹配文件返回 None。
     """
-    util_files = [f for f in file_lines if os.path.basename(f) == 'util.sh']
-    if not util_files:
+    leaf_files = [f for f in file_lines if os.path.basename(f) == basename]
+    if not leaf_files:
         return None
     exiters = {}
-    util_set = set(util_files)
+    leaf_set = set(leaf_files)
     for name, start, end, f in all_funcs:
-        if f not in util_set or end is None:
+        if f not in leaf_set or end is None:
             continue
         ex = real_bash_exits(file_lines[f][start - 1:end], start)
         if ex:
@@ -163,22 +167,38 @@ def util_sh_exiters(all_funcs, file_lines):
     return exiters
 
 
+def util_sh_exiters(all_funcs, file_lines):
+    """返回 util.sh 真 bash exit 集，供 --seed-y 维持既有输出。"""
+    return leaf_exiters(all_funcs, file_lines, 'util.sh')
+
+
 def check_Y(all_funcs, file_lines):
-    """Y-c（对偶式）：{util.sh 真exit函数} == EXIT_EXCEPTIONS。无 util.sh 返回 None（n/a）。"""
-    exiters = util_sh_exiters(all_funcs, file_lines)
-    if exiters is None:
-        return None
-    func_start = {}
-    for name, start, _, _ in all_funcs:
-        func_start.setdefault(name, start)
+    """Y-c（对偶式）：leaf-pure basename 真exit函数 == 该 basename 例外集。"""
     findings = []
-    s2set = set(exiters)
-    for name in sorted(s2set - EXIT_EXCEPTIONS):
-        findings.append((exiters[name][0][0], name,
-                         'util.sh function unexpectedly exits (add to EXIT_EXCEPTIONS, or remove the exit)'))
-    for name in sorted(EXIT_EXCEPTIONS - s2set):
-        findings.append((func_start.get(name), name,
-                         'in EXIT_EXCEPTIONS but no longer exits in util.sh (stale exception)'))
+    checked_any = False
+
+    for basename, exceptions in LEAF_EXIT_EXCEPTIONS_BY_BASENAME.items():
+        exiters = leaf_exiters(all_funcs, file_lines, basename)
+        if exiters is None:
+            continue
+        checked_any = True
+
+        func_start = {}
+        for name, start, _, f in all_funcs:
+            if os.path.basename(f) == basename:
+                func_start.setdefault(name, start)
+
+        s2set = set(exiters)
+        for name in sorted(s2set - exceptions):
+            findings.append((exiters[name][0][0], name,
+                             f'{basename} function unexpectedly exits '
+                             '(add to leaf-pure exceptions, or remove the exit)'))
+        for name in sorted(exceptions - s2set):
+            findings.append((func_start.get(name), name,
+                             f'in leaf-pure exceptions for {basename} but no longer exits (stale exception)'))
+
+    if not checked_any:
+        return None
     return findings
 
 

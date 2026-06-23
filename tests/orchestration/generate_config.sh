@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# tests/orchestration/generate_config.sh — generate_lockfile + generate_build_config 编排测试。
-# mock:git rev-parse(stub)。残余风险:mock 不验证 lockfile/.inc 能喂真实 bitbake(靠 integration 兜)。
+# tests/orchestration/generate_config.sh — generate_machine_snapshot + generate_build_config 编排测试。
+# mock:git rev-parse(stub)。残余风险:mock 不验证 snapshot/.inc 能喂真实 bitbake(靠 integration 兜)。
 source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
 source "$(dirname "$0")/../lib/stub.sh"
@@ -14,26 +14,37 @@ mkdir -p "$CONFIGS_DIR" "$BUILD_DIR/conf" "$OPENBMC_DIR"   # conf 预建(generat
 cp "$FIX" "$BUILD_DIR/deps.json"
 
 DB="$(mktemp -d)"; mkfake_bin "$DB" git
-# generate_lockfile 用 `git -C OPENBMC_DIR rev-parse HEAD`($1=-C),按 $* 匹配 rev-parse
+# generate_machine_snapshot 用 `git -C OPENBMC_DIR rev-parse HEAD`($1=-C),按 $* 匹配 rev-parse
 stub_script "$DB" git 'if [[ "$*" == *rev-parse* ]]; then echo "deadbeef1234"; exit 0; fi; exit 0'
 
-# --- generate_lockfile DRY_RUN=1 → 不写 ---
+# --- dry-run 清理状态 → 不删已有 marker/snapshot/legacy lock ---
+printf 'old marker\n' > "$CONFIGS_DIR/drykeep.init-done"
+printf 'old snapshot\n' > "$CONFIGS_DIR/drykeep.snapshot"
+printf 'old lock\n' > "$CONFIGS_DIR/drykeep.lock"
+with_stub "$DB" -- bash -c 'OB_NO_MAIN=1 source "$1"
+CONFIGS_DIR="'"$CONFIGS_DIR"'"; DRY_RUN=1
+machine_state_clear_init_progress drykeep
+test -f "$CONFIGS_DIR/drykeep.init-done" && test -f "$CONFIGS_DIR/drykeep.snapshot" && test -f "$CONFIGS_DIR/drykeep.lock"
+' _ "$OB" 2>/dev/null && _assert_ok "dry-run keeps existing machine state files" || _assert_bad "dry-run keeps existing machine state files"
+
+# --- generate_machine_snapshot DRY_RUN=1 → 不写 ---
 with_stub "$DB" -- bash -c 'OB_NO_MAIN=1 source "$1"
 CONFIGS_DIR="'"$CONFIGS_DIR"'"; MACHINE="'"$MACHINE"'"; OPENBMC_DIR="'"$OPENBMC_DIR"'"; BUILD_DIR="'"$BUILD_DIR"'"; DRY_RUN=1
-generate_lockfile
-test -f "$CONFIGS_DIR/$MACHINE.lock" && echo EXISTS || echo NOFILE
-' _ "$OB" 2>/dev/null | grep -q NOFILE && _assert_ok "lockfile dry-run no file" || _assert_bad "lockfile dry-run no file"
+generate_machine_snapshot
+test -f "$CONFIGS_DIR/$MACHINE.snapshot" && echo EXISTS || echo NOFILE
+' _ "$OB" 2>/dev/null | grep -q NOFILE && _assert_ok "snapshot dry-run no file" || _assert_bad "snapshot dry-run no file"
 
-# --- generate_lockfile 实写 → lockfile JSON 字段 ---
+# --- generate_machine_snapshot 实写 → snapshot JSON 字段 ---
 with_stub "$DB" -- bash -c 'OB_NO_MAIN=1 source "$1"
 CONFIGS_DIR="'"$CONFIGS_DIR"'"; MACHINE="'"$MACHINE"'"; OPENBMC_DIR="'"$OPENBMC_DIR"'"; BUILD_DIR="'"$BUILD_DIR"'"; DRY_RUN=0
-generate_lockfile
-cat "$CONFIGS_DIR/$MACHINE.lock"
-' _ "$OB" 2>/dev/null >"$TMP/lock"
-body="$(cat "$TMP/lock")"
-assert_contains "lockfile machine" "$body" '"machine": "romulus"'
-assert_contains "lockfile commit"  "$body" '"openbmc_commit": "deadbeef1234"'
-assert_contains "lockfile subrepo" "$body" '"name": "repo1"'
+generate_machine_snapshot
+cat "$CONFIGS_DIR/$MACHINE.snapshot"
+' _ "$OB" 2>/dev/null >"$TMP/snapshot"
+body="$(cat "$TMP/snapshot")"
+assert_contains "snapshot machine" "$body" '"machine": "romulus"'
+assert_contains "snapshot commit"  "$body" '"openbmc_commit": "deadbeef1234"'
+assert_contains "snapshot subrepo" "$body" '"name": "repo1"'
+assert_false "snapshot does not write legacy lock" test -f "$(machine_state_legacy_lock_path "$MACHINE")"
 
 # --- generate_build_config DRY_RUN=1 → 不写 ---
 with_stub "$DB" -- bash -c 'OB_NO_MAIN=1 source "$1"

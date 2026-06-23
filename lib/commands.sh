@@ -63,61 +63,49 @@ status_section_main_repo() {
 status_section_machines() {
     step_header "Machines"
 
-    # Discover machines: from .init-done and .lock files, merged and deduplicated
-    local -a machines=()
-    local -A seen_machines=()
+    local -a records=()
+    local record
+    while IFS= read -r record; do
+        [[ -n "$record" ]] && records+=("$record")
+    done < <(machine_state_list_records)
 
-    for f in "$CONFIGS_DIR"/*.init-done "$CONFIGS_DIR"/*.lock; do
-        [[ -f "$f" ]] || continue
-        local mname
-        mname=$(basename "$f" | sed -E 's/\.(init-done|lock)$//')
-        # Skip the main repo source lock (not a per-machine lock)
-        [[ "$mname" == "openbmc-source" ]] && continue
-        if [[ -z "${seen_machines[$mname]:-}" ]]; then
-            seen_machines["$mname"]=1
-            machines+=("$mname")
-        fi
-    done
-
-    if [[ ${#machines[@]} -eq 0 ]]; then
+    if [[ ${#records[@]} -eq 0 ]]; then
         echo "  (none)"
         return 0
     fi
 
-    # Sort machine names
-    local -a sorted_machines=()
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && sorted_machines+=("$line")
-    done < <(printf '%s\n' "${machines[@]}" | sort)
-
     # --- Summary table ---
     # Collect per-machine data
-    local -A m_init=() m_repos=() m_build=() m_image=()
+    local -a machines=()
+    local -A m_init=() m_repos=() m_build=() m_image=() m_snapshot=() m_init_time=()
 
-    for m in "${sorted_machines[@]}"; do
-        # Init status
-        if [[ -f "$CONFIGS_DIR/$m.init-done" ]]; then
-            m_init["$m"]="✅ done"
-        elif [[ -f "$CONFIGS_DIR/$m.lock" ]]; then
-            m_init["$m"]="⏳ partial"
-        else
-            m_init["$m"]="—"
-        fi
+    for record in "${records[@]}"; do
+        local m init_state snapshot_state repo_count build_state image_state raw_init_time
+        m=$(machine_state_record_field "$record" machine)
+        init_state=$(machine_state_record_field "$record" init)
+        snapshot_state=$(machine_state_record_field "$record" snapshot)
+        repo_count=$(machine_state_record_field "$record" repos)
+        build_state=$(machine_state_record_field "$record" build)
+        image_state=$(machine_state_record_field "$record" image)
+        raw_init_time=$(machine_state_record_field "$record" init_time)
+        machines+=("$m")
 
-        # Repos count
-        if [[ -f "$CONFIGS_DIR/$m.lock" ]]; then
-            m_repos["$m"]=$(python3 -c "import json; print(len(json.load(open('$CONFIGS_DIR/$m.lock'))['sub_repos']))" 2>/dev/null || echo "?")
-        else
-            m_repos["$m"]="—"
-        fi
+        case "$init_state" in
+            done) m_init["$m"]="✅ done" ;;
+            partial) m_init["$m"]="⏳ partial" ;;
+            *) m_init["$m"]="—" ;;
+        esac
 
-        # Build status — glob for *.static.mtd to handle custom image names
-        local image_path=""
-        image_path=$(ls "$OPENBMC_DIR/build/$m/tmp/deploy/images/$m/"*.static.mtd 2>/dev/null | head -1 || true)
-        if [[ -n "$image_path" && -f "$image_path" ]]; then
+        m_snapshot["$m"]="$snapshot_state"
+        m_repos["$m"]="$repo_count"
+        m_init_time["$m"]="$raw_init_time"
+
+        if [[ "$build_state" == "succeeded" ]]; then
             m_build["$m"]="🔨 succeeded"
-            m_image["$m"]="$image_path"
-        elif [[ -d "$OPENBMC_DIR/build/$m" ]]; then
+            if [[ "$image_state" == "yes" ]]; then
+                m_image["$m"]=$(machine_state_image_path "$m" 2>/dev/null || true)
+            fi
+        elif [[ "$build_state" == "failed" ]]; then
             m_build["$m"]="❌ failed"
         else
             m_build["$m"]="— never"
@@ -126,28 +114,24 @@ status_section_machines() {
 
     # Print summary table header
     printf "  %-22s %-10s %s\n" "Machine" "Init" "Build"
-    for m in "${sorted_machines[@]}"; do
+    for m in "${machines[@]}"; do
         local m_padded
         printf -v m_padded "%-22s" "$m"
         printf "  %b%-10s %s\n" "${YELLOW}${m_padded}${NC}" "${m_init[$m]}" "${m_build[$m]}"
     done
 
     # --- Per-machine expansion ---
-    for m in "${sorted_machines[@]}"; do
-        # Only expand machines that have a .lock file (meaningful data)
-        [[ -f "$CONFIGS_DIR/$m.lock" ]] || continue
+    for m in "${machines[@]}"; do
+        # Only expand machines that have a snapshot file (meaningful repo data)
+        [[ "${m_snapshot[$m]}" == "yes" ]] || continue
 
         echo ""
         echo "  ── $m ──────────────────────────────────────"
 
         # Init time
         local init_time=""
-        if [[ -f "$CONFIGS_DIR/$m.init-done" ]]; then
-            local raw_init_time
-            raw_init_time=$(head -1 "$CONFIGS_DIR/$m.init-done" 2>/dev/null || true)
-            if [[ -n "$raw_init_time" ]]; then
-                init_time=$(format_timestamp "$raw_init_time")
-            fi
+        if [[ -n "${m_init_time[$m]}" ]]; then
+            init_time=$(format_timestamp "${m_init_time[$m]}")
         fi
         echo "    Init time    : ${init_time:--}"
 
@@ -209,18 +193,20 @@ cmd_status() {
     # Section 3: Dynamic tips
     local has_init_done=0
     local has_never_built=0
-    for f in "$CONFIGS_DIR"/*.init-done; do
-        [[ -f "$f" ]] || continue
-        has_init_done=1
-        local mname
-        mname=$(basename "$f" .init-done)
-        local image_path=""
-        image_path=$(ls "$OPENBMC_DIR/build/$mname/tmp/deploy/images/$mname/"*.static.mtd 2>/dev/null | head -1 || true)
-        if [[ -z "$image_path" ]]; then
-            has_never_built=1
+    local _ms_record
+    while IFS= read -r _ms_record; do
+        [[ -n "$_ms_record" ]] || continue
+        local _ms_init=""
+        local _ms_build=""
+        _ms_init="$(machine_state_record_field "$_ms_record" init)"
+        _ms_build="$(machine_state_record_field "$_ms_record" build)"
+        if [[ "$_ms_init" == "done" ]]; then
+            has_init_done=1
+            if [[ "$_ms_build" != "succeeded" ]]; then
+                has_never_built=1
+            fi
         fi
-        break
-    done
+    done < <(machine_state_list_records)
 
     status_section_tips "$repo_exists" "$has_init_done" "$has_never_built"
 
@@ -271,7 +257,7 @@ cmd_build() {
 
     local interactive_selection=0
     if [[ -n "$MACHINE" ]]; then
-        if [[ ! -f "$CONFIGS_DIR/$MACHINE.init-done" ]]; then
+        if ! machine_state_has_init_done "$MACHINE"; then
             error "Machine '$MACHINE' is not initialized (no completed init-done marker - a previous init may have been interrupted)."
             error "Run 'ob init $MACHINE' first."
             exit 3
@@ -283,29 +269,23 @@ cmd_build() {
         local -a machines=()
         local -a init_times=()
         local -a repo_counts=()
+        local record=""
 
-        for init_done_file in "$CONFIGS_DIR"/*.init-done; do
-            [[ -f "$init_done_file" ]] || continue
+        while IFS= read -r record; do
+            [[ -n "$record" ]] || continue
+            [[ "$(machine_state_record_field "$record" init)" == "done" ]] || continue
             local mname
-            mname=$(basename "$init_done_file" .init-done)
+            local raw_init_time
+            mname=$(machine_state_record_field "$record" machine)
             machines+=("$mname")
 
-            local init_time raw_init_time
-            if ! IFS= read -r raw_init_time < "$init_done_file"; then
-                raw_init_time=""
-            fi
+            raw_init_time=$(machine_state_record_field "$record" init_time)
+            local init_time
             init_time=$(format_timestamp "$raw_init_time")
             init_times+=("$init_time")
 
-            local lockfile="$CONFIGS_DIR/$mname.lock"
-            local repo_count=0
-            if [[ -f "$lockfile" ]]; then
-                repo_count=$(python3 -c "import json; print(len(json.load(open('$lockfile'))['sub_repos']))" 2>/dev/null || echo "?")
-            else
-                repo_count="?"
-            fi
-            repo_counts+=("$repo_count")
-        done
+            repo_counts+=("$(machine_state_record_field "$record" repos)")
+        done < <(machine_state_list_records)
 
         if [[ ${#machines[@]} -eq 0 ]]; then
             step_header "Initialized Machines"
@@ -428,7 +408,7 @@ cmd_build() {
 
         local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
         local image_file=""
-        image_file=$(ls "$deploy_dir/"*.static.mtd 2>/dev/null | head -1)
+        image_file=$(machine_state_image_path "$MACHINE" 2>/dev/null || true)
 
         echo "  Machine : $MACHINE"
         echo "  Image   : ${image_file:-<not found>}"
@@ -483,23 +463,25 @@ cmd_start_qemu() {
 
     # ── Resolve machine ──
     if [[ -z "$MACHINE" ]]; then
-        # Discover built machines (init-done + deploy directory exists)
+        # Discover built machines (init-done + image exists)
         local -a machines=()
-        for init_done_file in "$CONFIGS_DIR"/*.init-done; do
-            [[ -f "$init_done_file" ]] || continue
-            local _m
-            _m="$(basename "$init_done_file" .init-done)"
-            [[ -d "$OPENBMC_DIR/build/$_m/tmp/deploy/images/$_m" ]] || continue
-            machines+=("$_m")
-        done
+        local _record
+        while IFS= read -r _record; do
+            [[ -n "$_record" ]] || continue
+            [[ "$(machine_state_record_field "$_record" init)" == "done" ]] || continue
+            [[ "$(machine_state_record_field "$_record" build)" == "succeeded" ]] || continue
+            machines+=("$(machine_state_record_field "$_record" machine)")
+        done < <(machine_state_list_records)
 
         if [[ ${#machines[@]} -eq 0 ]]; then
             local any_initdone=0
-            for init_done_file in "$CONFIGS_DIR"/*.init-done; do
-                [[ -f "$init_done_file" ]] || continue
-                any_initdone=1
-                break
-            done
+            while IFS= read -r _record; do
+                [[ -n "$_record" ]] || continue
+                if [[ "$(machine_state_record_field "$_record" init)" == "done" ]]; then
+                    any_initdone=1
+                    break
+                fi
+            done < <(machine_state_list_records)
 
             if [[ "$any_initdone" -eq 1 ]]; then
                 error "No built machines found (initialized but not built)."
@@ -542,11 +524,23 @@ cmd_start_qemu() {
     SOURCE_LOCK_FILE="$CONFIGS_DIR/openbmc-source.lock"
 
     # ── Prerequisite 1: machine init-done ──
-    if [[ ! -f "$CONFIGS_DIR/$MACHINE.init-done" ]]; then
+    if ! machine_state_has_init_done "$MACHINE"; then
         error "Machine '$MACHINE' has not been initialized."
         error "Run 'ob init $MACHINE' first."
         exit 3
     fi
+
+    # ── Prerequisite 2: image file ──
+    local image_file=""
+    local deploy_dir=""
+    deploy_dir="$(machine_state_deploy_dir "$MACHINE")"
+    image_file=$(machine_state_image_path "$MACHINE" 2>/dev/null || true)
+    if [[ -z "$image_file" ]]; then
+        error "No .static.mtd image found in $deploy_dir"
+        error "Run 'ob build' first."
+        exit 3
+    fi
+    verbose "Image file: $image_file"
 
     resolve_qb_vars
 
@@ -561,21 +555,6 @@ cmd_start_qemu() {
 
     # ── Prerequisite 4b: QEMU firmware (bootroms, etc.) ──
     ensure_qemu_firmware
-
-    # ── Prerequisite 5: image file ──
-    local image_file=""
-    # Locate .static.mtd in deploy directory
-    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
-    require_path "$deploy_dir" "Image deploy directory" "Run 'ob build' for machine '$MACHINE' first." 3
-
-    # Look for the static MTD image
-    image_file=$(find "$deploy_dir" -maxdepth 1 -name "*.static.mtd" -type f 2>/dev/null | head -1 || true)
-    if [[ -z "$image_file" ]]; then
-        error "No .static.mtd image found in $deploy_dir"
-        error "Run 'ob build' for machine '$MACHINE' first."
-        exit 3
-    fi
-    verbose "Image file: $image_file"
 
     # ── Check for existing QEMU instance (before port resolution) ──
     #     Same-machine check must come first — port conflicts are usually
@@ -969,9 +948,12 @@ cmd_init() {
     BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
     SRC_DIR="$WORKSPACE_DIR/src/$MACHINE"
 
-    # Remove init-done marker before starting work (re-entering init flow).
-    # This ensures ob build never sees a stale marker if init is interrupted.
-    rm -f "$CONFIGS_DIR/$MACHINE.init-done"
+    # Clear previous completion state before starting work (re-entering init flow).
+    # This ensures ob build never sees stale state if init is interrupted.
+    if ! machine_state_clear_init_progress "$MACHINE"; then
+        error "Failed to clear machine state for '$MACHINE'."
+        exit 1
+    fi
 
     # Backfill machine_first_init if lock file was written before resolve_machine()
     if [[ -f "$SOURCE_LOCK_FILE" && -n "$MACHINE" ]]; then
@@ -1038,8 +1020,8 @@ cmd_init() {
     # Step 5/8: 拉取子仓库。
     clone_sub_repos
 
-    # Step 6/8: 生成 lockfile。
-    generate_lockfile
+    # Step 6/8: 生成 machine snapshot。
+    generate_machine_snapshot
 
     # Step 7/8: 生成构建缓存配置。
     generate_build_config
@@ -1049,7 +1031,10 @@ cmd_init() {
 
     # Write init-done marker (all 8 steps completed successfully).
     # ob build uses this to discover buildable machines.
-    date -u +"%Y-%m-%dT%H:%M:%SZ" > "$CONFIGS_DIR/$MACHINE.init-done"
+    if ! machine_state_mark_init_done "$MACHINE"; then
+        error "Failed to write init-done marker: $(machine_state_init_done_path "$MACHINE")"
+        exit 1
+    fi
 }
 
 cmd_menu() {

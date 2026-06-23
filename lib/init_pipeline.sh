@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/init_pipeline.sh — ob §5 init 流水线(clone/lockfile/config),被 ob source。纯函数定义集。
+# lib/init_pipeline.sh — ob §5 init 流水线(clone/snapshot/config),被 ob source。纯函数定义集。
 
 
 prerequisites_check() {
@@ -376,50 +376,28 @@ for item in json.load(open('$deps_json')):
     fi
 }
 
-generate_lockfile() {
-    step_header "Step 6/8: Generating lockfile..."
+generate_machine_snapshot() {
+    step_header "Step 6/8: Generating machine snapshot..."
 
-    local lockfile="$CONFIGS_DIR/$MACHINE.lock"
+    local snapshot
+    local deps_json
+    local openbmc_commit
+
+    snapshot="$(machine_state_snapshot_path "$MACHINE")"
+    deps_json="$BUILD_DIR/deps.json"
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
-        info "[DRY-RUN] Would write lockfile to $lockfile"
+        info "[DRY-RUN] Would write machine snapshot to $snapshot"
         return 0
     fi
 
-    mkdir -p "$CONFIGS_DIR"
-
-    local openbmc_commit
     openbmc_commit=$(git -C "$OPENBMC_DIR" rev-parse HEAD)
-
-    # Build lockfile JSON
-    python3 -c "
-import json, datetime
-deps = json.load(open('$BUILD_DIR/deps.json'))
-lockfile = {
-    'machine': '$MACHINE',
-    'generated_at': datetime.datetime.now().astimezone().isoformat(),
-    'openbmc_commit': '$openbmc_commit',
-    'target_image': 'obmc-phosphor-image',
-    'sub_repos': []
-}
-for dep in deps:
-    lockfile['sub_repos'].append({
-        'name': dep['name'],
-        'src_uri': dep['src_uri'],
-        'srcrev': dep['srcrev'],
-        'local_path': 'workspace/src/$MACHINE/' + dep['name'],
-        'recipe': dep['recipe']
-    })
-with open('$lockfile', 'w') as f:
-    json.dump(lockfile, f, indent=2, ensure_ascii=False)
-    f.write('\n')
-"
-
-    if [[ -f "$lockfile" ]]; then
-        info "Overwriting existing lockfile: $lockfile"
+    if ! machine_state_write_snapshot "$MACHINE" "$deps_json" "$openbmc_commit"; then
+        error "Failed to write machine snapshot: $snapshot"
+        exit 1
     fi
 
-    info "Lockfile written to $lockfile"
+    info "Machine snapshot written to $snapshot"
 }
 
 generate_build_config() {
@@ -574,7 +552,7 @@ print_report() {
         echo "Main repo:   $OPENBMC_DIR"
         echo "Build dir:   $BUILD_DIR"
         echo "Mirror dir:  $MIRROR_BASE"
-        echo "Lockfile:    $CONFIGS_DIR/$MACHINE.lock"
+        echo "Snapshot:    $CONFIGS_DIR/$MACHINE.snapshot"
         echo "Build conf:  $BUILD_DIR/conf/externalsrc-$MACHINE.inc"
         echo ""
 

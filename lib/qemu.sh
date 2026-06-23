@@ -772,7 +772,7 @@ machine_conf_chain_contains() {
         if [[ "$visited" -eq 1 ]]; then
             continue
         fi
-        seen+=("$canonical")
+        seen[${#seen[@]}]="$canonical"
 
         if grep -Eq "$pattern" "$current" 2>/dev/null; then
             return 0
