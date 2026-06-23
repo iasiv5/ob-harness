@@ -18,16 +18,15 @@ setup_cmd_init_env() {
     OPENBMC_DIR="$WORKSPACE_DIR/openbmc"
     BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
     SRC_DIR="$WORKSPACE_DIR/src/$MACHINE"
-    SOURCE_LOCK_FILE="$CONFIGS_DIR/openbmc-source.lock"
+    SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
     QEMU_PIDS_DIR="$WORKSPACE_DIR/qemu-bin/.pids"
     QEMU_PID_FILE="$QEMU_PIDS_DIR/${MACHINE}.pid"
 
     mkdir -p "$CONFIGS_DIR" "$OPENBMC_DIR/.git" "$QEMU_PIDS_DIR"
-    cat > "$SOURCE_LOCK_FILE" <<'EOF'
+    cat > "$SOURCE_MANIFEST_FILE" <<'EOF'
 normalized_source=github.com/openbmc/openbmc
 origin_url=https://github.com/openbmc/openbmc.git
 source_label=community
-machine_first_init=
 created_at=2026-06-23T00:00:00Z
 EOF
 }

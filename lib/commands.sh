@@ -14,8 +14,8 @@ status_section_main_repo() {
     local origin_url=""
     local source_label=""
     origin_url=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
-    if [[ -f "$SOURCE_LOCK_FILE" ]]; then
-        source_label=$(read_lock_field source_label 2>/dev/null || true)
+    if [[ -f "$SOURCE_MANIFEST_FILE" ]]; then
+        source_label=$(read_manifest_field source_label 2>/dev/null || true)
     fi
     local source_display="${origin_url:-<no origin>}${source_label:+ ($source_label)}"
 
@@ -42,9 +42,9 @@ status_section_main_repo() {
 
     # First init time
     local first_init=""
-    if [[ -f "$SOURCE_LOCK_FILE" ]]; then
+    if [[ -f "$SOURCE_MANIFEST_FILE" ]]; then
         local raw_time
-        raw_time=$(read_lock_field created_at 2>/dev/null || true)
+        raw_time=$(read_manifest_field created_at 2>/dev/null || true)
         if [[ -n "$raw_time" ]]; then
             # Format ISO to readable: 2026-06-06T17:13:41Z → 2026-06-06 17:13 UTC
             first_init=$(format_timestamp "$raw_time")
@@ -253,7 +253,7 @@ cmd_build() {
     # === Prerequisites ===
     require_path "$OPENBMC_DIR/.git" "OpenBMC main repository" "Run 'ob init' first." 3
 
-    require_path "$SOURCE_LOCK_FILE" "Source lock" "Run 'ob init' first." 3
+    require_path "$SOURCE_MANIFEST_FILE" "Source manifest" "Run 'ob init' first." 3
 
     local interactive_selection=0
     if [[ -n "$MACHINE" ]]; then
@@ -298,13 +298,13 @@ cmd_build() {
         fi
 
         # === Read main repo info ===
-        local lock_origin_url lock_source_label
-        lock_origin_url=$(read_lock_field origin_url || echo "<unknown>")
-        lock_source_label=$(read_lock_field source_label || echo "")
+        local manifest_origin_url manifest_source_label
+        manifest_origin_url=$(read_manifest_field origin_url || echo "<unknown>")
+        manifest_source_label=$(read_manifest_field source_label || echo "")
 
         # === Display ===
         step_header "OpenBMC Repository"
-        echo "  Source : $lock_origin_url${lock_source_label:+ ($lock_source_label)}"
+        echo "  Source : $manifest_origin_url${manifest_source_label:+ ($manifest_source_label)}"
         echo "  Path   : $OPENBMC_DIR"
         echo ""
 
@@ -521,7 +521,7 @@ cmd_start_qemu() {
 
     # Re-derive paths after machine resolution
     BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
-    SOURCE_LOCK_FILE="$CONFIGS_DIR/openbmc-source.lock"
+    SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
 
     # ── Prerequisite 1: machine init-done ──
     if ! machine_state_has_init_done "$MACHINE"; then
@@ -953,16 +953,6 @@ cmd_init() {
     if ! machine_state_clear_init_progress "$MACHINE"; then
         error "Failed to clear machine state for '$MACHINE'."
         exit 1
-    fi
-
-    # Backfill machine_first_init if lock file was written before resolve_machine()
-    if [[ -f "$SOURCE_LOCK_FILE" && -n "$MACHINE" ]]; then
-        local current_first_init
-        current_first_init=$(read_lock_field machine_first_init 2>/dev/null || true)
-        if [[ -z "$current_first_init" ]]; then
-            sed -i "s/^machine_first_init=.*/machine_first_init=$MACHINE/" "$SOURCE_LOCK_FILE"
-            verbose "Updated machine_first_init=$MACHINE in $SOURCE_LOCK_FILE"
-        fi
     fi
 
     # --- Detect fresh run vs incremental re-run ---

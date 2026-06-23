@@ -281,7 +281,7 @@ detect_harness_root() {
     BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
     SRC_DIR="$WORKSPACE_DIR/src/$MACHINE"
     CONFIGS_DIR="$WORKSPACE_DIR/configs"
-    SOURCE_LOCK_FILE="$CONFIGS_DIR/openbmc-source.lock"
+    SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
     verbose "HARNESS_ROOT=$HARNESS_ROOT"
     verbose "WORKSPACE_DIR=$WORKSPACE_DIR"
     verbose "MACHINE=$MACHINE"
@@ -465,9 +465,9 @@ read_kv_field() {
     return 0
 }
 
-read_lock_field() {
+read_manifest_field() {
     local key="$1"
-    read_kv_field "$SOURCE_LOCK_FILE" "$key"
+    read_kv_field "$SOURCE_MANIFEST_FILE" "$key"
 }
 
 # select_from_list <prompt> <total>

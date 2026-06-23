@@ -70,7 +70,7 @@ clone_openbmc() {
         error "Failed to clone openbmc main repository."
         exit 1
     fi
-    write_source_lock
+    write_source_manifest
     info "Main repository cloned successfully."
 }
 

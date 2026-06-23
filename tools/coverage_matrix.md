@@ -17,7 +17,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 参数解析 | parse_args | protocol/smoke_ob.sh | exit 函数,radar 低估 |
 | 非 TTY → exit 3 | cmd_init | protocol/manual_matrix.exp | TTY 真路径靠 expect |
 | 取消 → exit 2 | cmd_init;confirm_action | protocol/manual_matrix.exp | confirm_action 见 unit/interact.sh |
-| source lock 读写 | read_source_label;write_source_lock;normalize_repo_url;derive_source_label | unit/source_lock.sh;unit/url.sh | |
+| source manifest 读写 | read_source_label;write_source_manifest;normalize_repo_url;derive_source_label | unit/source_manifest.sh;unit/url.sh | |
 | 前置检查 | prerequisites_check | orchestration/prerequisites_check.sh | exit 函数 |
 | 子仓库克隆 | clone_sub_repos | orchestration/clone_sub_repos.sh | |
 | machine snapshot 生成 | generate_machine_snapshot;machine_state_write_snapshot | orchestration/generate_config.sh;unit/machine_state.sh | |
@@ -63,6 +63,6 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 并行度/WSL | calc_parallelism;detect_wsl | unit/paths.sh | |
 | 交互叶子(stdin) | select_from_list;confirm_action;prompt_for_absolute_path | unit/interact.sh | |
 | require_path 前置 | require_path | unit/require_path.sh | exit 函数,radar 低估 |
-| 字符串/工具子函数 | is_valid_repo_url;read_kv_field;read_lock_field;trim_whitespace | unit/url.sh;unit/source_lock.sh | 子工具,被上层调用 |
+| 字符串/工具子函数 | is_valid_repo_url;read_kv_field;read_manifest_field;trim_whitespace | unit/url.sh;unit/source_manifest.sh | 子工具,被上层调用 |
 | SoC/QEMU 派生 | detect_soc_type;derive_qemu_machine_name | unit/soc.sh | start-qemu SoC/机型派生 |
 | conf/url 工具 | read_local_conf_var;resolve_effective_dl_dir;resolve_effective_sstate_dir;is_private_url;parse_hostkey_offending;machine_conf_chain_contains | unit/conf_read.sh;unit/url_extra.sh | 子工具 |

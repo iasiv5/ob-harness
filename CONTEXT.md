@@ -24,12 +24,20 @@ _Avoid_: 依赖文件, dependency list
 `workspace/configs/<machine>.snapshot` 文件，由 `ob init` 在依赖图解析和 bare mirror 填充后生成，记录 machine、OpenBMC commit、target image 和每个子仓库的 recipe/SRC_URI/SRCREV/local_path。它是 source/deps snapshot，不是互斥锁，也不表示 `ob init` 已完成；完成信号只看 `init-done marker`。旧的 `<machine>.lock` 命名已废弃，不再兼容。
 _Avoid_: lockfile, machine lock, state lock, 把 snapshot 当完成标记
 
+**source manifest**:
+harness 绑定的 OpenBMC 主仓库 source 的归属记录与漂移校验基准。物理文件为 `workspace/configs/openbmc-source.manifest`（kv 文本），由 `ob init` 写入，记录 normalized_source / origin_url / source_label / created_at。它表达"一个 harness 只绑定一个主仓库 source"这条 invariant，`verify_source` 据其检测 origin 是否被手动漂移。它是归属记录而非互斥锁（项目里真正的文件锁是 qemu 的 `.update.lock`，用 flock）；也非 per-machine（区别于现行 `machine snapshot`，旧的 `<machine>.lock` 已废弃）。
+_Avoid_: source lock, source pin, source binding, 把它当文件互斥锁
+
 **init-done marker**:
 `workspace/configs/<machine>.init-done` 文件，由 `ob init` 在全部 8 步完成后原子写入，重跑时先删除再重新写入。`ob build` 用它判定哪些 machine 可以编译。
 _Avoid_: 完成标记, completion flag
 
+**state file format**:
+ob 在 `workspace/configs/` 下的状态文件按数据形状选格式：扁平标量字段用 kv 文本（`key=value` + `#` 注释，如 `source manifest`，用 `read_kv_field` 读）；嵌套/列表结构用 JSON（如 `machine snapshot` 的 `sub_repos` 数组，用 python json 读写）。依据是数据形状匹配表达力，不为统一而把扁平数据塞进 JSON。
+_Avoid_: 强制单一格式, 把扁平状态文件写成 JSON
+
 **QEMU source**:
-QEMU binary 的来源，取值 `community` 或 `custom`，与 `openbmc-source.lock` 中的 `source_label` 对齐。`community` 从 OpenBMC Jenkins 下载，`custom` 从企业配置的 URL 下载。
+QEMU binary 的来源，取值 `community` 或 `custom`，与 `source manifest` 中的 `source_label` 对齐。`community` 从 OpenBMC Jenkins 下载，`custom` 从企业配置的 URL 下载。
 _Avoid_: QEMU 版本, QEMU flavor
 
 **QEMU manifest**:

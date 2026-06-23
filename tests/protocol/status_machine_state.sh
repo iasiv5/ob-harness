@@ -11,7 +11,7 @@ trap 'rm -rf "$TMP"' EXIT
 WORKSPACE_DIR="$TMP/workspace"
 CONFIGS_DIR="$WORKSPACE_DIR/configs"
 OPENBMC_DIR="$WORKSPACE_DIR/openbmc"
-SOURCE_LOCK_FILE="$CONFIGS_DIR/openbmc-source.lock"
+SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
 mkdir -p "$CONFIGS_DIR" "$OPENBMC_DIR"
 mkdir -p "$OPENBMC_DIR/.git"
 
