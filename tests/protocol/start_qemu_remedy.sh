@@ -9,9 +9,20 @@ setup_no_marker() {
     :
 }
 
+setup_legacy_lock_only() {
+    local tmp_root="$1"
+    printf '{"sub_repos": []}\n' > "$tmp_root/workspace/configs/romulus.lock"
+}
+
 setup_init_done_only() {
     local tmp_root="$1"
     date -u +"%Y-%m-%dT%H:%M:%SZ" > "$tmp_root/workspace/configs/romulus.init-done"
+}
+
+setup_init_done_build_dir_no_image() {
+    local tmp_root="$1"
+    setup_init_done_only "$tmp_root"
+    mkdir -p "$tmp_root/workspace/openbmc/build/romulus"
 }
 
 run_start_qemu_case() {
@@ -35,7 +46,7 @@ run_start_qemu_case() {
                 BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
                 SRC_DIR="$WORKSPACE_DIR/src/$MACHINE"
                 CONFIGS_DIR="$WORKSPACE_DIR/configs"
-                SOURCE_LOCK_FILE="$CONFIGS_DIR/openbmc-source.lock"
+                SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
                 QEMU_PIDS_DIR="$WORKSPACE_DIR/qemu-bin/.pids"
                 QEMU_PID_FILE="$QEMU_PIDS_DIR/${MACHINE}.pid"
             }
@@ -59,8 +70,16 @@ assert_eq "start-qemu without init-done rc" "$START_QEMU_CASE_RC" "3"
 assert_contains "start-qemu without init-done remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob init <machine>' first."
 assert_false "start-qemu without init-done remedy is single-command" grep -Fq "then 'ob build'" <<< "$START_QEMU_CASE_OUTPUT"
 
+run_start_qemu_case setup_legacy_lock_only start-qemu romulus
+assert_eq "start-qemu legacy lock only rc" "$START_QEMU_CASE_RC" "3"
+assert_contains "start-qemu legacy lock only remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob init romulus' first."
+
 run_start_qemu_case setup_init_done_only start-qemu
 assert_eq "start-qemu init-done without build rc" "$START_QEMU_CASE_RC" "3"
 assert_contains "start-qemu init-done without build remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob build' first."
+
+run_start_qemu_case setup_init_done_build_dir_no_image start-qemu
+assert_eq "start-qemu build dir without image rc" "$START_QEMU_CASE_RC" "3"
+assert_contains "start-qemu build dir without image remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob build' first."
 
 assert_summary

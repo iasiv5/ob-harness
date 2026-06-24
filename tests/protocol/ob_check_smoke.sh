@@ -3,7 +3,7 @@
 # 必设 OB_CHECK_SKIP_TESTS=1(避 run_all 递归) + OB_CHECK_READONLY=1(只报告不改 baseline,
 # 否则 run_all→smoke→ob_check 自动 cp 覆写 .shellcheck-baseline,架空 CI baseline 门禁)。
 # 覆盖边界: smoke 走 skip,ob_check 里"调用 run_all.sh 那段"不执行——该路径写错靠 CI 直接
-#           bash tests/run_all.sh 兜底;smoke 实际只覆盖 extract_funcs/reorder/baseline 三段。
+#           bash tests/run_all.sh 兜底;smoke 实际只覆盖 extract_funcs/baseline/exit-contract 三段(reorder 已归档)。
 set -uo pipefail
 OB_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$(dirname "$0")/../lib/assert.sh"

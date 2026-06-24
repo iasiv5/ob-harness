@@ -35,7 +35,7 @@ run_stop_case() {
                 BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
                 SRC_DIR="$WORKSPACE_DIR/src/$MACHINE"
                 CONFIGS_DIR="$WORKSPACE_DIR/configs"
-                SOURCE_LOCK_FILE="$CONFIGS_DIR/openbmc-source.lock"
+                SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
                 QEMU_PIDS_DIR="$WORKSPACE_DIR/qemu-bin/.pids"
                 QEMU_PID_FILE="$QEMU_PIDS_DIR/${MACHINE}.pid"
             }

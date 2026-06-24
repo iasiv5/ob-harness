@@ -1,44 +1,60 @@
 #!/usr/bin/env bash
-# tools/ob_check.sh — ob 改动后一站式配套自检。
-# 聚合: extract_funcs GAPS / reorder mismatch / shellcheck baseline(multiset) / exit-contract / run_all。
-# 固定顺序: extract_funcs → reorder → baseline → exit-contract → run_all (GAPS=0 是 reorder 前提)。
+# tools/ob_check.sh — ob/lib 改动后一站式配套自检。
+# 聚合: extract_funcs(ob GAPS + lib 三段) / shellcheck baseline(flat 合成 + 纯文本 multiset) / exit-contract(多文件) / run_all。
+# 固定顺序: extract_funcs → baseline → exit-contract → run_all。
+# OB_SOURCES = ob + lib/*.sh(nullglob);用于 extract_funcs/exit_contract。shellcheck 用合成 flat(保留单文件可见性,避 per-file SC2034 假阳)。
 # 用法: tools/ob_check.sh
 #       OB_CHECK_SKIP_TESTS=1 tools/ob_check.sh    # 跳过 run_all(被 run_all 递归调用时用,如 smoke)
 #       OB_CHECK_READONLY=1 tools/ob_check.sh      # 只报告不改文件(smoke/CI 用,避免经 run_all 架空 baseline 门禁)
 set -uo pipefail
 cd "$(dirname "$0")/.." || exit 1   # 切到仓库根
 
+# OB_SOURCES 契约: 入口 ob + lib 分区(nullglob 防 lib 空时展开成字面量)
+OB_SOURCES=(ob)
+shopt -s nullglob
+OB_SOURCES+=(lib/*.sh)
+shopt -u nullglob
+
 PASS=0; FAIL=0; FAILED_NAMES=()
 ok()  { PASS=$((PASS+1)); echo "✓ $1"; }
 bad() { FAIL=$((FAIL+1)); echo "✗ $1"; FAILED_NAMES+=("$1"); }
 
-# ── 1. extract_funcs GAPS(GAPS=0 是后续 reorder 的前提) ──
-gaps=$(python3 tools/extract_funcs.py ob 2>/dev/null | awk '/^GAPS/{print $2}')
-if [[ "${gaps:-?}" == "0" ]]; then
-    ok "extract_funcs GAPS=0"
+# ── 1. extract_funcs: ob GAPS=0 + lib 三段纯函数定义 ──
+ob_gaps=$(python3 tools/extract_funcs.py ob 2>/dev/null | awk '/^GAPS/{print $2}')
+if [[ "${ob_gaps:-?}" == "0" ]]; then
+    ok "extract_funcs ob GAPS=0"
 else
-    bad "extract_funcs GAPS=${gaps:-?}(函数间有顶层语句,先清理)"
+    bad "extract_funcs ob GAPS=${ob_gaps:-?}(函数间有顶层语句,先清理)"
+fi
+lib_count=$((${#OB_SOURCES[@]} - 1))   # lib 文件数(跳过 ob)
+lib_violations=0
+for f in "${OB_SOURCES[@]:1}"; do
+    if ! python3 tools/extract_funcs.py "$f" >/dev/null 2>&1; then
+        bad "extract_funcs lib 三段违规: $f"
+        python3 tools/extract_funcs.py "$f" 2>&1 | grep -E '_(TOPLEVEL)|^GAP' | head -3
+        lib_violations=$((lib_violations+1))
+    fi
+done
+if [[ "$lib_violations" == "0" ]]; then
+    if [[ "$lib_count" == "0" ]]; then
+        ok "extract_funcs lib 三段全清(无 lib 文件,跳过)"
+    else
+        ok "extract_funcs lib 三段全清($lib_count 个 lib 文件)"
+    fi
 fi
 
-# ── 2. reorder mismatch(集合比较: 保"不漏"不保"归对§"; 会产生 /tmp/ob_new 副作用) ──
-reorder_err=$(python3 tools/reorder.py ob 2>&1 >/dev/null) || true
-if [[ -z "$reorder_err" ]]; then
-    ok "reorder 无 mismatch"
-elif [[ "$reorder_err" == *"AssertionError"*"missing="* ]]; then
-    bad "reorder 漏登记(新函数未加进 §dict): $(printf '%s' "$reorder_err" | grep -o 'missing=[^ ]*')"
-else
-    bad "reorder 异常(非漏登记,多半是上一步 GAPS>0 致边界解析崩): $reorder_err"
-fi
-
-# ── 3. shellcheck baseline multiset 判定(避免架空 CI 硬门禁) ──
-shellcheck -f gcc ob > /tmp/ob_check_sc.new 2>&1 || true
+# ── 2. shellcheck baseline(合成 flat + 纯文本 multiset;不 per-file 避 SC2034 跨文件假阳) ──
+flat=/tmp/ob_check_sc.flat
+: > "$flat"
+for f in "${OB_SOURCES[@]}"; do cat "$f" >> "$flat"; done
+shellcheck -f gcc "$flat" > /tmp/ob_check_sc.new 2>&1 || true
 verdict=$(OB_NEW=/tmp/ob_check_sc.new python3 - <<'PY'
 import re, os
 from collections import Counter
 def parse(fn):
     c = Counter()
     for line in open(fn):
-        s = re.sub(r'^ob:\d+:\d+:\s*', '', line.rstrip())
+        s = re.sub(r'^[^:]+:\d+:\d+:\s*', '', line.rstrip())   # 去文件名+行列号,纯文本
         if '[SC' in s:
             c[s] += 1
     return c
@@ -59,10 +75,10 @@ case "$decision" in
         ok "shellcheck baseline 一致" ;;
     REGEN)
         if [[ "${OB_CHECK_READONLY:-0}" == "1" ]]; then
-            ok "shellcheck baseline 良性差异(行号平移/告警减少);只读模式不重生成,手动: shellcheck -f gcc ob > tests/.shellcheck-baseline"
+            ok "shellcheck baseline 良性差异(行号平移/告警减少);只读模式不重生成,手动: 见上方 flat 合成命令"
         else
             cp /tmp/ob_check_sc.new tests/.shellcheck-baseline
-            ok "shellcheck baseline 自动重生成(行号平移/告警减少);请 git diff 确认后 commit"
+            ok "shellcheck baseline 自动重生成(flat);请 git diff 确认后 commit"
         fi ;;
     NEW_ALERT)
         bad "shellcheck 新增告警(含同类型实例),未自动改;先修告警或显式重生成+git diff 确认:"
@@ -71,15 +87,16 @@ case "$decision" in
         bad "shellcheck baseline 判定异常: $verdict" ;;
 esac
 
-# ── 4. exit-contract(静态 X/Y/Z)──
-if python3 tools/exit_contract.py ob >/tmp/ob_check_ec.out 2>&1; then
-    ok "exit-contract (X/Y/Z green)"
+# ── 3. exit-contract(多文件:默认扫 ob + lib/*.sh) ──
+if python3 tools/exit_contract.py >/tmp/ob_check_ec.out 2>&1; then
+    yz=$(grep -oE 'Y: (PASS|n/a)' /tmp/ob_check_ec.out | head -1)
+    ok "exit-contract ok (X/Y/Z green; $yz)"
 else
     bad "exit-contract 违反(详 /tmp/ob_check_ec.out):"
     cat /tmp/ob_check_ec.out
 fi
 
-# ── 5. run_all(除非 OB_CHECK_SKIP_TESTS=1,避免被 run_all 递归调用时死循环) ──
+# ── 4. run_all(除非 OB_CHECK_SKIP_TESTS=1,避免被 run_all 递归调用时死循环) ──
 if [[ "${OB_CHECK_SKIP_TESTS:-0}" == "1" ]]; then
     echo "• skip run_all (OB_CHECK_SKIP_TESTS=1)"
 else

@@ -9,7 +9,7 @@ assert_reset
 
 TMP="$(mktemp -d)"; WORKSPACE_DIR="$TMP"
 MACHINE='romulus'; QB_SYSTEM_NAME='qemu-system-arm'
-SOURCE_LOCK_FILE="$TMP/no-lock"   # read_source_label 无文件 → 默认 community
+SOURCE_MANIFEST_FILE="$TMP/no-manifest"   # read_source_label 无文件 → 默认 community
 
 # --- derive_qemu_paths: 设 QEMU_BIN_DIR/FILE/PIDS_DIR/PID_FILE ---
 derive_qemu_paths

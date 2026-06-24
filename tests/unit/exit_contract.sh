@@ -39,17 +39,31 @@ bad() {
 EOF
 assert_rc 1 "exit 4 caught (X)" python3 "$EXIT_CONTRACT" "$TMP/x.sh"
 
-# --- 3. Y 真阳 (rc 1): §2 函数 exit 但不在 EXIT_EXCEPTIONS ---
-cat >"$TMP/y.sh" <<'EOF'
-# === §2 util ===
+# --- 3. Y 真阳 (rc 1): util.sh 函数 exit 但不在 EXIT_EXCEPTIONS (Y-c basename) ---
+mkdir -p "$TMP/lib"
+cat >"$TMP/lib/util.sh" <<'EOF'
+#!/usr/bin/env bash
 myhelper() {
     exit 1
 }
-# === §3 ===
 EOF
-assert_rc 1 "§2 unexpected exit caught (Y dual)" python3 "$EXIT_CONTRACT" "$TMP/y.sh"
+: >"$TMP/ob"   # 空入口桩
+assert_rc 1 "util.sh unexpected exit caught (Y-c basename)" \
+    python3 "$EXIT_CONTRACT" "$TMP/ob" "$TMP/lib/util.sh"
 
-# --- 4. Z 空 remedy 真阳 (rc 1): require_path 第 3 入参空 ---
+# --- 4. Y 真阳 (rc 1): machine_state.sh 函数不得 exit ---
+cat >"$TMP/lib/machine_state.sh" <<'EOF'
+#!/usr/bin/env bash
+machine_state_helper() {
+    exit 1
+}
+EOF
+out="$(python3 "$EXIT_CONTRACT" "$TMP/ob" "$TMP/lib/machine_state.sh" 2>&1)"; rc=$?
+assert_eq "machine_state.sh unexpected exit caught (Y-c basename rc)" "$rc" "1"
+assert_contains "machine_state.sh unexpected exit mentions basename" "$out" "machine_state.sh"
+assert_contains "machine_state.sh unexpected exit mentions function" "$out" "machine_state_helper"
+
+# --- 5. Z 空 remedy 真阳 (rc 1): require_path 第 3 入参空 ---
 cat >"$TMP/z1.sh" <<'EOF'
 r() {
     require_path /x lab "" 3
@@ -57,7 +71,7 @@ r() {
 EOF
 assert_rc 1 "empty require_path remedy caught (Z)" python3 "$EXIT_CONTRACT" "$TMP/z1.sh"
 
-# --- 5. Z 有 remedy 假阳 (rc 0): direct exit-3 前有 forward remedy ---
+# --- 6. Z 有 remedy 假阳 (rc 0): direct exit-3 前有 forward remedy ---
 cat >"$TMP/z2.sh" <<'EOF'
 d() {
     error "Run 'ob init' first."
@@ -66,7 +80,7 @@ d() {
 EOF
 assert_rc 0 "direct exit-3 with remedy OK (Z)" python3 "$EXIT_CONTRACT" "$TMP/z2.sh"
 
-# --- 6. Z 诊断-only (rc 0 + WARN): direct exit-3 前是回溯诊断行 ---
+# --- 7. Z 诊断-only (rc 0 + WARN): direct exit-3 前是回溯诊断行 ---
 cat >"$TMP/z3.sh" <<'EOF'
 e() {
     error "Invalid URL from env"
@@ -77,7 +91,7 @@ out="$(python3 "$EXIT_CONTRACT" "$TMP/z3.sh" 2>&1)"; rc=$?
 assert_eq "diagnostic-only exit-3 warns not fails (rc)" "$rc" "0"
 assert_contains "warns on diagnostic-only exit-3" "$out" "WARN"
 
-# --- 7. ob 裁决可观察: X/Y/Z 三裁决行都在 (Task 6/7 前 Z 可能 FAIL/WARN,只断言行可观察) ---
+# --- 8. ob 裁决可观察: X/Y/Z 三裁决行都在 (Task 6/7 前 Z 可能 FAIL/WARN,只断言行可观察) ---
 out="$(python3 "$EXIT_CONTRACT" "$OB" 2>&1)"
 assert_contains "ob prints X verdict" "$out" "X:"
 assert_contains "ob prints Y verdict" "$out" "Y:"
