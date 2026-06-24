@@ -73,7 +73,7 @@ _Avoid_: tool-first, ob first, 能力清单（并入本条）
 _Avoid_: 返回码约定, exit status
 
 **remedy line**:
-`ob` 在 exit 3（前置缺失）报错里给调用方（主要是智能 agent）的**下一步描述**。输出固定两段式：先**诊断行**说明哪条前置没满足（如 `Machine 'X' has not been initialized.`），再**恰好一行 remedy line**——描述满足该前置所需的下一步。常见形态是 `Run 'ob init X' first.`，但**不锁死为 ob 命令**：消费者是智能 agent，可自行决定用 ob 解决、通知用户或自行探索。要求非空且向前看（是「下一步」，而非「上一步可能失败了」这类纯回溯诊断）。
+`ob` 在 exit 3（前置缺失）报错里给调用方（主要是智能 agent）的**下一步描述**。输出固定两段式：先**诊断行**说明哪条前置没满足（如 `Machine 'X' has not been initialized.`），再**恰好一行 remedy line**——描述满足该前置所需的下一步。常见形态是 `Run 'ob init X' first.`，但**不锁死为 ob 命令**：消费者是智能 agent，可自行决定用 ob 解决、通知用户或自行探索。要求非空且向前看（是「下一步」，而非「上一步可能失败了」这类纯回溯诊断）。**恰好一条命令、不串接第二条**：多步前置由单命令循环逐轮接力（补一步 → 重试 → 下一轮 remedy 指向下一步），而非一行列链（列链需调用方判断哪条才是当前步，违背无需推断原则）。
 _Avoid_: 提示语, hint, 错误提示, 锁死为 ob 命令
 
 **ob-managed variable**:

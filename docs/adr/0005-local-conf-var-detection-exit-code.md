@@ -18,6 +18,6 @@
 
 - DL_DIR/SSTATE_DIR 行为变更：`VAR = ""` 现被尊重（用户接管）而非自动补默认。实际影响可忽略——社区模板从不赋空值，无人依赖旧的"补空值"行为。
 - "禁用 ob 的 PREMIRRORS" = 在 local.conf 写 `PREMIRRORS = ""`（直觉）。
-- `read_local_conf_var` 已返回正确的 exit code（[ob:188-189](../../ob#L188-L189)）；只需改调用点的 `-n` 判断，且为三变量共用。
+- `read_local_conf_var` 已返回正确的 exit code（定义在 `lib/util.sh`）；调用点据此判定，三变量共用。
 
 Status: accepted
