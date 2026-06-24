@@ -33,7 +33,7 @@ Don't ask permission. Just do it.
 ## Working Mode
 
 - 设计和计划：先边界，再方案，再验证。
-- 实现和调试：先找根因，再做最小改动，再跑可执行验证。改动 `ob` 脚本后，额外跑 `tools/ob_check.sh` 做配套自检（结构 / 函数登记 / shellcheck baseline / 测试，详见 `rules/03_WORKSPACE.md`）。
+- 实现和调试：先找根因，再做最小改动，再跑可执行验证。改动 `ob` / `lib/*.sh` 后，额外跑 `tools/ob_check.sh` 做配套自检（结构 / 函数登记 / shellcheck baseline / 测试，详见 `rules/03_WORKSPACE.md`）。
 - review：先给 findings，再给证据和建议。
 
 ## ob 优先（OpenBMC 环境动作的统一前门）

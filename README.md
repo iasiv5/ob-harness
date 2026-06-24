@@ -54,6 +54,7 @@ cd ob-harness
 - **Session 启动**：agent 自动读取项目规则（身份、沟通风格、目录路由、技能索引），理解仓库上下文
 - **能力路由**：遇到“怎么做 X”时，agent 先查技能索引再行动，而不是凭猜测
 - **ob 优先**：所有 OpenBMC 环境动作（初始化、编译、状态、QEMU 起停）统一走 `ob` 这个前门——agent 先查 `ob --help`，有就走 `ob <cmd>`，不绕过手撸 bitbake。退出码 `3` 是「前置缺失」不是失败，agent 会照提示补前置再重试，所以你常看到它「遇错重试」而非「报错停下」。
+- **质量闭环**：`ob` 的改动由四层测试（protocol / unit / orchestration / integration）+ 质量门禁（exit 契约 / `ob_check` / 覆盖率雷达）兜底，GitHub Actions CI 自动跑。
 - **文档落盘**：设计文档和实施计划自动归档到 `docs/`，可追溯可回查
 - **记忆积累**：通过 `/ai-heartbeat` 让 AI 持续学习项目变化和团队决策
 - **决策公理**：从团队经历中提炼的决策原则，辅助深度分析
@@ -128,6 +129,18 @@ Examples:
 本项目受 [grapeot (Yan Wang / 鸭哥)](https://github.com/grapeot) 的 [context-infrastructure](https://github.com/grapeot/context-infrastructure) 项目启发并基于其架构思路构建。感谢鸭哥在 AI 上下文工程领域的开创性探索。
 
 ## 版本历史
+
+### v1.3 — 开发中 (unreleased)
+
+**🏗 架构演进**
+- `ob` 模块化：单文件拆为 `lib/{util,repo,qemu,machine_state,init_pipeline,commands}.sh` 六文件，按职能切分（结构边界从注释锚点转为文件名）。
+- 新增 `machine_state` 模块，统一 machine 生命周期状态。
+
+**⚠️ Breaking**
+- `openbmc-source.lock` → `openbmc-source.manifest`（source manifest）；`<machine>.lock` 命名废弃，旧脚本需适配（术语见 `CONTEXT.md`）。
+
+**✨ 新增**
+- `tools/cache_hit_rate.py`（缓存飞轮观测）、`tools/exit_contract.py`（exit 纪律静态断言）、`bestpractice_08`（质量门禁与 eval 模式库）。
 
 ### v1.2 — 2026-06-21
 
