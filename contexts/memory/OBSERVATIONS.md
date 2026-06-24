@@ -55,3 +55,10 @@ Date: 2026-06-22
 🟡 Medium: [QEMU host key 双轨检测] `ob start-qemu` 失效 host key 检测改双轨（原单轨），同步 CI 配套机制。`ob init` 生成 inc 新增 `BB_HASHSERVE_DB_DIR` 配置；DL_DIR/SSTATE_DIR 改条件强赋值修复 `??=` 被默认值压过失效。
 🟢 Low: [设计文档/ADR 密集产出] 06-13~06-22 新增 ADR 0003/0004/0005、设计文档 5 篇（ob-refactor 复审 v2-final / ob-test-coverage / ob-change-check / qemu-binary-url / hostkey-detection）、实施计划约 7 篇（start-qemu-hostkey、confirm-banner、ob-refactor、ob-test-system、ob-build-noninteractive、ob-change-check、ob-first、readme-sync、exit-contract-check、premirrors-injection）。反映 ob 工具从功能迭代期进入纪律化/可验证化阶段。
 🟢 Low: [memo] 评审方读取工具在本环境会返回伪影（不存在的英文 Exit codes 块），被当"铁证"误判 R5——已记入用户记忆；凡用读取结果断言事实须第二来源实时复核。
+
+Date: 2026-06-24
+
+🔴 High: [深模块抽取模式：code 追上领域模型] `machine_state` 模块引入（commit 0d17f76，~1813 行，`!` breaking）是把"散落在 cmd_status/cmd_build/cmd_start_qemu/cmd_init/repo.sh 的 Machine lifecycle state 判断（snapshot/init-done marker/deploy image 查找）"收敛到一个深 module seam 的范例。可复用方法论：当 CONTEXT.md/ADR 已确立 canonical term 但代码层滞后（仍读写旧名、状态判断穿透存储 implementation）时，新增深模块收敛迫使上下层一致，而非到处打补丁。配套设计约束（module 不直接 exit）由扩展后的 `exit_contract.py` 做静态门禁——Y 规则从"按函数"改为"按 basename 配置 leaf-pure module"（当前 util.sh/machine_state.sh）。
+🔴 High: [领域术语硬切迁移纪律] 06-23 两次 breaking rename（`source_lock`→`source_manifest`、`<machine>.lock`→`<machine>.snapshot`）均走"硬切不兼容、不提示"策略。决策前提：CONTEXT.md 已确立 canonical term + ADR 背书 + 旧名有歧义（lock 既像文件锁又像状态记录）。硬切 vs 兼容的取舍——当术语已是文档化唯一正名且旧含义带歧义时，硬切比保留别名更清晰，但必须配套测试同步重建（source_lock.sh 删→source_manifest.sh 建，含 sample 文件）和 ob_check baseline 重生成。旧 `<machine>.lock` 仅可在 `ob init <machine>` 过程中清理，DRY_RUN 时只预览。
+🟡 Medium: [ob modularize 收口] function semantic layer 物化为 lib/*.sh 文件边界的工作以 PR #8 merge（49426d4）收口。lib/ 现为六文件：util.sh(L3 底层)/repo.sh(仓库·machine 解析)/qemu.sh(QEMU runtime)/machine_state.sh(lifecycle)/init_pipeline.sh(init 流水线)/commands.sh(cmd_* 编排)。结构边界从注释锚点转为文件名，CONTEXT.md 已登记 L1-L3 角色↔文件映射。这是 06-16 ob 大重构（4251 行/92 函数）之后的结构固化里程碑。
+🟡 Medium: [extract_funcs 多文件稳定性] lib 拆分引入新约束"lib 函数间不得有顶层语句"，`tools/extract_funcs.py` 修复"拦截 lib 函数间顶层语句"（commit 967b0d8）并配 unit test 锁定。反映 extract_funcs 从单文件解析升级为多文件 boundary 感知——lib 物化为文件边界后，函数归类工具必须感知文件边界，否则会把函数间顶层代码误归入相邻函数。
