@@ -103,6 +103,7 @@
 | V03 | [归因塑造感知](axioms/v03_attribution_shapes_perception.md) | 让隐形工作可见 |
 | V04 | [时间锚定防止幻觉](axioms/v04_temporal_grounding_prevents_hallucination.md) | 验证时效性信息 |
 | V05 | [信任归因双维度](axioms/v05_trust_attribution_dual_dimension.md) | 信任主体×信任域的产品设计 |
+| V06 | [概率乘：质量是各环节成功率的乘积](axioms/v06_probability_multiplication.md) | 0.99^51=0.6，每个 action 配 eval，多烧≠多花钱 |
 
 ---
 
@@ -126,6 +127,6 @@
 | AI/Agentic | 13 |
 | 技术决策 | 9 |
 | 管理/工作哲学 | 10 |
-| 信任与验证 | 5 |
+| 信任与验证 | 6 |
 | 跨域隐喻 | 6 |
-| **总计** | **43** |
+| **总计** | **44** |

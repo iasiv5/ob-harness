@@ -26,6 +26,7 @@
 - [Yocto 编译中 npm 网络超时](skills/bestpractice_05-npm_network_timeout_in_yocto.md) — `do_compile` 阶段 npm install 报 ETIMEDOUT 时的诊断与修复策略。
 - [ob 优先（统一前门）](skills/bestpractice_06-ob_first.md) — 做 OpenBMC 环境动作前，先查 ob 是否提供该能力并优先调用 `ob <cmd>`。
 - [Bash strict mode 管道退出码陷阱](skills/bestpractice_07-bash_strict_mode_pipes.md) — 在 `set -euo pipefail` 下写 `cmd | grep/awk/head` 管道时，避免下游非零退出码被 pipefail 当硬错误中止脚本。
+- [质量门禁与 Eval 模式库](skills/bestpractice_08-eval_gate_patterns.md) — 给某个 action/流水线设计门禁时；归纳本仓库 exit_contract/ob_check/coverage_radar/四层测试成 4 种可复用门禁模式 + 缓存飞轮观测。
 
 ---
 
