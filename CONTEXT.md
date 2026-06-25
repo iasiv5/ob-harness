@@ -32,6 +32,14 @@ _Avoid_: source lock, source pin, source binding, 把它当文件互斥锁
 `workspace/configs/<machine>.init-done` 文件，由 `ob init` 在全部 8 步完成后原子写入，重跑时先删除再重新写入。`ob build` 用它判定哪些 machine 可以编译。
 _Avoid_: 完成标记, completion flag
 
+**firmware-image-ready machine**:
+已经完成 `ob init`，且存在可供后续消费的 OpenBMC firmware image artifact 的 machine。它表达 firmware image artifact 是否就绪，不表达最近一次 BitBake 流程是否成功，也不限定消费点是 QEMU。
+_Avoid_: image-ready machine, built, build succeeded, image-present, image=yes, QEMU image
+
+**orphan firmware image artifact**:
+存在 firmware image artifact，但对应 machine 尚未由 `init-done marker` 确认为 initialized 的状态诊断事实。它可以在 `ob status` 中解释残留产物，但不能让 machine 进入 `firmware-image-ready machine`。
+_Avoid_: invalid image, broken image, QEMU-ready artifact
+
 **state file format**:
 ob 在 `workspace/configs/` 下的状态文件按数据形状选格式：扁平标量字段用 kv 文本（`key=value` + `#` 注释，如 `source manifest`，用 `read_kv_field` 读）；嵌套/列表结构用 JSON（如 `machine snapshot` 的 `sub_repos` 数组，用 python json 读写）。依据是数据形状匹配表达力，不为统一而把扁平数据塞进 JSON。
 _Avoid_: 强制单一格式, 把扁平状态文件写成 JSON
