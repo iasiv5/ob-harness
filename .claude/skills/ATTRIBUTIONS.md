@@ -26,6 +26,61 @@ MIT License · Copyright (c) 2025 Jesse Vincent
 
 ---
 
+## grilling
+
+致敬 mattpocock/skills 的 grilling skill：
+https://github.com/mattpocock/skills/tree/main/skills/productivity/grilling/
+
+MIT License
+
+当前目录中的 grilling/ 由 update.sh 从上游同步。
+
+---
+
+## codebase-design
+
+致敬 mattpocock/skills 的 codebase-design skill：
+https://github.com/mattpocock/skills/tree/main/skills/engineering/codebase-design/
+
+MIT License
+
+当前目录中的 codebase-design/ 由 update.sh 从上游同步。
+
+---
+
+## domain-modeling
+
+致敬 mattpocock/skills 的 domain-modeling skill：
+https://github.com/mattpocock/skills/tree/main/skills/engineering/domain-modeling/
+
+MIT License
+
+当前目录中的 domain-modeling/ 由 update.sh 从上游同步。
+
+---
+
+## grill-with-docs
+
+致敬 mattpocock/skills 的 grill-with-docs skill：
+https://github.com/mattpocock/skills/tree/main/skills/engineering/grill-with-docs/
+
+MIT License
+
+当前目录中的 grill-with-docs/ 由 update.sh 从上游同步。
+
+---
+
+## improve-codebase-architecture
+
+致敬 mattpocock/skills 的 improve-codebase-architecture skill：
+https://github.com/mattpocock/skills/tree/main/skills/engineering/improve-codebase-architecture/
+
+MIT License
+
+当前目录中的 improve-codebase-architecture/ 由 update.sh 从上游同步。
+
+---
+
 ## 许可证全文
 
 ### MIT License (obra/superpowers, mattpocock/skills)
