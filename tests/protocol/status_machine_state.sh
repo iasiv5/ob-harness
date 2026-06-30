@@ -54,8 +54,18 @@ orphan_dir="$OPENBMC_DIR/build/orphan/tmp/deploy/images/orphan"
 mkdir -p "$orphan_dir"
 touch "$orphan_dir/orphan.static.mtd"
 
+status_records_calls_file="$TMP/status_records_calls"
+eval "$(declare -f machine_state_records | sed '1s/machine_state_records/_status_test_machine_state_records/')"
+machine_state_records() {
+  printf 'called\n' >> "$status_records_calls_file"
+  _status_test_machine_state_records "$@"
+}
+
+: > "$status_records_calls_file"
 output="$(cmd_status 2>&1)"; rc=$?
 assert_eq "status machine-state rc" "$rc" 0
+status_records_calls=$(wc -l < "$status_records_calls_file")
+assert_eq "status discovers machine records once" "$status_records_calls" 1
 assert_false "legacy lock machine hidden" grep -Fq "legacy" <<< "$output"
 assert_false "legacy ignored not shown" grep -Fq "legacy ignored" <<< "$output"
 assert_contains "snapshot-only machine listed" "$output" "snaponly"
@@ -81,8 +91,11 @@ assert_false "status avoids stale firmware wording" grep -Fq "$qemu_word $image_
 rm -f "$CONFIGS_DIR/markeronly.init-done" "$CONFIGS_DIR/failm.init-done"
 rm -rf "$OPENBMC_DIR/build/failm"
 
+: > "$status_records_calls_file"
 output="$(cmd_status 2>&1)"; rc=$?
 assert_eq "status built+partial rc" "$rc" 0
+status_records_calls=$(wc -l < "$status_records_calls_file")
+assert_eq "status discovers machine records once after state change" "$status_records_calls" 1
 assert_false "partial machine does not trigger build tip" grep -Fq "Run 'ob build <machine>' to produce a firmware image." <<< "$output"
 
 assert_summary

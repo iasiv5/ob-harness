@@ -370,24 +370,19 @@ _repo_machine_record_field() {
 print_previously_initialized() {
     local -n _mpi_arr="$1"
 
-    # Discover initialized machines from machine_state; records are display metadata only.
-    local -A _mpi_init_time=()
+    # Discover initialized machines from machine_state records; this UI only needs display metadata.
     local -A _mpi_done=()
-    local _mpi_record _mpi_mname _mpi_raw_time _mpi_fmt_time
+    local _mpi_record _mpi_mname _mpi_init_state _mpi_raw_time _mpi_fmt_time
     while IFS= read -r _mpi_record; do
         [[ -n "$_mpi_record" ]] || continue
         _mpi_mname=$(_repo_machine_record_field "$_mpi_record" machine)
         [[ -n "$_mpi_mname" ]] || continue
+        _mpi_init_state=$(_repo_machine_record_field "$_mpi_record" init_state)
+        [[ "$_mpi_init_state" == "initialized" ]] || continue
         _mpi_raw_time=$(_repo_machine_record_field "$_mpi_record" init_time)
-        _mpi_init_time["$_mpi_mname"]="$_mpi_raw_time"
+        _mpi_fmt_time=$(format_timestamp "$_mpi_raw_time")
+        _mpi_done["$_mpi_mname"]="$_mpi_fmt_time"
     done < <(machine_state_records)
-
-    local _mpi_machine
-    while IFS= read -r _mpi_machine; do
-        [[ -n "$_mpi_machine" ]] || continue
-        _mpi_fmt_time=$(format_timestamp "${_mpi_init_time[$_mpi_machine]:-}")
-        _mpi_done["$_mpi_machine"]="$_mpi_fmt_time"
-    done < <(machine_state_initialized_machines)
 
     # No init-done machines → nothing to show
     if [[ ${#_mpi_done[@]} -eq 0 ]]; then

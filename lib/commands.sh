@@ -89,14 +89,21 @@ _commands_record_has_discovery_source() {
     return 1
 }
 
-status_section_machines() {
-    step_header "Machines"
+_commands_collect_machine_state_records() {
+    local -n _records_ref="$1"
+    local _record
 
-    local -a records=()
-    local record
-    while IFS= read -r record; do
-        [[ -n "$record" ]] && records+=("$record")
+    _records_ref=()
+    while IFS= read -r _record; do
+        [[ -n "$_record" ]] && _records_ref+=("$_record")
     done < <(machine_state_records)
+}
+
+status_section_machines() {
+    local -n records="$1"
+    local record
+
+    step_header "Machines"
 
     if [[ ${#records[@]} -eq 0 ]]; then
         echo "  (none)"
@@ -186,13 +193,15 @@ status_section_machines() {
 }
 
 status_section_diagnostics() {
+    local -n records="$1"
     local -a orphan_records=()
     local record
-    while IFS= read -r record; do
+
+    for record in "${records[@]}"; do
         [[ -n "$record" ]] || continue
         [[ "$(_commands_machine_record_field "$record" firmware_image_orphaned)" == "yes" ]] || continue
         orphan_records+=("$record")
-    done < <(machine_state_records)
+    done
 
     if [[ ${#orphan_records[@]} -eq 0 ]]; then
         return 0
@@ -239,22 +248,25 @@ cmd_status() {
     local repo_exists=0
     [[ -d "$OPENBMC_DIR/.git" ]] && repo_exists=1
 
+    local -a machine_records=()
+    _commands_collect_machine_state_records machine_records
+
     # Section 1: Main repo info (always shown)
     status_section_main_repo
 
     echo ""
 
     # Section 2: Machine list + expansion (always shown, even if repo missing — may have residual data)
-    status_section_machines
+    status_section_machines machine_records
 
     # Section 3: Diagnostics for residual artifacts
-    status_section_diagnostics
+    status_section_diagnostics machine_records
 
     # Section 4: Dynamic tips
     local has_initialized_machine=0
     local has_initialized_without_firmware_image=0
     local _ms_record
-    while IFS= read -r _ms_record; do
+    for _ms_record in "${machine_records[@]}"; do
         [[ -n "$_ms_record" ]] || continue
         local _ms_init_state=""
         local _ms_firmware_ready=""
@@ -266,7 +278,7 @@ cmd_status() {
                 has_initialized_without_firmware_image=1
             fi
         fi
-    done < <(machine_state_records)
+    done
 
     status_section_tips "$repo_exists" "$has_initialized_machine" "$has_initialized_without_firmware_image"
 
