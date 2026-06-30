@@ -57,8 +57,12 @@ _Avoid_: QEMU 配置, QEMU metadata
 _Avoid_: QEMU lock, QEMU state
 
 **QB variable**:
-BitBake 变量（`QB_MACHINE`、`QB_MEM` 等），定义在 OpenBMC machine conf 及其 include 链中。`ob start-qemu` 通过 `bitbake -e` 解析最终生效值，ob-harness 不提供 fallback。
-_Avoid_: QEMU 配置变量, QEMU 参数
+BitBake 变量（`QB_MACHINE`、`QB_MEM` 等），定义在 OpenBMC machine conf 及其 include 链中。`ob start-qemu` 通过 `bitbake -e` 解析最终生效值；变量缺失时是否采用兼容 fallback 由 `QEMU launch profile` 表达，fallback 不应被称为 QB variable。
+_Avoid_: QEMU 配置变量, QEMU 参数, 把 legacy fallback 当 QB variable
+
+**QEMU launch profile**:
+`ob start-qemu` 启动某个 machine 前解析出的启动画像，汇总 SoC 类型、证据来源/置信度、QEMU system binary name（`QEMU_LAUNCH_SYSTEM_NAME`，来自 `QB_SYSTEM_NAME` 或 profile 推导）、QEMU machine 名、内存参数以及 AST2700 额外启动文件需求。它表达“这台 machine 应该如何被 QEMU 启动”，不同于记录 QEMU binary 来源和 sha256 的 `QEMU manifest`。
+_Avoid_: QEMU metadata, QEMU 配置, QEMU 启动配置
 
 **confirmation banner**:
 `ob` 在面向用户的高代价或破坏性动作前输出的视觉块：横线边框 + 3 行重复 `warn`，内容形如 `You are about to <verb>: >>> <object> <<<`。它只负责视觉强调，不含确认逻辑——Y/N 循环、3 秒倒计时、批量处理由各确认点自行管理。**是否触发取决于路径风险，不单看操作本身**：从列表交互选择、或撞上需杀掉的运行实例这类有误伤风险的路径才确认；显式表达意图的快路径（如 `ob init <machine>`、正常起 QEMU）一律跳过、无需 `--force`。够分量才配 banner（init 拉 20-30GB、build 1-4 小时、kill 运行中的 QEMU），太轻的（如清理一条 stale SSH host key）不套。
