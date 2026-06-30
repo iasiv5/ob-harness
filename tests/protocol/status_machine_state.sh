@@ -50,6 +50,9 @@ write_marker built
 deploy_dir="$OPENBMC_DIR/build/built/tmp/deploy/images/built"
 mkdir -p "$deploy_dir"
 touch "$deploy_dir/built.static.mtd"
+orphan_dir="$OPENBMC_DIR/build/orphan/tmp/deploy/images/orphan"
+mkdir -p "$orphan_dir"
+touch "$orphan_dir/orphan.static.mtd"
 
 output="$(cmd_status 2>&1)"; rc=$?
 assert_eq "status machine-state rc" "$rc" 0
@@ -57,19 +60,29 @@ assert_false "legacy lock machine hidden" grep -Fq "legacy" <<< "$output"
 assert_false "legacy ignored not shown" grep -Fq "legacy ignored" <<< "$output"
 assert_contains "snapshot-only machine listed" "$output" "snaponly"
 assert_contains "snapshot-only partial listed" "$output" "partial"
+assert_contains "firmware image column listed" "$output" "Firmware Image"
 markeronly_line="$(grep -F "markeronly" <<< "$output" || true)"
 assert_contains "marker-only machine listed" "$output" "markeronly"
-assert_contains "marker-only row shows done state" "$markeronly_line" "✅ done"
+assert_contains "marker-only row shows initialized state" "$markeronly_line" "✅ initialized"
 assert_contains "failed build machine listed" "$output" "failm"
-assert_contains "failed build state listed" "$output" "❌ failed"
-assert_contains "succeeded build listed" "$output" "succeeded"
-assert_contains "init-done without successful build shows build tip" "$output" "Run 'ob build' to build a machine."
+assert_contains "missing firmware image state listed" "$output" "— missing"
+assert_contains "ready firmware image listed" "$output" "📦 ready"
+assert_contains "init-done without firmware image shows build tip" "$output" "Run 'ob build <machine>' to produce a firmware image."
+assert_contains "diagnostics section listed" "$output" "Diagnostics"
+assert_contains "orphan diagnostics title listed" "$output" "Orphan firmware image artifacts"
+assert_contains "orphan artifact listed" "$output" "orphan"
+assert_contains "orphan next step listed" "$output" "Next step : ob init orphan"
+assert_false "orphan not in main machine table" grep -Eq '^  orphan[[:space:]]' <<< "$output"
+assert_false "status avoids invalid image wording" grep -Fq "invalid image" <<< "$output"
+qemu_word="QEMU"
+image_word="image"
+assert_false "status avoids stale firmware wording" grep -Fq "$qemu_word $image_word" <<< "$output"
 
 rm -f "$CONFIGS_DIR/markeronly.init-done" "$CONFIGS_DIR/failm.init-done"
 rm -rf "$OPENBMC_DIR/build/failm"
 
 output="$(cmd_status 2>&1)"; rc=$?
 assert_eq "status built+partial rc" "$rc" 0
-assert_false "partial machine does not trigger build tip" grep -Fq "Run 'ob build' to build a machine." <<< "$output"
+assert_false "partial machine does not trigger build tip" grep -Fq "Run 'ob build <machine>' to produce a firmware image." <<< "$output"
 
 assert_summary

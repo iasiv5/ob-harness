@@ -28,7 +28,7 @@ machine_state_deploy_dir() {
     echo "$OPENBMC_DIR/build/$machine/tmp/deploy/images/$machine"
 }
 
-machine_state_has_init_done() {
+machine_state_is_initialized() {
     local machine="$1"
     [[ -f "$(machine_state_init_done_path "$machine")" ]]
 }
@@ -166,12 +166,18 @@ machine_state_clear_init_progress() {
     rm -f "$marker" "$snapshot" "$legacy_lock"
 }
 
-machine_state_image_path() {
+machine_state_firmware_image_path() {
     local machine="$1"
-    local deploy_dir
+    local openbmc_dir
     local image_path
+    local deploy_dir
 
-    deploy_dir="$(machine_state_deploy_dir "$machine")"
+    openbmc_dir="${OPENBMC_DIR:-}"
+    if [[ -z "$openbmc_dir" ]]; then
+        return 1
+    fi
+
+    deploy_dir="${openbmc_dir%/}/build/$machine/tmp/deploy/images/$machine"
     if [[ ! -d "$deploy_dir" ]]; then
         return 1
     fi
@@ -183,93 +189,150 @@ machine_state_image_path() {
     echo "$image_path"
 }
 
-machine_state_build_state() {
+_machine_state_file_mtime_iso() {
+    local path="$1"
+    local epoch
+
+    epoch=$(stat -c '%Y' "$path" 2>/dev/null) || return 1
+    date -u -d "@$epoch" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null
+}
+
+_machine_state_add_machine() {
     local machine="$1"
-    local build_dir
+    local -n machines_ref="$2"
+    local -n seen_ref="$3"
 
-    if machine_state_image_path "$machine" >/dev/null 2>&1; then
-        echo "succeeded"
-        return 0
-    fi
-
-    build_dir="$(machine_state_build_dir "$machine")"
-    if [[ -d "$build_dir" ]]; then
-        echo "failed"
-    else
-        echo "never"
+    [[ -n "$machine" ]] || return 0
+    if [[ -z "${seen_ref[$machine]:-}" ]]; then
+        seen_ref["$machine"]=1
+        machines_ref+=("$machine")
     fi
 }
 
-machine_state_list_records() {
+_machine_state_discover_machines() {
     local -a machines=()
     local -A seen=()
-    local f machine line
+    local f machine
 
-    for f in "$CONFIGS_DIR"/*.snapshot "$CONFIGS_DIR"/*.init-done; do
-        [[ -f "$f" ]] || continue
-        machine=$(basename "$f" | sed -E 's/\.(snapshot|init-done)$//')
-        if [[ -z "${seen[$machine]:-}" ]]; then
-            seen["$machine"]=1
-            machines+=("$machine")
+    if [[ -n "${CONFIGS_DIR:-}" ]]; then
+        for f in "$CONFIGS_DIR"/*.snapshot "$CONFIGS_DIR"/*.init-done; do
+            [[ -f "$f" ]] || continue
+            machine=$(basename "$f" | sed -E 's/\.(snapshot|init-done)$//')
+            _machine_state_add_machine "$machine" machines seen
+        done
+    fi
+
+    local openbmc_dir="${OPENBMC_DIR:-}"
+    local build_root=""
+    if [[ -n "$openbmc_dir" ]]; then
+        build_root="${openbmc_dir%/}/build"
+    fi
+
+    if [[ -n "$build_root" && -d "$build_root" ]]; then
+        local had_nullglob=0
+        local artifact rel build_machine rest image_machine
+        shopt -q nullglob && had_nullglob=1
+        shopt -s nullglob
+        for artifact in "$build_root"/*/tmp/deploy/images/*/*.static.mtd; do
+            [[ -f "$artifact" ]] || continue
+            rel="${artifact#"$build_root/"}"
+            build_machine="${rel%%/*}"
+            rest="${rel#"$build_machine/tmp/deploy/images/"}"
+            image_machine="${rest%%/*}"
+            [[ -n "$build_machine" && "$build_machine" == "$image_machine" ]] || continue
+            _machine_state_add_machine "$build_machine" machines seen
+        done
+        if [[ "$had_nullglob" -eq 0 ]]; then
+            shopt -u nullglob
         fi
-    done
+    fi
 
     if [[ ${#machines[@]} -eq 0 ]]; then
         return 0
     fi
 
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && machine_state_print_record "$line"
-    done < <(printf '%s\n' "${machines[@]}" | sort)
+    printf '%s\n' "${machines[@]}" | sort
 }
 
-machine_state_record_field() {
-    local record="$1"
-    local key="$2"
-    local field
-    local IFS=$'\t'
-
-    for field in $record; do
-        if [[ "$field" == "$key="* ]]; then
-            echo "${field#*=}"
-            return 0
-        fi
-    done
-    return 1
-}
-
-machine_state_print_record() {
+_machine_state_print_record() {
     local machine="$1"
     local snapshot_path init_done_path
-    local snapshot="no"
-    local init="none"
-    local repos="?"
-    local build
-    local image="no"
+    local snapshot_state="missing"
+    local init_state="uninitialized"
+    local repo_count="?"
+    local firmware_image_ready="no"
+    local firmware_image_orphaned="no"
+    local firmware_image_path=""
+    local firmware_image_mtime=""
     local init_time=""
+    local discovered_by=""
 
     snapshot_path="$(machine_state_snapshot_path "$machine")"
     init_done_path="$(machine_state_init_done_path "$machine")"
 
     if [[ -f "$snapshot_path" ]]; then
-        snapshot="yes"
-        repos="$(machine_state_repo_count "$machine")"
+        snapshot_state="present"
+        repo_count="$(machine_state_repo_count "$machine")"
+        discovered_by="snapshot"
     fi
 
     if [[ -f "$init_done_path" ]]; then
-        init="done"
+        init_state="initialized"
         if ! IFS= read -r init_time < "$init_done_path"; then
             init_time=""
         fi
-    elif [[ "$snapshot" == "yes" ]]; then
-        init="partial"
+        if [[ -n "$discovered_by" ]]; then
+            discovered_by+=",init_done"
+        else
+            discovered_by="init_done"
+        fi
+    elif [[ "$snapshot_state" == "present" ]]; then
+        init_state="partial"
     fi
 
-    build="$(machine_state_build_state "$machine")"
-    if [[ "$build" == "succeeded" ]]; then
-        image="yes"
+    firmware_image_path="$(machine_state_firmware_image_path "$machine" 2>/dev/null || true)"
+    if [[ -n "$firmware_image_path" ]]; then
+        firmware_image_mtime="$(_machine_state_file_mtime_iso "$firmware_image_path" 2>/dev/null || true)"
+        if [[ "$init_state" == "initialized" ]]; then
+            firmware_image_ready="yes"
+        else
+            firmware_image_orphaned="yes"
+        fi
+        if [[ -n "$discovered_by" ]]; then
+            discovered_by+=",firmware_image"
+        else
+            discovered_by="firmware_image"
+        fi
     fi
 
-    printf 'machine=%s\tinit=%s\tsnapshot=%s\trepos=%s\tbuild=%s\timage=%s\tinit_time=%s\n' \
-        "$machine" "$init" "$snapshot" "$repos" "$build" "$image" "$init_time"
+    printf 'machine=%s\tdiscovered_by=%s\tinit_state=%s\tsnapshot_state=%s\trepo_count=%s\tfirmware_image_ready=%s\tfirmware_image_orphaned=%s\tfirmware_image_path=%s\tfirmware_image_mtime=%s\tinit_time=%s\n' \
+        "$machine" "$discovered_by" "$init_state" "$snapshot_state" "$repo_count" "$firmware_image_ready" "$firmware_image_orphaned" "$firmware_image_path" "$firmware_image_mtime" "$init_time"
+}
+
+machine_state_records() {
+    local machine
+
+    while IFS= read -r machine; do
+        [[ -n "$machine" ]] && _machine_state_print_record "$machine"
+    done < <(_machine_state_discover_machines)
+}
+
+machine_state_initialized_machines() {
+    local machine
+
+    while IFS= read -r machine; do
+        [[ -n "$machine" ]] || continue
+        machine_state_is_initialized "$machine" && echo "$machine"
+    done < <(_machine_state_discover_machines)
+}
+
+machine_state_firmware_image_ready_machines() {
+    local machine
+
+    while IFS= read -r machine; do
+        [[ -n "$machine" ]] || continue
+        machine_state_is_initialized "$machine" || continue
+        machine_state_firmware_image_path "$machine" >/dev/null 2>&1 || continue
+        echo "$machine"
+    done < <(_machine_state_discover_machines)
 }
