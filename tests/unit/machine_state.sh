@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/unit/machine_state.sh — Machine lifecycle state 单测(unit 层,文件 IO)。
-# 覆盖 records / image path / build state / snapshot JSON 容错。
+# 覆盖 records / filtered lists / firmware image readiness / orphan diagnostics。
 source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
 assert_reset
@@ -53,64 +53,185 @@ write_marker() {
 
 record_for() {
     local machine="$1"
-    machine_state_list_records | awk -v prefix="machine=${machine}" '$1 == prefix { print; exit }'
+    machine_state_records | awk -v prefix="machine=${machine}" '$1 == prefix { print; exit }'
 }
 
-assert_true "machine_state_list_records defined" declare -F machine_state_list_records
-assert_true "machine_state_image_path defined" declare -F machine_state_image_path
-assert_true "machine_state_has_init_done defined" declare -F machine_state_has_init_done
+record_field() {
+    local record="$1"
+    local key="$2"
+    local field
+    local IFS=$'\t'
 
-records="$(machine_state_list_records)"
+    for field in $record; do
+        if [[ "$field" == "$key="* ]]; then
+            echo "${field#*=}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+assert_record_field() {
+    local label="$1"
+    local record="$2"
+    local key="$3"
+    local expected="$4"
+    assert_eq "$label" "$(record_field "$record" "$key")" "$expected"
+}
+
+assert_no_record() {
+    local label="$1"
+    local machine="$2"
+    local record
+    record="$(record_for "$machine")"
+    assert_eq "$label" "$record" ""
+}
+
+assert_list_contains_line() {
+    local label="$1"
+    local output="$2"
+    local expected="$3"
+    grep -Fxq "$expected" <<< "$output"
+    assert_eq "$label" "$?" 0
+}
+
+assert_list_not_contains_line() {
+    local label="$1"
+    local output="$2"
+    local unexpected="$3"
+    grep -Fxq "$unexpected" <<< "$output"
+    assert_eq "$label" "$?" 1
+}
+
+assert_true "machine_state_records defined" declare -F machine_state_records
+assert_true "machine_state_initialized_machines defined" declare -F machine_state_initialized_machines
+assert_true "machine_state_firmware_image_ready_machines defined" declare -F machine_state_firmware_image_ready_machines
+assert_true "machine_state_is_initialized defined" declare -F machine_state_is_initialized
+assert_true "machine_state_firmware_image_path defined" declare -F machine_state_firmware_image_path
+
+old_machine_state_functions=(
+    machine_state_list_records
+    machine_state_record_field
+    machine_state_build_state
+    machine_state_image_path
+    machine_state_has_init_done
+)
+for old_func in "${old_machine_state_functions[@]}"; do
+    assert_false "$old_func removed" declare -F "$old_func"
+done
+
+records="$(machine_state_records)"
 assert_eq "no state yields empty records" "$records" ""
 
 write_snapshot romulus 2
 romulus_record="$(record_for romulus)"
-assert_contains "snapshot-only machine listed" "$romulus_record" "machine=romulus"
-assert_contains "snapshot-only init partial" "$romulus_record" "init=partial"
-assert_contains "snapshot present" "$romulus_record" "snapshot=yes"
-assert_contains "snapshot repo count" "$romulus_record" "repos=2"
-assert_contains "snapshot-only build never" "$romulus_record" "build=never"
-assert_contains "snapshot-only no image" "$romulus_record" "image=no"
-assert_contains "snapshot-only empty init time" "$romulus_record" "init_time="
+assert_record_field "snapshot-only machine listed" "$romulus_record" machine romulus
+assert_record_field "snapshot-only discovered by snapshot" "$romulus_record" discovered_by snapshot
+assert_record_field "snapshot-only init partial" "$romulus_record" init_state partial
+assert_record_field "snapshot present" "$romulus_record" snapshot_state present
+assert_record_field "snapshot repo count" "$romulus_record" repo_count 2
+assert_record_field "snapshot-only firmware image not ready" "$romulus_record" firmware_image_ready no
+assert_record_field "snapshot-only firmware image not orphaned" "$romulus_record" firmware_image_orphaned no
+assert_record_field "snapshot-only empty firmware image path" "$romulus_record" firmware_image_path ""
+assert_record_field "snapshot-only empty firmware image mtime" "$romulus_record" firmware_image_mtime ""
+assert_record_field "snapshot-only empty init time" "$romulus_record" init_time ""
 
 write_marker markeronly 2026-06-23T03:04:05Z
 marker_record="$(record_for markeronly)"
-assert_contains "marker-only machine listed" "$marker_record" "machine=markeronly"
-assert_contains "marker-only init done" "$marker_record" "init=done"
-assert_contains "marker-only no snapshot" "$marker_record" "snapshot=no"
-assert_contains "marker-only repo unknown" "$marker_record" "repos=?"
-assert_contains "marker-only build never" "$marker_record" "build=never"
-assert_contains "marker-only raw init time" "$marker_record" "init_time=2026-06-23T03:04:05Z"
+assert_record_field "marker-only machine listed" "$marker_record" machine markeronly
+assert_record_field "marker-only discovered by init-done" "$marker_record" discovered_by init_done
+assert_record_field "marker-only initialized" "$marker_record" init_state initialized
+assert_record_field "marker-only snapshot missing" "$marker_record" snapshot_state missing
+assert_record_field "marker-only repo unknown" "$marker_record" repo_count "?"
+assert_record_field "marker-only firmware image not ready" "$marker_record" firmware_image_ready no
+assert_record_field "marker-only raw init time" "$marker_record" init_time 2026-06-23T03:04:05Z
 
 printf '{bad json\n' > "$CONFIGS_DIR/bad.snapshot"
 bad_record="$(record_for bad)"
-assert_contains "bad snapshot listed" "$bad_record" "machine=bad"
-assert_contains "bad snapshot partial" "$bad_record" "init=partial"
-assert_contains "bad snapshot repo unknown" "$bad_record" "repos=?"
+assert_record_field "bad snapshot listed" "$bad_record" machine bad
+assert_record_field "bad snapshot partial" "$bad_record" init_state partial
+assert_record_field "bad snapshot repo unknown" "$bad_record" repo_count "?"
 
-write_marker failed
-mkdir -p "$OPENBMC_DIR/build/failed"
-failed_record="$(record_for failed)"
-assert_contains "top-level build dir without image is failed" "$failed_record" "build=failed"
-assert_contains "failed build has no image" "$failed_record" "image=no"
+write_marker initialized_missing_image
+missing_image_record="$(record_for initialized_missing_image)"
+assert_record_field "initialized without image is listed" "$missing_image_record" machine initialized_missing_image
+assert_record_field "initialized without image state" "$missing_image_record" init_state initialized
+assert_record_field "initialized without image not ready" "$missing_image_record" firmware_image_ready no
+assert_record_field "initialized without image not orphaned" "$missing_image_record" firmware_image_orphaned no
 
-write_marker built
-deploy_dir="$OPENBMC_DIR/build/built/tmp/deploy/images/built"
+write_marker ready
+deploy_dir="$OPENBMC_DIR/build/ready/tmp/deploy/images/ready"
 mkdir -p "$deploy_dir"
 touch "$deploy_dir/z.static.mtd" "$deploy_dir/a.static.mtd"
-built_record="$(record_for built)"
-assert_contains "image build succeeded" "$built_record" "build=succeeded"
-assert_contains "image flag yes" "$built_record" "image=yes"
-image_path="$(machine_state_image_path built)"
+ready_record="$(record_for ready)"
+assert_record_field "firmware-image-ready machine listed" "$ready_record" machine ready
+assert_record_field "ready discovered by init-done and firmware image" "$ready_record" discovered_by init_done,firmware_image
+assert_record_field "ready init state" "$ready_record" init_state initialized
+assert_record_field "ready firmware image flag" "$ready_record" firmware_image_ready yes
+assert_record_field "ready firmware image not orphaned" "$ready_record" firmware_image_orphaned no
+assert_record_field "ready firmware image path" "$ready_record" firmware_image_path "$deploy_dir/a.static.mtd"
+assert_match "ready firmware image mtime" "$(record_field "$ready_record" firmware_image_mtime)" '^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:]+Z$'
+image_path="$(machine_state_firmware_image_path ready)"
 assert_eq "image path sorted first" "$image_path" "$deploy_dir/a.static.mtd"
 
-machine_state_image_path markeronly >/dev/null 2>&1
+machine_state_firmware_image_path markeronly >/dev/null 2>&1
 assert_eq "missing image path rc" "$?" 1
 
-machine_state_has_init_done markeronly >/dev/null 2>&1
+machine_state_is_initialized markeronly >/dev/null 2>&1
 assert_eq "has init-done rc" "$?" 0
-machine_state_has_init_done romulus >/dev/null 2>&1
+machine_state_is_initialized romulus >/dev/null 2>&1
 assert_eq "missing init-done rc" "$?" 1
+
+orphan_dir="$OPENBMC_DIR/build/orphan/tmp/deploy/images/orphan"
+mkdir -p "$orphan_dir"
+touch "$orphan_dir/orphan.static.mtd"
+orphan_record="$(record_for orphan)"
+assert_record_field "artifact-only machine listed" "$orphan_record" machine orphan
+assert_record_field "artifact-only discovered by firmware image" "$orphan_record" discovered_by firmware_image
+assert_record_field "artifact-only uninitialized" "$orphan_record" init_state uninitialized
+assert_record_field "artifact-only snapshot missing" "$orphan_record" snapshot_state missing
+assert_record_field "artifact-only firmware image not ready" "$orphan_record" firmware_image_ready no
+assert_record_field "artifact-only firmware image orphaned" "$orphan_record" firmware_image_orphaned yes
+assert_record_field "artifact-only firmware image path" "$orphan_record" firmware_image_path "$orphan_dir/orphan.static.mtd"
+
+write_snapshot partialimg 1
+partial_dir="$OPENBMC_DIR/build/partialimg/tmp/deploy/images/partialimg"
+mkdir -p "$partial_dir"
+touch "$partial_dir/partial.static.mtd"
+partial_record="$(record_for partialimg)"
+assert_record_field "partial artifact init state" "$partial_record" init_state partial
+assert_record_field "partial artifact snapshot present" "$partial_record" snapshot_state present
+assert_record_field "partial artifact not ready" "$partial_record" firmware_image_ready no
+assert_record_field "partial artifact orphaned" "$partial_record" firmware_image_orphaned yes
+assert_record_field "partial artifact discovered by snapshot and firmware image" "$partial_record" discovered_by snapshot,firmware_image
+
+mismatch_dir="$OPENBMC_DIR/build/mismatch/tmp/deploy/images/other"
+mkdir -p "$mismatch_dir"
+touch "$mismatch_dir/ignored.static.mtd"
+assert_no_record "mismatched build machine ignored" mismatch
+assert_no_record "mismatched deploy machine ignored" other
+
+EMPTY_OPENBMC_DIR="$TMP/empty-openbmc"
+mkdir -p "$EMPTY_OPENBMC_DIR"
+(
+    OPENBMC_DIR="$EMPTY_OPENBMC_DIR"
+    CONFIGS_DIR="$TMP/empty-configs"
+    mkdir -p "$CONFIGS_DIR"
+    empty_records="$(machine_state_records)"
+    assert_eq "missing build dir yields empty records" "$empty_records" ""
+)
+
+initialized_machines="$(machine_state_initialized_machines)"
+assert_list_contains_line "initialized list includes marker-only" "$initialized_machines" markeronly
+assert_list_contains_line "initialized list includes ready" "$initialized_machines" ready
+assert_list_not_contains_line "initialized list skips partial snapshot" "$initialized_machines" romulus
+assert_list_not_contains_line "initialized list skips orphan artifact" "$initialized_machines" orphan
+
+ready_machines="$(machine_state_firmware_image_ready_machines)"
+assert_list_contains_line "ready list includes ready" "$ready_machines" ready
+assert_list_not_contains_line "ready list skips marker-only" "$ready_machines" markeronly
+assert_list_not_contains_line "ready list skips orphan artifact" "$ready_machines" orphan
+assert_list_not_contains_line "ready list skips partial artifact" "$ready_machines" partialimg
 
 deps_json="$TMP/deps.json"
 cat > "$deps_json" <<'EOF'

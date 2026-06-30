@@ -60,14 +60,50 @@ status_section_main_repo() {
     echo "  First init   : ${first_init:-<unknown>}"
 }
 
-status_section_machines() {
-    step_header "Machines"
+_commands_machine_record_field() {
+    local record="$1"
+    local key="$2"
+    local field
+    local IFS=$'\t'
 
-    local -a records=()
+    for field in $record; do
+        if [[ "$field" == "$key="* ]]; then
+            echo "${field#*=}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+_commands_record_has_discovery_source() {
+    local record="$1"
+    local expected="$2"
+    local discovered_by
+    local source
+    local IFS=','
+
+    discovered_by="$(_commands_machine_record_field "$record" discovered_by)"
+    for source in $discovered_by; do
+        [[ "$source" == "$expected" ]] && return 0
+    done
+    return 1
+}
+
+_commands_collect_machine_state_records() {
+    local -n _records_ref="$1"
+    local _record
+
+    _records_ref=()
+    while IFS= read -r _record; do
+        [[ -n "$_record" ]] && _records_ref+=("$_record")
+    done < <(machine_state_records)
+}
+
+status_section_machines() {
+    local -n records="$1"
     local record
-    while IFS= read -r record; do
-        [[ -n "$record" ]] && records+=("$record")
-    done < <(machine_state_list_records)
+
+    step_header "Machines"
 
     if [[ ${#records[@]} -eq 0 ]]; then
         echo "  (none)"
@@ -77,53 +113,58 @@ status_section_machines() {
     # --- Summary table ---
     # Collect per-machine data
     local -a machines=()
-    local -A m_init=() m_repos=() m_build=() m_image=() m_snapshot=() m_init_time=()
+    local -A m_init=() m_repos=() m_firmware=() m_firmware_path=() m_firmware_mtime=() m_snapshot=() m_init_time=()
 
     for record in "${records[@]}"; do
-        local m init_state snapshot_state repo_count build_state image_state raw_init_time
-        m=$(machine_state_record_field "$record" machine)
-        init_state=$(machine_state_record_field "$record" init)
-        snapshot_state=$(machine_state_record_field "$record" snapshot)
-        repo_count=$(machine_state_record_field "$record" repos)
-        build_state=$(machine_state_record_field "$record" build)
-        image_state=$(machine_state_record_field "$record" image)
-        raw_init_time=$(machine_state_record_field "$record" init_time)
+        _commands_record_has_discovery_source "$record" snapshot || _commands_record_has_discovery_source "$record" init_done || continue
+
+        local m init_state snapshot_state repo_count firmware_image_ready firmware_image_path firmware_image_mtime raw_init_time
+        m=$(_commands_machine_record_field "$record" machine)
+        init_state=$(_commands_machine_record_field "$record" init_state)
+        snapshot_state=$(_commands_machine_record_field "$record" snapshot_state)
+        repo_count=$(_commands_machine_record_field "$record" repo_count)
+        firmware_image_ready=$(_commands_machine_record_field "$record" firmware_image_ready)
+        firmware_image_path=$(_commands_machine_record_field "$record" firmware_image_path)
+        firmware_image_mtime=$(_commands_machine_record_field "$record" firmware_image_mtime)
+        raw_init_time=$(_commands_machine_record_field "$record" init_time)
         machines+=("$m")
 
         case "$init_state" in
-            done) m_init["$m"]="✅ done" ;;
+            initialized) m_init["$m"]="✅ initialized" ;;
             partial) m_init["$m"]="⏳ partial" ;;
-            *) m_init["$m"]="—" ;;
+            *) m_init["$m"]="— uninitialized" ;;
         esac
 
         m_snapshot["$m"]="$snapshot_state"
         m_repos["$m"]="$repo_count"
         m_init_time["$m"]="$raw_init_time"
 
-        if [[ "$build_state" == "succeeded" ]]; then
-            m_build["$m"]="🔨 succeeded"
-            if [[ "$image_state" == "yes" ]]; then
-                m_image["$m"]=$(machine_state_image_path "$m" 2>/dev/null || true)
-            fi
-        elif [[ "$build_state" == "failed" ]]; then
-            m_build["$m"]="❌ failed"
+        if [[ "$firmware_image_ready" == "yes" ]]; then
+            m_firmware["$m"]="📦 ready"
+            m_firmware_path["$m"]="$firmware_image_path"
+            m_firmware_mtime["$m"]="$firmware_image_mtime"
         else
-            m_build["$m"]="— never"
+            m_firmware["$m"]="— missing"
         fi
     done
 
+    if [[ ${#machines[@]} -eq 0 ]]; then
+        echo "  (none)"
+        return 0
+    fi
+
     # Print summary table header
-    printf "  %-22s %-10s %s\n" "Machine" "Init" "Build"
+    printf "  %-22s %-15s %s\n" "Machine" "Init" "Firmware Image"
     for m in "${machines[@]}"; do
         local m_padded
         printf -v m_padded "%-22s" "$m"
-        printf "  %b%-10s %s\n" "${YELLOW}${m_padded}${NC}" "${m_init[$m]}" "${m_build[$m]}"
+        printf "  %b%-15s %s\n" "${YELLOW}${m_padded}${NC}" "${m_init[$m]}" "${m_firmware[$m]}"
     done
 
     # --- Per-machine expansion ---
     for m in "${machines[@]}"; do
         # Only expand machines that have a snapshot file (meaningful repo data)
-        [[ "${m_snapshot[$m]}" == "yes" ]] || continue
+        [[ "${m_snapshot[$m]}" == "present" ]] || continue
 
         echo ""
         echo "  ── $m ──────────────────────────────────────"
@@ -138,38 +179,63 @@ status_section_machines() {
         # Repos
         echo "    Repos        : ${m_repos[$m]}"
 
-        # Image details (only when build succeeded)
-        if [[ -n "${m_image[$m]:-}" ]]; then
-            local build_time=""
-            local _bt_epoch=""
-            _bt_epoch=$(stat -c '%Y' "${m_image[$m]}" 2>/dev/null) || true
-            if [[ -n "$_bt_epoch" ]]; then
-                local _bt_iso
-                _bt_iso=$(date -u -d "@$_bt_epoch" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null) || true
-                build_time=$(format_timestamp "$_bt_iso")
-            else
-                build_time="-"
+        # Firmware image details (only when ready)
+        if [[ -n "${m_firmware_path[$m]:-}" ]]; then
+            local firmware_time="-"
+            if [[ -n "${m_firmware_mtime[$m]}" ]]; then
+                firmware_time=$(format_timestamp "${m_firmware_mtime[$m]}")
             fi
-            echo "    Build time   : $build_time"
-            echo "    Image name   : $(basename "${m_image[$m]}")"
-            echo "    Image path   : $(dirname "${m_image[$m]}")/"
+            echo "    Firmware time: $firmware_time"
+            echo "    Firmware name: $(basename "${m_firmware_path[$m]}")"
+            echo "    Firmware path: $(dirname "${m_firmware_path[$m]}")/"
         fi
+    done
+}
+
+status_section_diagnostics() {
+    local -n records="$1"
+    local -a orphan_records=()
+    local record
+
+    for record in "${records[@]}"; do
+        [[ -n "$record" ]] || continue
+        [[ "$(_commands_machine_record_field "$record" firmware_image_orphaned)" == "yes" ]] || continue
+        orphan_records+=("$record")
+    done
+
+    if [[ ${#orphan_records[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    echo ""
+    step_header "Diagnostics"
+    echo "  Orphan firmware image artifacts"
+
+    for record in "${orphan_records[@]}"; do
+        local machine firmware_path
+        machine=$(_commands_machine_record_field "$record" machine)
+        firmware_path=$(_commands_machine_record_field "$record" firmware_image_path)
+        echo ""
+        echo "    $machine"
+        echo "      Path      : ${firmware_path:-<unknown>}"
+        echo "      Reason    : firmware image artifact exists, but machine init is incomplete"
+        echo "      Next step : ob init $machine"
     done
 }
 
 status_section_tips() {
     local repo_exists="$1"
-    local has_init_done="$2"
-    local has_never_built="$3"
+    local has_initialized_machine="$2"
+    local has_initialized_without_firmware_image="$3"
 
     local tip=""
 
     if [[ "$repo_exists" -eq 0 ]]; then
         tip="💡 Run 'ob init' to get started."
-    elif [[ "$has_init_done" -eq 0 ]]; then
+    elif [[ "$has_initialized_machine" -eq 0 ]]; then
         tip="💡 Run 'ob init' to initialize a machine."
-    elif [[ "$has_never_built" -eq 1 ]]; then
-        tip="💡 Run 'ob build' to build a machine."
+    elif [[ "$has_initialized_without_firmware_image" -eq 1 ]]; then
+        tip="💡 Run 'ob build <machine>' to produce a firmware image."
     fi
 
     if [[ -n "$tip" ]]; then
@@ -182,35 +248,41 @@ cmd_status() {
     local repo_exists=0
     [[ -d "$OPENBMC_DIR/.git" ]] && repo_exists=1
 
+    local -a machine_records=()
+    _commands_collect_machine_state_records machine_records
+
     # Section 1: Main repo info (always shown)
     status_section_main_repo
 
     echo ""
 
     # Section 2: Machine list + expansion (always shown, even if repo missing — may have residual data)
-    status_section_machines
+    status_section_machines machine_records
 
-    # Section 3: Dynamic tips
-    local has_init_done=0
-    local has_never_built=0
+    # Section 3: Diagnostics for residual artifacts
+    status_section_diagnostics machine_records
+
+    # Section 4: Dynamic tips
+    local has_initialized_machine=0
+    local has_initialized_without_firmware_image=0
     local _ms_record
-    while IFS= read -r _ms_record; do
+    for _ms_record in "${machine_records[@]}"; do
         [[ -n "$_ms_record" ]] || continue
-        local _ms_init=""
-        local _ms_build=""
-        _ms_init="$(machine_state_record_field "$_ms_record" init)"
-        _ms_build="$(machine_state_record_field "$_ms_record" build)"
-        if [[ "$_ms_init" == "done" ]]; then
-            has_init_done=1
-            if [[ "$_ms_build" != "succeeded" ]]; then
-                has_never_built=1
+        local _ms_init_state=""
+        local _ms_firmware_ready=""
+        _ms_init_state="$(_commands_machine_record_field "$_ms_record" init_state)"
+        _ms_firmware_ready="$(_commands_machine_record_field "$_ms_record" firmware_image_ready)"
+        if [[ "$_ms_init_state" == "initialized" ]]; then
+            has_initialized_machine=1
+            if [[ "$_ms_firmware_ready" != "yes" ]]; then
+                has_initialized_without_firmware_image=1
             fi
         fi
-    done < <(machine_state_list_records)
+    done
 
-    status_section_tips "$repo_exists" "$has_init_done" "$has_never_built"
+    status_section_tips "$repo_exists" "$has_initialized_machine" "$has_initialized_without_firmware_image"
 
-    # Section 4: QEMU instances (only shown when instances exist)
+    # Section 5: QEMU instances (only shown when instances exist)
     local _pids_dir="$WORKSPACE_DIR/qemu-bin/.pids"
     local _has_qemu=0
     local -a _qemu_lines=()
@@ -257,7 +329,7 @@ cmd_build() {
 
     local interactive_selection=0
     if [[ -n "$MACHINE" ]]; then
-        if ! machine_state_has_init_done "$MACHINE"; then
+        if ! machine_state_is_initialized "$MACHINE"; then
             error "Machine '$MACHINE' is not initialized (no completed init-done marker - a previous init may have been interrupted)."
             error "Run 'ob init $MACHINE' first."
             exit 3
@@ -265,27 +337,29 @@ cmd_build() {
 
         BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
     else
-        # === Discover init-done machines ===
+        # === Discover initialized machines ===
         local -a machines=()
         local -a init_times=()
         local -a repo_counts=()
+        local -A init_time_by_machine=()
+        local -A repo_count_by_machine=()
         local record=""
 
         while IFS= read -r record; do
             [[ -n "$record" ]] || continue
-            [[ "$(machine_state_record_field "$record" init)" == "done" ]] || continue
-            local mname
-            local raw_init_time
-            mname=$(machine_state_record_field "$record" machine)
-            machines+=("$mname")
+            local mname raw_init_time repo_count
+            mname=$(_commands_machine_record_field "$record" machine)
+            [[ -n "$mname" ]] || continue
+            raw_init_time=$(_commands_machine_record_field "$record" init_time)
+            repo_count=$(_commands_machine_record_field "$record" repo_count)
+            init_time_by_machine["$mname"]="$raw_init_time"
+            repo_count_by_machine["$mname"]="$repo_count"
+        done < <(machine_state_records)
 
-            raw_init_time=$(machine_state_record_field "$record" init_time)
-            local init_time
-            init_time=$(format_timestamp "$raw_init_time")
-            init_times+=("$init_time")
-
-            repo_counts+=("$(machine_state_record_field "$record" repos)")
-        done < <(machine_state_list_records)
+        local initialized_machine
+        while IFS= read -r initialized_machine; do
+            [[ -n "$initialized_machine" ]] && machines+=("$initialized_machine")
+        done < <(machine_state_initialized_machines)
 
         if [[ ${#machines[@]} -eq 0 ]]; then
             step_header "Initialized Machines"
@@ -314,6 +388,10 @@ cmd_build() {
         local idx_width=${#total}
         local i
         for (( i=0; i<total; i++ )); do
+            local init_time
+            init_time=$(format_timestamp "${init_time_by_machine[${machines[$i]}]:-}")
+            init_times+=("$init_time")
+            repo_counts+=("${repo_count_by_machine[${machines[$i]}]:-?}")
             printf "  %${idx_width}d) %-20s %s    %s repos\n" \
                 "$((i + 1))" "${machines[$i]}" "${init_times[$i]}" "${repo_counts[$i]}"
         done
@@ -408,7 +486,7 @@ cmd_build() {
 
         local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
         local image_file=""
-        image_file=$(machine_state_image_path "$MACHINE" 2>/dev/null || true)
+        image_file=$(machine_state_firmware_image_path "$MACHINE" 2>/dev/null || true)
 
         echo "  Machine : $MACHINE"
         echo "  Image   : ${image_file:-<not found>}"
@@ -463,29 +541,22 @@ cmd_start_qemu() {
 
     # ── Resolve machine ──
     if [[ -z "$MACHINE" ]]; then
-        # Discover built machines (init-done + image exists)
+        # Discover firmware-image-ready machines (init-done + firmware image artifact)
         local -a machines=()
-        local _record
-        while IFS= read -r _record; do
-            [[ -n "$_record" ]] || continue
-            [[ "$(machine_state_record_field "$_record" init)" == "done" ]] || continue
-            [[ "$(machine_state_record_field "$_record" build)" == "succeeded" ]] || continue
-            machines+=("$(machine_state_record_field "$_record" machine)")
-        done < <(machine_state_list_records)
+        local _machine
+        while IFS= read -r _machine; do
+            [[ -n "$_machine" ]] && machines+=("$_machine")
+        done < <(machine_state_firmware_image_ready_machines)
 
         if [[ ${#machines[@]} -eq 0 ]]; then
             local any_initdone=0
-            while IFS= read -r _record; do
-                [[ -n "$_record" ]] || continue
-                if [[ "$(machine_state_record_field "$_record" init)" == "done" ]]; then
-                    any_initdone=1
-                    break
-                fi
-            done < <(machine_state_list_records)
+            if [[ -n "$(machine_state_initialized_machines)" ]]; then
+                any_initdone=1
+            fi
 
             if [[ "$any_initdone" -eq 1 ]]; then
-                error "No built machines found (initialized but not built)."
-                error "Run 'ob build' first."
+                error "No firmware-image-ready machines found."
+                error "Run 'ob build <machine>' first."
             else
                 error "No initialized machines found."
                 error "Run 'ob init <machine>' first."
@@ -524,7 +595,7 @@ cmd_start_qemu() {
     SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
 
     # ── Prerequisite 1: machine init-done ──
-    if ! machine_state_has_init_done "$MACHINE"; then
+    if ! machine_state_is_initialized "$MACHINE"; then
         error "Machine '$MACHINE' has not been initialized."
         error "Run 'ob init $MACHINE' first."
         exit 3
@@ -534,10 +605,10 @@ cmd_start_qemu() {
     local image_file=""
     local deploy_dir=""
     deploy_dir="$(machine_state_deploy_dir "$MACHINE")"
-    image_file=$(machine_state_image_path "$MACHINE" 2>/dev/null || true)
+    image_file=$(machine_state_firmware_image_path "$MACHINE" 2>/dev/null || true)
     if [[ -z "$image_file" ]]; then
-        error "No .static.mtd image found in $deploy_dir"
-        error "Run 'ob build' first."
+        error "No firmware image found for machine '$MACHINE' in $deploy_dir"
+        error "Run 'ob build $MACHINE' first."
         exit 3
     fi
     verbose "Image file: $image_file"

@@ -25,6 +25,13 @@ setup_init_done_build_dir_no_image() {
     mkdir -p "$tmp_root/workspace/openbmc/build/romulus"
 }
 
+setup_orphan_artifact() {
+    local tmp_root="$1"
+    local deploy_dir="$tmp_root/workspace/openbmc/build/romulus/tmp/deploy/images/romulus"
+    mkdir -p "$deploy_dir"
+    touch "$deploy_dir/romulus.static.mtd"
+}
+
 run_start_qemu_case() {
     local setup_fn="$1"
     shift
@@ -74,12 +81,21 @@ run_start_qemu_case setup_legacy_lock_only start-qemu romulus
 assert_eq "start-qemu legacy lock only rc" "$START_QEMU_CASE_RC" "3"
 assert_contains "start-qemu legacy lock only remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob init romulus' first."
 
+run_start_qemu_case setup_orphan_artifact start-qemu romulus
+assert_eq "start-qemu orphan artifact explicit rc" "$START_QEMU_CASE_RC" "3"
+assert_contains "start-qemu orphan artifact explicit remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob init romulus' first."
+
 run_start_qemu_case setup_init_done_only start-qemu
 assert_eq "start-qemu init-done without build rc" "$START_QEMU_CASE_RC" "3"
-assert_contains "start-qemu init-done without build remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob build' first."
+assert_contains "start-qemu init-done without build diagnosis" "$START_QEMU_CASE_OUTPUT" "No firmware-image-ready machines found."
+assert_contains "start-qemu init-done without build remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob build <machine>' first."
+stale_built_prefix="No built"
+stale_built_suffix=" machines"
+assert_false "start-qemu init-done without build avoids built wording" grep -Fq "${stale_built_prefix}${stale_built_suffix}" <<< "$START_QEMU_CASE_OUTPUT"
 
 run_start_qemu_case setup_init_done_build_dir_no_image start-qemu
 assert_eq "start-qemu build dir without image rc" "$START_QEMU_CASE_RC" "3"
-assert_contains "start-qemu build dir without image remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob build' first."
+assert_contains "start-qemu build dir without image diagnosis" "$START_QEMU_CASE_OUTPUT" "No firmware-image-ready machines found."
+assert_contains "start-qemu build dir without image remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob build <machine>' first."
 
 assert_summary
