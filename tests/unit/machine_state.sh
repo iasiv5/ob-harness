@@ -51,42 +51,6 @@ write_marker() {
     printf '%s\n' "$timestamp" > "$CONFIGS_DIR/$machine.init-done"
 }
 
-record_for() {
-    local machine="$1"
-    machine_state_records | awk -v prefix="machine=${machine}" '$1 == prefix { print; exit }'
-}
-
-record_field() {
-    local record="$1"
-    local key="$2"
-    local field
-    local IFS=$'\t'
-
-    for field in $record; do
-        if [[ "$field" == "$key="* ]]; then
-            echo "${field#*=}"
-            return 0
-        fi
-    done
-    return 1
-}
-
-assert_record_field() {
-    local label="$1"
-    local record="$2"
-    local key="$3"
-    local expected="$4"
-    assert_eq "$label" "$(record_field "$record" "$key")" "$expected"
-}
-
-assert_no_record() {
-    local label="$1"
-    local machine="$2"
-    local record
-    record="$(record_for "$machine")"
-    assert_eq "$label" "$record" ""
-}
-
 assert_list_contains_line() {
     local label="$1"
     local output="$2"
@@ -103,11 +67,19 @@ assert_list_not_contains_line() {
     assert_eq "$label" "$?" 1
 }
 
-assert_true "machine_state_records defined" declare -F machine_state_records
+assert_false "machine_state_records removed" declare -F machine_state_records
 assert_true "machine_state_initialized_machines defined" declare -F machine_state_initialized_machines
 assert_true "machine_state_firmware_image_ready_machines defined" declare -F machine_state_firmware_image_ready_machines
 assert_true "machine_state_is_initialized defined" declare -F machine_state_is_initialized
 assert_true "machine_state_firmware_image_path defined" declare -F machine_state_firmware_image_path
+assert_true "machine_state_display_machines defined" declare -F machine_state_display_machines
+assert_true "machine_state_orphan_firmware_image_machines defined" declare -F machine_state_orphan_firmware_image_machines
+assert_true "machine_state_init_state defined" declare -F machine_state_init_state
+assert_true "machine_state_snapshot_state defined" declare -F machine_state_snapshot_state
+assert_true "machine_state_init_time defined" declare -F machine_state_init_time
+assert_true "machine_state_firmware_image_mtime defined" declare -F machine_state_firmware_image_mtime
+assert_true "machine_state_is_firmware_image_ready defined" declare -F machine_state_is_firmware_image_ready
+assert_true "machine_state_is_orphan_firmware_image defined" declare -F machine_state_is_orphan_firmware_image
 
 old_machine_state_functions=(
     machine_state_list_records
@@ -120,59 +92,56 @@ for old_func in "${old_machine_state_functions[@]}"; do
     assert_false "$old_func removed" declare -F "$old_func"
 done
 
-records="$(machine_state_records)"
-assert_eq "no state yields empty records" "$records" ""
+display_machines="$(machine_state_display_machines 2>/dev/null || true)"
+assert_eq "no state yields empty display machines" "$display_machines" ""
+orphan_machines="$(machine_state_orphan_firmware_image_machines 2>/dev/null || true)"
+assert_eq "no state yields empty orphan machines" "$orphan_machines" ""
 
 write_snapshot romulus 2
-romulus_record="$(record_for romulus)"
-assert_record_field "snapshot-only machine listed" "$romulus_record" machine romulus
-assert_record_field "snapshot-only discovered by snapshot" "$romulus_record" discovered_by snapshot
-assert_record_field "snapshot-only init partial" "$romulus_record" init_state partial
-assert_record_field "snapshot present" "$romulus_record" snapshot_state present
-assert_record_field "snapshot repo count" "$romulus_record" repo_count 2
-assert_record_field "snapshot-only firmware image not ready" "$romulus_record" firmware_image_ready no
-assert_record_field "snapshot-only firmware image not orphaned" "$romulus_record" firmware_image_orphaned no
-assert_record_field "snapshot-only empty firmware image path" "$romulus_record" firmware_image_path ""
-assert_record_field "snapshot-only empty firmware image mtime" "$romulus_record" firmware_image_mtime ""
-assert_record_field "snapshot-only empty init time" "$romulus_record" init_time ""
+assert_eq "snapshot-only init state query" "$(machine_state_init_state romulus 2>/dev/null || true)" partial
+assert_eq "snapshot-only snapshot state query" "$(machine_state_snapshot_state romulus 2>/dev/null || true)" present
+assert_eq "snapshot-only repo count query" "$(machine_state_repo_count romulus)" 2
+assert_eq "snapshot-only init time query" "$(machine_state_init_time romulus 2>/dev/null || true)" ""
+machine_state_firmware_image_path romulus >/dev/null 2>&1
+assert_eq "snapshot-only image path rc" "$?" 1
+assert_eq "snapshot-only firmware mtime query" "$(machine_state_firmware_image_mtime romulus 2>/dev/null || true)" ""
+machine_state_is_firmware_image_ready romulus >/dev/null 2>&1
+assert_eq "snapshot-only ready query rc" "$?" 1
+machine_state_is_orphan_firmware_image romulus >/dev/null 2>&1
+assert_eq "snapshot-only orphan query rc" "$?" 1
 
 write_marker markeronly 2026-06-23T03:04:05Z
-marker_record="$(record_for markeronly)"
-assert_record_field "marker-only machine listed" "$marker_record" machine markeronly
-assert_record_field "marker-only discovered by init-done" "$marker_record" discovered_by init_done
-assert_record_field "marker-only initialized" "$marker_record" init_state initialized
-assert_record_field "marker-only snapshot missing" "$marker_record" snapshot_state missing
-assert_record_field "marker-only repo unknown" "$marker_record" repo_count "?"
-assert_record_field "marker-only firmware image not ready" "$marker_record" firmware_image_ready no
-assert_record_field "marker-only raw init time" "$marker_record" init_time 2026-06-23T03:04:05Z
+assert_eq "marker-only init state query" "$(machine_state_init_state markeronly 2>/dev/null || true)" initialized
+assert_eq "marker-only snapshot state query" "$(machine_state_snapshot_state markeronly 2>/dev/null || true)" missing
+assert_eq "marker-only repo count query" "$(machine_state_repo_count markeronly)" "?"
+assert_eq "marker-only init time query" "$(machine_state_init_time markeronly 2>/dev/null || true)" 2026-06-23T03:04:05Z
+machine_state_is_firmware_image_ready markeronly >/dev/null 2>&1
+assert_eq "marker-only ready query rc" "$?" 1
 
 printf '{bad json\n' > "$CONFIGS_DIR/bad.snapshot"
-bad_record="$(record_for bad)"
-assert_record_field "bad snapshot listed" "$bad_record" machine bad
-assert_record_field "bad snapshot partial" "$bad_record" init_state partial
-assert_record_field "bad snapshot repo unknown" "$bad_record" repo_count "?"
+assert_eq "bad snapshot init state query" "$(machine_state_init_state bad 2>/dev/null || true)" partial
+assert_eq "bad snapshot state query" "$(machine_state_snapshot_state bad 2>/dev/null || true)" present
+assert_eq "bad snapshot repo count query" "$(machine_state_repo_count bad)" "?"
 
 write_marker initialized_missing_image
-missing_image_record="$(record_for initialized_missing_image)"
-assert_record_field "initialized without image is listed" "$missing_image_record" machine initialized_missing_image
-assert_record_field "initialized without image state" "$missing_image_record" init_state initialized
-assert_record_field "initialized without image not ready" "$missing_image_record" firmware_image_ready no
-assert_record_field "initialized without image not orphaned" "$missing_image_record" firmware_image_orphaned no
+assert_eq "initialized without image state query" "$(machine_state_init_state initialized_missing_image 2>/dev/null || true)" initialized
+machine_state_is_firmware_image_ready initialized_missing_image >/dev/null 2>&1
+assert_eq "initialized without image ready query rc" "$?" 1
+machine_state_is_orphan_firmware_image initialized_missing_image >/dev/null 2>&1
+assert_eq "initialized without image orphan query rc" "$?" 1
 
 write_marker ready
 deploy_dir="$OPENBMC_DIR/build/ready/tmp/deploy/images/ready"
 mkdir -p "$deploy_dir"
 touch "$deploy_dir/z.static.mtd" "$deploy_dir/a.static.mtd"
-ready_record="$(record_for ready)"
-assert_record_field "firmware-image-ready machine listed" "$ready_record" machine ready
-assert_record_field "ready discovered by init-done and firmware image" "$ready_record" discovered_by init_done,firmware_image
-assert_record_field "ready init state" "$ready_record" init_state initialized
-assert_record_field "ready firmware image flag" "$ready_record" firmware_image_ready yes
-assert_record_field "ready firmware image not orphaned" "$ready_record" firmware_image_orphaned no
-assert_record_field "ready firmware image path" "$ready_record" firmware_image_path "$deploy_dir/a.static.mtd"
-assert_match "ready firmware image mtime" "$(record_field "$ready_record" firmware_image_mtime)" '^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:]+Z$'
 image_path="$(machine_state_firmware_image_path ready)"
 assert_eq "image path sorted first" "$image_path" "$deploy_dir/a.static.mtd"
+assert_eq "ready init state query" "$(machine_state_init_state ready 2>/dev/null || true)" initialized
+machine_state_is_firmware_image_ready ready >/dev/null 2>&1
+assert_eq "ready query rc" "$?" 0
+machine_state_is_orphan_firmware_image ready >/dev/null 2>&1
+assert_eq "ready not orphan query rc" "$?" 1
+assert_match "ready firmware image mtime query" "$(machine_state_firmware_image_mtime ready 2>/dev/null || true)" '^20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:]+Z$'
 
 machine_state_firmware_image_path markeronly >/dev/null 2>&1
 assert_eq "missing image path rc" "$?" 1
@@ -185,31 +154,32 @@ assert_eq "missing init-done rc" "$?" 1
 orphan_dir="$OPENBMC_DIR/build/orphan/tmp/deploy/images/orphan"
 mkdir -p "$orphan_dir"
 touch "$orphan_dir/orphan.static.mtd"
-orphan_record="$(record_for orphan)"
-assert_record_field "artifact-only machine listed" "$orphan_record" machine orphan
-assert_record_field "artifact-only discovered by firmware image" "$orphan_record" discovered_by firmware_image
-assert_record_field "artifact-only uninitialized" "$orphan_record" init_state uninitialized
-assert_record_field "artifact-only snapshot missing" "$orphan_record" snapshot_state missing
-assert_record_field "artifact-only firmware image not ready" "$orphan_record" firmware_image_ready no
-assert_record_field "artifact-only firmware image orphaned" "$orphan_record" firmware_image_orphaned yes
-assert_record_field "artifact-only firmware image path" "$orphan_record" firmware_image_path "$orphan_dir/orphan.static.mtd"
+assert_eq "artifact-only image path query" "$(machine_state_firmware_image_path orphan)" "$orphan_dir/orphan.static.mtd"
+assert_eq "artifact-only init state query" "$(machine_state_init_state orphan 2>/dev/null || true)" uninitialized
+assert_eq "artifact-only snapshot state query" "$(machine_state_snapshot_state orphan 2>/dev/null || true)" missing
+machine_state_is_orphan_firmware_image orphan >/dev/null 2>&1
+assert_eq "artifact-only orphan query rc" "$?" 0
 
 write_snapshot partialimg 1
 partial_dir="$OPENBMC_DIR/build/partialimg/tmp/deploy/images/partialimg"
 mkdir -p "$partial_dir"
 touch "$partial_dir/partial.static.mtd"
-partial_record="$(record_for partialimg)"
-assert_record_field "partial artifact init state" "$partial_record" init_state partial
-assert_record_field "partial artifact snapshot present" "$partial_record" snapshot_state present
-assert_record_field "partial artifact not ready" "$partial_record" firmware_image_ready no
-assert_record_field "partial artifact orphaned" "$partial_record" firmware_image_orphaned yes
-assert_record_field "partial artifact discovered by snapshot and firmware image" "$partial_record" discovered_by snapshot,firmware_image
+assert_eq "partial artifact init state query" "$(machine_state_init_state partialimg 2>/dev/null || true)" partial
+assert_eq "partial artifact snapshot state query" "$(machine_state_snapshot_state partialimg 2>/dev/null || true)" present
+machine_state_is_firmware_image_ready partialimg >/dev/null 2>&1
+assert_eq "partial artifact not ready query rc" "$?" 1
+machine_state_is_orphan_firmware_image partialimg >/dev/null 2>&1
+assert_eq "partial artifact orphan query rc" "$?" 0
 
 mismatch_dir="$OPENBMC_DIR/build/mismatch/tmp/deploy/images/other"
 mkdir -p "$mismatch_dir"
 touch "$mismatch_dir/ignored.static.mtd"
-assert_no_record "mismatched build machine ignored" mismatch
-assert_no_record "mismatched deploy machine ignored" other
+display_machines="$(machine_state_display_machines 2>/dev/null || true)"
+orphan_machines="$(machine_state_orphan_firmware_image_machines 2>/dev/null || true)"
+assert_list_not_contains_line "mismatched build machine ignored" "$display_machines" mismatch
+assert_list_not_contains_line "mismatched deploy machine ignored" "$display_machines" other
+assert_list_not_contains_line "mismatched build machine not orphan" "$orphan_machines" mismatch
+assert_list_not_contains_line "mismatched deploy machine not orphan" "$orphan_machines" other
 
 EMPTY_OPENBMC_DIR="$TMP/empty-openbmc"
 mkdir -p "$EMPTY_OPENBMC_DIR"
@@ -217,8 +187,10 @@ mkdir -p "$EMPTY_OPENBMC_DIR"
     OPENBMC_DIR="$EMPTY_OPENBMC_DIR"
     CONFIGS_DIR="$TMP/empty-configs"
     mkdir -p "$CONFIGS_DIR"
-    empty_records="$(machine_state_records)"
-    assert_eq "missing build dir yields empty records" "$empty_records" ""
+    empty_display_machines="$(machine_state_display_machines)"
+    assert_eq "missing build dir yields empty display machines" "$empty_display_machines" ""
+    empty_orphan_machines="$(machine_state_orphan_firmware_image_machines)"
+    assert_eq "missing build dir yields empty orphan machines" "$empty_orphan_machines" ""
 )
 
 initialized_machines="$(machine_state_initialized_machines)"
@@ -232,6 +204,18 @@ assert_list_contains_line "ready list includes ready" "$ready_machines" ready
 assert_list_not_contains_line "ready list skips marker-only" "$ready_machines" markeronly
 assert_list_not_contains_line "ready list skips orphan artifact" "$ready_machines" orphan
 assert_list_not_contains_line "ready list skips partial artifact" "$ready_machines" partialimg
+
+display_machines="$(machine_state_display_machines 2>/dev/null || true)"
+assert_list_contains_line "display list includes snapshot-only" "$display_machines" romulus
+assert_list_contains_line "display list includes marker-only" "$display_machines" markeronly
+assert_list_contains_line "display list includes ready" "$display_machines" ready
+assert_list_contains_line "display list includes partial artifact" "$display_machines" partialimg
+assert_list_not_contains_line "display list skips artifact-only orphan" "$display_machines" orphan
+
+orphan_machines="$(machine_state_orphan_firmware_image_machines 2>/dev/null || true)"
+assert_list_contains_line "orphan list includes artifact-only orphan" "$orphan_machines" orphan
+assert_list_contains_line "orphan list includes partial artifact" "$orphan_machines" partialimg
+assert_list_not_contains_line "orphan list skips ready" "$orphan_machines" ready
 
 deps_json="$TMP/deps.json"
 cat > "$deps_json" <<'EOF'

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/ob_check.sh — ob/lib 改动后一站式配套自检。
-# 聚合: extract_funcs(ob GAPS + lib 三段) / shellcheck baseline(flat 合成 + 纯文本 multiset) / exit-contract(多文件) / run_all。
-# 固定顺序: extract_funcs → baseline → exit-contract → run_all。
+# 聚合: extract_funcs(ob GAPS + lib 三段) / machine_state public surface gate / shellcheck baseline(flat 合成 + 纯文本 multiset) / exit-contract(多文件) / run_all。
+# 固定顺序: extract_funcs → machine_state gate → baseline → exit-contract → run_all。
 # OB_SOURCES = ob + lib/*.sh(nullglob);用于 extract_funcs/exit_contract。shellcheck 用合成 flat(保留单文件可见性,避 per-file SC2034 假阳)。
 # 用法: tools/ob_check.sh
 #       OB_CHECK_SKIP_TESTS=1 tools/ob_check.sh    # 跳过 run_all(被 run_all 递归调用时用,如 smoke)
@@ -41,6 +41,16 @@ if [[ "$lib_violations" == "0" ]]; then
     else
         ok "extract_funcs lib 三段全清($lib_count 个 lib 文件)"
     fi
+fi
+
+# ── 1b. machine_state public records surface 门禁 ──
+machine_state_surface_re='(^|[^[:alnum:]_])(machine_state_records|_commands_machine_record_field|_commands_record_has_discovery_source|_commands_collect_machine_state_records|_repo_machine_record_field)($|[^[:alnum:]_])'
+machine_state_surface_hits=$(grep -RInE "$machine_state_surface_re" lib/*.sh 2>/dev/null | grep -v '^lib/machine_state.sh:' || true)
+if [[ -n "$machine_state_surface_hits" ]]; then
+    bad "machine-state public records surface still in use"
+    printf '%s\n' "$machine_state_surface_hits"
+else
+    ok "machine-state public records surface removed"
 fi
 
 # ── 2. shellcheck baseline(合成 flat + 纯文本 multiset;不 per-file 避 SC2034 跨文件假阳) ──
