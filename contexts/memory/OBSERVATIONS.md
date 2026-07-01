@@ -29,7 +29,7 @@ Date: YYYY-MM-DD
 grep -n "关键词" contexts/memory/OBSERVATIONS.md
 
 # 搜索最近 N 天
-grep -A 20 "Date: $(date -v-7d +%Y-%m-%d)" contexts/memory/OBSERVATIONS.md
+grep -A 20 "Date: $(date -d '-7 days' +%Y-%m-%d)" contexts/memory/OBSERVATIONS.md   # GNU date (Linux)
 ```
 
 或使用 `grep_search`（正则搜关键词）或 `semantic_search`（语义搜意图）做跨日期检索。

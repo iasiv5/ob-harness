@@ -135,12 +135,15 @@ Examples:
 **🏗 架构演进**
 - `ob` 模块化：单文件拆为 `lib/{util,repo,qemu,machine_state,init_pipeline,commands}.sh` 六文件，按职能切分（结构边界从注释锚点转为文件名）。
 - 新增 `machine_state` 模块，统一 machine 生命周期状态。
+- QEMU launch profile 深模块抽取：把分散的 SoC 识别 / QB 变量解析 / bootloader 查找收敛为 `lib/qemu.sh` 的单一入口 `resolve_qemu_launch_profile`，`cmd_start_qemu` 只调这一个（ADR-0007，术语见 `CONTEXT.md`）。
 
 **⚠️ Breaking**
 - `openbmc-source.lock` → `openbmc-source.manifest`（source manifest）；`<machine>.lock` 命名废弃，旧脚本需适配（术语见 `CONTEXT.md`）。
 
 **✨ 新增**
 - `tools/cache_hit_rate.py`（缓存飞轮观测）、`tools/exit_contract.py`（exit 纪律静态断言）、`bestpractice_08`（质量门禁与 eval 模式库）。
+- `machine_state` 扩展「固件镜像就绪」状态（`firmware-image-ready machine` / `orphan firmware image artifact` 术语），`ob status` 据此解释残留产物。
+- `bestpractice_09`（非功能性改动的回归锁：调用次数 / 零调用断言）、`v06` 概率乘公理。
 
 ### v1.2 — 2026-06-21
 

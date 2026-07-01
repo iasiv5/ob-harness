@@ -81,7 +81,7 @@ _Avoid_: 测试等级, 覆盖等级, L0–L3（旧称已弃）, function semanti
 _Avoid_: tool-first, ob first, 能力清单（并入本条）
 
 **exit-code 契约**:
-`ob` 所有 `cmd_*` 统一退出码：0=成功/良性无操作，1=真实失败（坏了或用法错），2=用户主动取消（非失败），3=前置缺失（修复方式是用 ob 补前置）。agent 仅在 exit 1 触发回退；补充 `function semantic layer` 条目里关于 exit 3 的说法。
+`ob` 所有 `cmd_*` 统一退出码：0=成功/良性无操作，1=真实失败（坏了或用法错），2=用户主动取消（非失败），3=前置缺失（修复方式是用 ob 补前置）。agent 仅在 exit 1 触发回退。
 _Avoid_: 返回码约定, exit status
 
 **remedy line**:
