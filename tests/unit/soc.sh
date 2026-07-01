@@ -1,31 +1,70 @@
 #!/usr/bin/env bash
-# tests/unit/soc.sh — SoC/machine 派生类函数单测(unit 层)。
-# 覆盖 detect_soc_type(QB_SYSTEM_NAME 推)/ derive_qemu_machine_name / machine_conf_chain_contains。
+# tests/unit/soc.sh — QEMU launch profile 纯规则单测(unit 层)。
+# 覆盖:QB_SYSTEM_NAME→SoC / machine conf include chain / QEMU machine name fallback。
 source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
 assert_reset
 
-# --- detect_soc_type:QB_SYSTEM_NAME 直接推(不走 deploy/conf)---
-QB_SYSTEM_NAME="qemu-system-arm"; MACHINE="romulus"; BUILD_DIR="/nonexist"; OPENBMC_DIR="/nonexist"
-detect_soc_type >/dev/null 2>&1; assert_eq "soc from arm"     "$SOC_TYPE" "ast2600"
-QB_SYSTEM_NAME="qemu-system-aarch64"; detect_soc_type >/dev/null 2>&1; assert_eq "soc from aarch64" "$SOC_TYPE" "ast2700"
+# --- QEMU system name → SoC strong evidence ---
+reset_qemu_launch_profile >/dev/null 2>&1
+qemu_launch_profile_apply_system_name "qemu-system-arm" >/dev/null 2>&1
+assert_eq "soc from arm" "${QEMU_LAUNCH_SOC_TYPE:-}" "ast2600"
+assert_eq "soc source from arm" "${QEMU_LAUNCH_SOC_SOURCE:-}" "bitbake"
+assert_eq "soc confidence from arm" "${QEMU_LAUNCH_SOC_CONFIDENCE:-}" "strong"
 
-# --- derive_qemu_machine_name ---
-QB_MACHINE_NAME=""; MACHINE="b865g8-bytedance"; derive_qemu_machine_name >/dev/null 2>&1
-assert_eq "derive from machine" "$QB_MACHINE_NAME" "b865g8-bmc"
-QB_MACHINE_NAME="preset-mach"; MACHINE="x-y"; derive_qemu_machine_name >/dev/null 2>&1
-assert_eq "derive preset kept"  "$QB_MACHINE_NAME" "preset-mach"
-# 无 '-' 分隔 → exit 3
-assert_rc 3 "derive no dash exit 3" bash -c 'OB_NO_MAIN=1 source "$1"; QB_MACHINE_NAME=""; MACHINE="nodash"; derive_qemu_machine_name' _ "$OB"
+reset_qemu_launch_profile >/dev/null 2>&1
+qemu_launch_profile_apply_system_name "qemu-system-aarch64" >/dev/null 2>&1
+assert_eq "soc from aarch64" "${QEMU_LAUNCH_SOC_TYPE:-}" "ast2700"
+assert_eq "system name kept" "${QEMU_LAUNCH_SYSTEM_NAME:-}" "qemu-system-aarch64"
 
-# --- machine_conf_chain_contains:单文件 grep 命中/不命中 ---
+reset_qemu_launch_profile >/dev/null 2>&1
+qemu_launch_profile_apply_system_name "qemu-system-riscv64" >/dev/null 2>&1
+assert_eq "unknown system no soc" "${QEMU_LAUNCH_SOC_TYPE:-}" ""
+assert_eq "unknown system no binary name" "${QEMU_LAUNCH_SYSTEM_NAME:-}" ""
+
+# --- QEMU machine name derivation ---
+reset_qemu_launch_profile >/dev/null 2>&1
+qemu_launch_profile_apply_machine_name "preset-mach" "x-y" >/dev/null 2>&1
+assert_eq "machine from bitbake" "${QEMU_LAUNCH_MACHINE_NAME:-}" "preset-mach"
+assert_eq "machine source bitbake" "${QEMU_LAUNCH_MACHINE_NAME_SOURCE:-}" "bitbake"
+
+reset_qemu_launch_profile >/dev/null 2>&1
+qemu_launch_profile_apply_machine_name "" "sample-project" >/dev/null 2>&1
+assert_eq "derive from machine" "${QEMU_LAUNCH_MACHINE_NAME:-}" "sample-bmc"
+assert_eq "machine source legacy" "${QEMU_LAUNCH_MACHINE_NAME_SOURCE:-}" "legacy-name"
+
+assert_rc 3 "derive no dash exit 3" bash -c 'OB_NO_MAIN=1 source "$1"; reset_qemu_launch_profile; qemu_launch_profile_apply_machine_name "" "nodash"' _ "$OB"
+
+# --- machine_conf_chain_contains:multi-file include / loop / missing ---
 TMP="$(mktemp -d)"
-cat > "$TMP/machine.conf" <<EOF
+OPENBMC_DIR="$TMP/openbmc"
+mkdir -p "$OPENBMC_DIR/meta-a/conf/machine/include" "$OPENBMC_DIR/meta-a/conf/machine" "$OPENBMC_DIR/meta-b/conf/machine/include"
+cat > "$OPENBMC_DIR/meta-a/conf/machine/ast2600.conf" <<EOF
 require conf/machine/include/ast2600-default.inc
 MACHINE = "x"
 EOF
-assert_true  "chain contains pattern"   machine_conf_chain_contains "$TMP/machine.conf" 'ast2600-default'
-assert_false "chain missing pattern"    machine_conf_chain_contains "$TMP/machine.conf" 'ast2700-sdk'
+cat > "$OPENBMC_DIR/meta-a/conf/machine/include/ast2600-default.inc" <<EOF
+SOC_FAMILY = "aspeed-g6"
+EOF
+cat > "$OPENBMC_DIR/meta-a/conf/machine/ast2700.conf" <<EOF
+require conf/machine/include/board.inc
+EOF
+cat > "$OPENBMC_DIR/meta-a/conf/machine/include/board.inc" <<EOF
+include conf/machine/include/ast2700-sdk.inc
+EOF
+cat > "$OPENBMC_DIR/meta-a/conf/machine/include/ast2700-sdk.inc" <<EOF
+SOC_FAMILY = "aspeed-g7"
+EOF
+cat > "$OPENBMC_DIR/meta-b/conf/machine/loop-a.conf" <<EOF
+require conf/machine/include/loop-b.inc
+EOF
+cat > "$OPENBMC_DIR/meta-b/conf/machine/include/loop-b.inc" <<EOF
+require conf/machine/loop-a.conf
+EOF
+
+assert_true  "chain contains ast2600"   machine_conf_chain_contains "$OPENBMC_DIR/meta-a/conf/machine/ast2600.conf" 'ast2600-default'
+assert_true  "chain contains ast2700"   machine_conf_chain_contains "$OPENBMC_DIR/meta-a/conf/machine/ast2700.conf" 'ast2700-sdk\.inc|aspeed-g7'
+assert_false "chain loop terminates"    machine_conf_chain_contains "$OPENBMC_DIR/meta-b/conf/machine/loop-a.conf" 'ast2700-sdk'
 assert_false "chain missing file"       machine_conf_chain_contains "$TMP/nonexist.conf" 'anything'
 rm -rf "$TMP"
 

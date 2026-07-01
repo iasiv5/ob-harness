@@ -613,16 +613,11 @@ cmd_start_qemu() {
     fi
     verbose "Image file: $image_file"
 
-    resolve_qb_vars
-
-    # ── SoC detection (backfills QB_SYSTEM_NAME if bitbake didn't provide it) ──
-    detect_soc_type
-
-    # ── QEMU machine name derivation (QB_MACHINE → fallback to xxx-bmc) ──
-    derive_qemu_machine_name
+    resolve_qemu_launch_profile "$MACHINE"
 
     # ── Prerequisite 4: QEMU binary ──
     ensure_qemu_binary
+    qemu_launch_profile_apply_binary_machine_override
 
     # ── Prerequisite 4b: QEMU firmware (bootroms, etc.) ──
     ensure_qemu_firmware
@@ -697,9 +692,9 @@ cmd_start_qemu() {
     # ── Build QEMU command (SoC-specific template) ──
     build_qemu_cmd "$image_file" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log" "$serial_sock"
 
-    step_header "Starting QEMU for '$MACHINE' ($SOC_TYPE)"
-    echo "  Machine   : $QB_MACHINE_NAME"
-    echo "  SoC       : $SOC_TYPE"
+    step_header "Starting QEMU for '$MACHINE' ($QEMU_LAUNCH_SOC_TYPE)"
+    echo "  Machine   : $QEMU_LAUNCH_MACHINE_NAME"
+    echo "  SoC       : $QEMU_LAUNCH_SOC_TYPE"
     echo "  Binary    : $QEMU_BIN_FILE"
     echo "  Image     : $image_file"
     echo "  Serial log: $serial_log"
@@ -751,7 +746,7 @@ cmd_start_qemu() {
     fi
     rm -f "$qemu_stderr"
 
-    _qemu_post_launch "$QB_MACHINE_NAME" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log" "$serial_sock"
+    _qemu_post_launch "$QEMU_LAUNCH_MACHINE_NAME" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log" "$serial_sock"
 }
 
 _qemu_post_launch() {

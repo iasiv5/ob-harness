@@ -34,14 +34,24 @@ QEMU_NO_WAIT=0
 QEMU_FORCE=0
 QEMU_STOP_ALL=0
 QEMU_BIN_DIR=""       # derived: workspace/qemu-bin/<source>
-QEMU_BIN_FILE=""      # derived: workspace/qemu-bin/<source>/<QB_SYSTEM_NAME>
+QEMU_BIN_FILE=""      # derived: workspace/qemu-bin/<source>/<QEMU_LAUNCH_SYSTEM_NAME>
 QEMU_PIDS_DIR=""      # derived: workspace/qemu-bin/.pids
 QEMU_PID_FILE=""      # derived: workspace/qemu-bin/.pids/<machine>.pid
 
-# QEMU QB vars (resolved via bitbake -e) + binary URL config
-QB_MACHINE_NAME=""        # derived: <name> from "-machine <name>"
-QB_MEM_SIZE_FLAG=""       # derived: "-m <size>"
-QB_SYSTEM_NAME=""         # derived: qemu-system-arm | qemu-system-aarch64
+# QEMU launch profile (resolved via bitbake -e + profile fallback evidence)
+QEMU_LAUNCH_SOC_TYPE=""
+QEMU_LAUNCH_SOC_SOURCE=""
+QEMU_LAUNCH_SOC_CONFIDENCE=""
+QEMU_LAUNCH_SYSTEM_NAME=""
+QEMU_LAUNCH_MACHINE_NAME=""
+QEMU_LAUNCH_MACHINE_NAME_SOURCE=""
+QEMU_LAUNCH_MEM_FLAG=""
+QEMU_LAUNCH_REQUIRES_PCBIOS=""
+QEMU_LAUNCH_BOOTLOADER_UBOOT_NODTB=""
+QEMU_LAUNCH_BOOTLOADER_UBOOT_DTB=""
+QEMU_LAUNCH_BOOTLOADER_BL31=""
+QEMU_LAUNCH_BOOTLOADER_OPTEE=""
+QEMU_LAUNCH_BOOTLOADER_UBOOT_SIZE=""
 QEMU_URL_CONFIG_FILE=""   # derived: workspace/qemu-bin/qemu-binary-urls.conf
 QEMU_PCBIOS_DIR=""        # derived: workspace/qemu-bin/<source>/pc-bios
 

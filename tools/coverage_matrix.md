@@ -41,7 +41,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
 | QEMU binary 路径/manifest | derive_qemu_paths;read_qemu_url_config;write_qemu_url_config;write_qemu_binary_manifest;write_qemu_pcbios_manifest | unit/qemu_manifest.sh | |
-| QB 变量解析 | resolve_qb_vars | orchestration/resolve_qb_vars.sh | exit 函数 |
+| QEMU launch profile / QB 输入解析 | resolve_qemu_launch_profile | orchestration/qemu_launch_profile.sh;orchestration/resolve_qb_vars.sh;protocol/qemu_launch_profile_remedy.sh | exit 函数 |
 | 端口检查 | check_ports_available;get_port_occupants | unit/ports.sh | check_ports_available exit 函数 |
 | PID 校验 | validate_pid | unit/ports.sh | |
 | 失效 host key 检测 | check_ssh_hostkey_conflict;_clear_stale_hostkey_menu | unit/hostkey_conflict.sh | Track A 删除菜单(确证失效);Track B sshd 未就绪仅提示不删 |
@@ -64,5 +64,5 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 交互叶子(stdin) | select_from_list;confirm_action;prompt_for_absolute_path | unit/interact.sh | |
 | require_path 前置 | require_path | unit/require_path.sh | exit 函数,radar 低估 |
 | 字符串/工具子函数 | is_valid_repo_url;read_kv_field;read_manifest_field;trim_whitespace | unit/url.sh;unit/source_manifest.sh | 子工具,被上层调用 |
-| SoC/QEMU 派生 | detect_soc_type;derive_qemu_machine_name | unit/soc.sh | start-qemu SoC/机型派生 |
+| QEMU launch profile 纯规则 | qemu_launch_profile_apply_system_name;qemu_launch_profile_apply_machine_name;machine_conf_chain_contains | unit/soc.sh | start-qemu SoC/机型派生 |
 | conf/url 工具 | read_local_conf_var;resolve_effective_dl_dir;resolve_effective_sstate_dir;is_private_url;parse_hostkey_offending;machine_conf_chain_contains | unit/conf_read.sh;unit/url_extra.sh | 子工具 |

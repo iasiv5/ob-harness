@@ -5,7 +5,7 @@
 derive_qemu_paths() {
     local label arch
     label=$(read_source_label)
-    arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
+    arch="${QEMU_LAUNCH_SYSTEM_NAME:-qemu-system-arm}"
     QEMU_BIN_DIR="$WORKSPACE_DIR/qemu-bin/$label"
     QEMU_BIN_FILE="$QEMU_BIN_DIR/$arch"
     QEMU_PIDS_DIR="$WORKSPACE_DIR/qemu-bin/.pids"
@@ -42,7 +42,7 @@ write_qemu_url_config() {
     mkdir -p "$(dirname "$QEMU_URL_CONFIG_FILE")"
     if [[ ! -f "$QEMU_URL_CONFIG_FILE" ]]; then
         echo "# qemu binary download URLs — auto-managed by 'ob start-qemu'" > "$QEMU_URL_CONFIG_FILE"
-        echo "# key: <source_label>.<QB_SYSTEM_NAME>" >> "$QEMU_URL_CONFIG_FILE"
+        echo "# key: <source_label>.<QEMU_LAUNCH_SYSTEM_NAME>" >> "$QEMU_URL_CONFIG_FILE"
     fi
 
     if grep -q "^${key_re}=" "$QEMU_URL_CONFIG_FILE"; then
@@ -91,6 +91,360 @@ pcbios_path=${QEMU_BIN_DIR}/pc-bios
 pcbios_source=${pcbios_source_path}
 installed_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 MANIFEST_EOF
+}
+
+reset_qemu_launch_profile() {
+    QEMU_LAUNCH_SOC_TYPE=""
+    QEMU_LAUNCH_SOC_SOURCE=""
+    QEMU_LAUNCH_SOC_CONFIDENCE=""
+    QEMU_LAUNCH_SYSTEM_NAME=""
+    QEMU_LAUNCH_MACHINE_NAME=""
+    QEMU_LAUNCH_MACHINE_NAME_SOURCE=""
+    QEMU_LAUNCH_MEM_FLAG=""
+    QEMU_LAUNCH_REQUIRES_PCBIOS=""
+    QEMU_LAUNCH_BOOTLOADER_UBOOT_NODTB=""
+    QEMU_LAUNCH_BOOTLOADER_UBOOT_DTB=""
+    QEMU_LAUNCH_BOOTLOADER_BL31=""
+    QEMU_LAUNCH_BOOTLOADER_OPTEE=""
+    QEMU_LAUNCH_BOOTLOADER_UBOOT_SIZE=""
+}
+
+qemu_launch_profile_apply_system_name() {
+    local system_name="$1"
+    local evidence_source="${2:-bitbake}"
+
+    case "$system_name" in
+        qemu-system-arm)
+            QEMU_LAUNCH_SYSTEM_NAME="$system_name"
+            qemu_launch_profile_record_soc_evidence "ast2600" "$evidence_source" "strong"
+            ;;
+        qemu-system-aarch64)
+            QEMU_LAUNCH_SYSTEM_NAME="$system_name"
+            qemu_launch_profile_record_soc_evidence "ast2700" "$evidence_source" "strong"
+            ;;
+        "")
+            ;;
+        *)
+            warn "Unknown QB_SYSTEM_NAME '$system_name' — will use QEMU launch profile fallback evidence."
+            QEMU_LAUNCH_SYSTEM_NAME=""
+            ;;
+    esac
+}
+
+qemu_launch_profile_extract_bitbake_var() {
+    local bitbake_output="$1"
+    local var_name="$2"
+    local raw=""
+
+    raw=$(awk -v name="$var_name" '
+        index($0, name "=") == 1 {
+            print substr($0, length(name) + 2)
+            exit 0
+        }
+    ' <<< "$bitbake_output")
+
+    raw=$(trim_whitespace "$raw")
+    raw="${raw#\"}"; raw="${raw%\"}"
+    raw="${raw#\'}"; raw="${raw%\'}"
+    printf '%s\n' "$raw"
+}
+
+qemu_launch_profile_record_soc_evidence() {
+    local soc_type="$1"
+    local source="$2"
+    local confidence="$3"
+
+    [[ -z "$soc_type" ]] && return 0
+    if [[ -n "$QEMU_LAUNCH_SOC_TYPE" && "$QEMU_LAUNCH_SOC_TYPE" != "$soc_type" ]]; then
+        error "SoC type conflict: $QEMU_LAUNCH_SOC_SOURCE says '$QEMU_LAUNCH_SOC_TYPE', $source says '$soc_type'"
+        error "Resolve the mismatch before continuing."
+        exit 1
+    fi
+    if [[ -z "$QEMU_LAUNCH_SOC_TYPE" ]]; then
+        QEMU_LAUNCH_SOC_TYPE="$soc_type"
+        QEMU_LAUNCH_SOC_SOURCE="$source"
+        QEMU_LAUNCH_SOC_CONFIDENCE="$confidence"
+    fi
+}
+
+qemu_launch_profile_apply_machine_name() {
+    local qb_machine_name="$1"
+    local machine_name="$2"
+    local evidence_source="${3:-bitbake}"
+
+    if [[ -n "$qb_machine_name" ]]; then
+        QEMU_LAUNCH_MACHINE_NAME="$qb_machine_name"
+        QEMU_LAUNCH_MACHINE_NAME_SOURCE="$evidence_source"
+        return 0
+    fi
+
+    local prefix="${machine_name%%-*}"
+    if [[ "$prefix" == "$machine_name" ]]; then
+        error "Cannot determine QEMU machine name for machine '$machine_name'."
+        error "Define QB_MACHINE in the machine conf, then retry."
+        exit 3
+    fi
+
+    QEMU_LAUNCH_MACHINE_NAME="${prefix}-bmc"
+    QEMU_LAUNCH_MACHINE_NAME_SOURCE="legacy-name"
+    warn "QB_MACHINE not defined; derived QEMU machine name from machine name: $QEMU_LAUNCH_MACHINE_NAME"
+}
+
+qemu_binary_supports_machine() {
+    local machine_name="$1"
+
+    [[ -n "$machine_name" && -x "$QEMU_BIN_FILE" ]] || return 1
+    "$QEMU_BIN_FILE" -machine help 2>/dev/null | awk -v name="$machine_name" '$1 == name { found = 1; exit } END { exit(found ? 0 : 1) }'
+}
+
+qemu_launch_profile_apply_binary_machine_override() {
+    local prefix="${MACHINE%%-*}"
+    local candidate=""
+    local previous=""
+    local previous_source=""
+
+    [[ -n "$QEMU_LAUNCH_MACHINE_NAME" ]] || return 0
+    [[ "$prefix" != "$MACHINE" ]] || return 0
+
+    candidate="${prefix}-bmc"
+    [[ "$candidate" != "$QEMU_LAUNCH_MACHINE_NAME" ]] || return 0
+    qemu_binary_supports_machine "$candidate" || return 0
+
+    previous="$QEMU_LAUNCH_MACHINE_NAME"
+    previous_source="$QEMU_LAUNCH_MACHINE_NAME_SOURCE"
+    QEMU_LAUNCH_MACHINE_NAME="$candidate"
+    QEMU_LAUNCH_MACHINE_NAME_SOURCE="qemu-binary"
+    info "Using QEMU binary-supported machine '$candidate' (overrides '$previous' from $previous_source)."
+}
+
+qemu_launch_profile_uses_external_ast2700_loaders() {
+    [[ "$QEMU_LAUNCH_SOC_TYPE" == "ast2700" ]] || return 1
+
+    case "$QEMU_LAUNCH_MACHINE_NAME" in
+        ast2700a1-evb|ast2700a2-evb|ast2700-evb)
+            return 0
+            ;;
+    esac
+
+    return 1
+}
+
+qemu_launch_profile_system_name_for_soc() {
+    local soc_type="$1"
+
+    case "$soc_type" in
+        ast2600) echo "qemu-system-arm" ;;
+        ast2700) echo "qemu-system-aarch64" ;;
+    esac
+}
+
+qemu_launch_profile_apply_machine_conf() {
+    local machine_conf="$1"
+
+    [[ -f "$machine_conf" ]] || return 0
+    if machine_conf_chain_contains "$machine_conf" 'ast2700-sdk\.inc|ast2700[^[:space:]#]*\.inc|aspeed-g7'; then
+        qemu_launch_profile_record_soc_evidence "ast2700" "machine-conf" "strong"
+    elif machine_conf_chain_contains "$machine_conf" 'ast2600[^[:space:]#]*\.inc|ast2600-default|aspeed-g6'; then
+        qemu_launch_profile_record_soc_evidence "ast2600" "machine-conf" "strong"
+    fi
+}
+
+qemu_launch_profile_find_machine_conf() {
+    find "$OPENBMC_DIR" -path "*/conf/machine/$MACHINE.conf" -type f -print -quit 2>/dev/null || true
+}
+
+qemu_launch_profile_deploy_evidence() {
+    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
+    local has_uboot_nodtb=0
+    local has_uboot_dtb=0
+    local has_bl31=0
+    local has_optee=0
+
+    QEMU_PROFILE_DEPLOY_HAS_STATIC_MTD="no"
+    QEMU_PROFILE_DEPLOY_AST2700_EVIDENCE="none"
+
+    [[ -d "$deploy_dir" ]] || return 0
+
+    if compgen -G "$deploy_dir/*.static.mtd" >/dev/null; then
+        QEMU_PROFILE_DEPLOY_HAS_STATIC_MTD="yes"
+    fi
+    [[ -f "$deploy_dir/u-boot-nodtb.bin" ]] && has_uboot_nodtb=1
+    [[ -f "$deploy_dir/u-boot.dtb" ]] && has_uboot_dtb=1
+    [[ -f "$deploy_dir/bl31.bin" ]] && has_bl31=1
+    [[ -f "$deploy_dir/optee/tee-raw.bin" ]] && has_optee=1
+
+    local count=$((has_uboot_nodtb + has_uboot_dtb + has_bl31 + has_optee))
+    if [[ "$count" -eq 4 ]]; then
+        QEMU_PROFILE_DEPLOY_AST2700_EVIDENCE="explicit"
+    elif [[ "$count" -gt 0 ]]; then
+        QEMU_PROFILE_DEPLOY_AST2700_EVIDENCE="partial"
+    fi
+}
+
+qemu_launch_profile_resolve_ast2700_bootloaders() {
+    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
+
+    QEMU_LAUNCH_BOOTLOADER_UBOOT_NODTB="$deploy_dir/u-boot-nodtb.bin"
+    QEMU_LAUNCH_BOOTLOADER_UBOOT_DTB="$deploy_dir/u-boot.dtb"
+    QEMU_LAUNCH_BOOTLOADER_BL31="$deploy_dir/bl31.bin"
+    QEMU_LAUNCH_BOOTLOADER_OPTEE="$deploy_dir/optee/tee-raw.bin"
+
+    local -a missing=()
+    [[ -f "$QEMU_LAUNCH_BOOTLOADER_UBOOT_NODTB" ]] || missing+=("u-boot-nodtb.bin ($QEMU_LAUNCH_BOOTLOADER_UBOOT_NODTB)")
+    [[ -f "$QEMU_LAUNCH_BOOTLOADER_UBOOT_DTB" ]] || missing+=("u-boot.dtb ($QEMU_LAUNCH_BOOTLOADER_UBOOT_DTB)")
+    [[ -f "$QEMU_LAUNCH_BOOTLOADER_BL31" ]] || missing+=("bl31.bin ($QEMU_LAUNCH_BOOTLOADER_BL31)")
+    [[ -f "$QEMU_LAUNCH_BOOTLOADER_OPTEE" ]] || missing+=("optee/tee-raw.bin ($QEMU_LAUNCH_BOOTLOADER_OPTEE)")
+
+    if [[ ${#missing[@]} -gt 0 ]]; then
+        error "AST2700 bootloader files are missing for machine '$MACHINE'."
+        local missing_file
+        for missing_file in "${missing[@]}"; do
+            error "  Missing: $missing_file"
+        done
+        error "Run 'ob build $MACHINE' first."
+        exit 3
+    fi
+
+    QEMU_LAUNCH_BOOTLOADER_UBOOT_SIZE=$(stat --format=%s -L "$QEMU_LAUNCH_BOOTLOADER_UBOOT_NODTB" 2>/dev/null || echo "0")
+}
+
+qemu_launch_profile_find_qemuboot_conf() {
+    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
+    local newest=""
+    local newest_ts=0
+    local conf
+
+    [[ -d "$deploy_dir" ]] || return 0
+    for conf in "$deploy_dir"/*.qemuboot.conf; do
+        [[ -f "$conf" ]] || continue
+        local ts
+        ts=$(stat --format=%Y "$conf" 2>/dev/null || echo 0)
+        if (( ts >= newest_ts )); then
+            newest_ts="$ts"
+            newest="$conf"
+        fi
+    done
+
+    printf '%s\n' "$newest"
+}
+
+qemu_launch_profile_extract_qemuboot_var() {
+    local qemuboot_conf="$1"
+    local var_name="$2"
+    local raw=""
+
+    raw=$(awk -F= -v name="$var_name" '
+        /^[[:space:]]*(#|$)/ { next }
+        {
+            key = $1
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", key)
+            if (key == name) {
+                sub(/^[^=]*=/, "")
+                print
+                exit 0
+            }
+        }
+    ' "$qemuboot_conf")
+
+    trim_whitespace "$raw"
+}
+
+resolve_qemu_launch_profile() {
+    local machine_name="${1:-$MACHINE}"
+    MACHINE="$machine_name"
+    reset_qemu_launch_profile
+
+    require_path "$BUILD_DIR" "Build directory" "Run 'ob init $MACHINE' first." 3
+    require_path "$OPENBMC_DIR/setup" "OpenBMC setup script" "Run 'ob init' first." 3
+
+    local qb_machine_raw
+    local qb_mem_raw
+    local qb_system_raw
+    local qb_source="bitbake"
+    local qemuboot_conf=""
+    qemuboot_conf=$(qemu_launch_profile_find_qemuboot_conf)
+    if [[ -n "$qemuboot_conf" ]]; then
+        info "Resolving QEMU launch profile from qemuboot.conf..."
+        verbose "  qemuboot.conf → $qemuboot_conf"
+        qb_source="qemuboot"
+        qb_machine_raw=$(qemu_launch_profile_extract_qemuboot_var "$qemuboot_conf" qb_machine)
+        qb_mem_raw=$(qemu_launch_profile_extract_qemuboot_var "$qemuboot_conf" qb_mem)
+        qb_system_raw=$(qemu_launch_profile_extract_qemuboot_var "$qemuboot_conf" qb_system_name)
+    else
+        info "Resolving QEMU launch profile via BitBake (this can take a while)..."
+        local bitbake_output
+        # shellcheck disable=SC1091
+        bitbake_output=$(cd "$OPENBMC_DIR" && set +u; source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null && bitbake -e 2>/dev/null)
+        if [[ -z "$bitbake_output" ]]; then
+            # An empty `bitbake -e` means the build environment itself is unhealthy,
+            # not merely a missing QB input that profile fallback can repair.
+            error "Failed to run 'bitbake -e' for machine '$MACHINE'."
+            error "Ensure the build environment is healthy (try 'ob init $MACHINE' if unsure)."
+            exit 1
+        fi
+
+        qb_machine_raw=$(qemu_launch_profile_extract_bitbake_var "$bitbake_output" QB_MACHINE)
+        qb_mem_raw=$(qemu_launch_profile_extract_bitbake_var "$bitbake_output" QB_MEM)
+        qb_system_raw=$(qemu_launch_profile_extract_bitbake_var "$bitbake_output" QB_SYSTEM_NAME)
+    fi
+
+    local qb_machine_name=""
+    if [[ -n "$qb_machine_raw" ]]; then
+        qb_machine_name=$(echo "$qb_machine_raw" | sed 's/^-machine[[:space:]]*//' | awk '{print $1}')
+    fi
+
+    QEMU_LAUNCH_MEM_FLAG="$qb_mem_raw"
+    qemu_launch_profile_apply_system_name "$qb_system_raw" "$qb_source"
+
+    if [[ "$qb_source" != "qemuboot" || -z "$QEMU_LAUNCH_SOC_TYPE" ]]; then
+        local machine_conf=""
+        machine_conf=$(qemu_launch_profile_find_machine_conf)
+        qemu_launch_profile_apply_machine_conf "$machine_conf"
+    fi
+
+    qemu_launch_profile_deploy_evidence
+    if [[ "$QEMU_PROFILE_DEPLOY_AST2700_EVIDENCE" == "explicit" ]]; then
+        qemu_launch_profile_record_soc_evidence "ast2700" "deploy" "deploy"
+    elif [[ "$QEMU_PROFILE_DEPLOY_AST2700_EVIDENCE" == "partial" && "$QEMU_LAUNCH_SOC_TYPE" == "ast2600" ]]; then
+        warn "Found partial AST2700 deploy evidence, but strong evidence selects AST2600; ignoring stale deploy artifacts."
+    fi
+
+    if [[ -z "$QEMU_LAUNCH_SOC_TYPE" ]]; then
+        if [[ "$QEMU_PROFILE_DEPLOY_AST2700_EVIDENCE" == "partial" ]]; then
+            error "Cannot determine SoC type for machine '$MACHINE'."
+            error "Define QB_SYSTEM_NAME or include an ast2600/ast2700 machine conf fragment, then retry."
+            exit 3
+        elif [[ "$QEMU_PROFILE_DEPLOY_HAS_STATIC_MTD" == "yes" ]]; then
+            QEMU_LAUNCH_SOC_TYPE="ast2600"
+            QEMU_LAUNCH_SOC_SOURCE="legacy-deploy"
+            QEMU_LAUNCH_SOC_CONFIDENCE="legacy"
+            warn "Falling back to legacy AST2600 assumption because deploy image exists."
+        else
+            error "Cannot determine SoC type for machine '$MACHINE'."
+            error "Define QB_SYSTEM_NAME or include an ast2600/ast2700 machine conf fragment, then retry."
+            exit 3
+        fi
+    fi
+
+    if [[ -z "$QEMU_LAUNCH_SYSTEM_NAME" ]]; then
+        QEMU_LAUNCH_SYSTEM_NAME=$(qemu_launch_profile_system_name_for_soc "$QEMU_LAUNCH_SOC_TYPE")
+    fi
+    qemu_launch_profile_apply_machine_name "$qb_machine_name" "$MACHINE" "$qb_source"
+
+    if [[ "$QEMU_LAUNCH_SOC_TYPE" == "ast2700" ]]; then
+        QEMU_LAUNCH_REQUIRES_PCBIOS="yes"
+        qemu_launch_profile_resolve_ast2700_bootloaders
+    else
+        QEMU_LAUNCH_REQUIRES_PCBIOS="no"
+    fi
+
+    verbose "  QEMU_LAUNCH_SOC_TYPE → $QEMU_LAUNCH_SOC_TYPE"
+    verbose "  QEMU_LAUNCH_SOC_SOURCE → $QEMU_LAUNCH_SOC_SOURCE"
+    verbose "  QEMU_LAUNCH_SOC_CONFIDENCE → $QEMU_LAUNCH_SOC_CONFIDENCE"
+    verbose "  QEMU_LAUNCH_SYSTEM_NAME → $QEMU_LAUNCH_SYSTEM_NAME"
+    verbose "  QEMU_LAUNCH_MACHINE_NAME → $QEMU_LAUNCH_MACHINE_NAME"
+    verbose "  QEMU_LAUNCH_MACHINE_NAME_SOURCE → $QEMU_LAUNCH_MACHINE_NAME_SOURCE"
+    verbose "  QEMU_LAUNCH_MEM_FLAG → $QEMU_LAUNCH_MEM_FLAG"
 }
 
 # Query Jenkins lastSuccessfulBuild number for a given job URL.
@@ -275,7 +629,7 @@ check_jenkins_update() {
     fi
 
     # ── Interactive confirmation ──
-    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
+    local arch="${QEMU_LAUNCH_SYSTEM_NAME:-qemu-system-arm}"
     echo ""
     local ca_rc=0
     confirm_action "update community QEMU binary" "build #${local_build} → #${remote_build}" || ca_rc=$?
@@ -304,7 +658,7 @@ ensure_qemu_binary_community() {
     label=$(read_source_label)
     mkdir -p "$QEMU_BIN_DIR"
 
-    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
+    local arch="${QEMU_LAUNCH_SYSTEM_NAME:-qemu-system-arm}"
     local qemu_url=""
 
     if [[ -n "${OB_QEMU_BINARY_URL:-}" ]]; then
@@ -411,7 +765,7 @@ ensure_qemu_binary_custom() {
 
     mkdir -p "$QEMU_BIN_DIR"
 
-    local arch="${QB_SYSTEM_NAME:-qemu-system-arm}"
+    local arch="${QEMU_LAUNCH_SYSTEM_NAME:-qemu-system-arm}"
 
     # --- Step 1: QEMU binary ---
     echo ""
@@ -450,7 +804,7 @@ ensure_qemu_binary_custom() {
     local input_pcbios=""
     local resolved_pcbios_path=""
     local target_pcbios="$QEMU_BIN_DIR/pc-bios"
-    if [[ "$SOC_TYPE" == "ast2700" ]]; then
+    if [[ "$QEMU_LAUNCH_REQUIRES_PCBIOS" == "yes" ]]; then
         echo ""
 
         while true; do
@@ -502,50 +856,6 @@ ensure_qemu_binary_custom() {
     verbose "  SHA256 : $sha256"
 }
 
-find_ast2700_bootloaders() {
-    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
-
-    require_path "$deploy_dir" "Deploy directory" "Run 'ob build' for machine '$MACHINE' first." 3
-
-    BOOTLOADER_UBOOT_NODTB="$deploy_dir/u-boot-nodtb.bin"
-    BOOTLOADER_UBOOT_DTB="$deploy_dir/u-boot.dtb"
-    BOOTLOADER_BL31="$deploy_dir/bl31.bin"
-    BOOTLOADER_OPTEE="$deploy_dir/optee/tee-raw.bin"
-
-    # Validate each file
-    local -a missing=()
-    for desc_file in \
-        "u-boot-nodtb.bin:$BOOTLOADER_UBOOT_NODTB" \
-        "u-boot.dtb:$BOOTLOADER_UBOOT_DTB" \
-        "bl31.bin:$BOOTLOADER_BL31" \
-        "optee/tee-raw.bin:$BOOTLOADER_OPTEE"
-    do
-        local desc="${desc_file%%:*}"
-        local fpath="${desc_file#*:}"
-        if [[ ! -f "$fpath" ]]; then
-            missing+=("$desc ($fpath)")
-        fi
-    done
-
-    if [[ ${#missing[@]} -gt 0 ]]; then
-        error "AST2700 bootloader files not found in deploy directory:"
-        for m in "${missing[@]}"; do
-            error "  Missing: $m"
-        done
-        error "Ensure 'ob build' completed successfully for '$MACHINE'."
-        exit 3
-    fi
-
-    # Get u-boot-nodtb.bin size for DTB load offset calculation
-    BOOTLOADER_UBOOT_SIZE=$(stat --format=%s -L "$BOOTLOADER_UBOOT_NODTB" 2>/dev/null || echo "0")
-
-    verbose "AST2700 bootloaders:"
-    verbose "  u-boot-nodtb.bin : $BOOTLOADER_UBOOT_NODTB ($BOOTLOADER_UBOOT_SIZE bytes)"
-    verbose "  u-boot.dtb       : $BOOTLOADER_UBOOT_DTB"
-    verbose "  bl31.bin         : $BOOTLOADER_BL31"
-    verbose "  tee-raw.bin      : $BOOTLOADER_OPTEE"
-}
-
 build_qemu_cmd() {
     local image_file="$1"
     local ssh_port="$2"
@@ -553,6 +863,7 @@ build_qemu_cmd() {
     local ipmi_port="$4"
     local http_port="$5"
     local serial_log="$6"
+    local serial_sock="$7"
 
     # Port forwarding string
     local hostfwd_args=""
@@ -566,17 +877,16 @@ build_qemu_cmd() {
     # Start building command array
     QEMU_CMD=(
         "$QEMU_BIN_FILE"
-        "-machine" "$QB_MACHINE_NAME"
+        "-machine" "$QEMU_LAUNCH_MACHINE_NAME"
     )
 
     # SoC-specific parameters
-    if [[ "$SOC_TYPE" == "ast2700" ]]; then
-        find_ast2700_bootloaders
+    if qemu_launch_profile_uses_external_ast2700_loaders; then
         QEMU_CMD+=(
-            "-device" "loader,force-raw=on,addr=0x400000000,file=$BOOTLOADER_UBOOT_NODTB"
-            "-device" "loader,force-raw=on,addr=$((0x400000000 + BOOTLOADER_UBOOT_SIZE)),file=$BOOTLOADER_UBOOT_DTB"
-            "-device" "loader,force-raw=on,addr=0x430000000,file=$BOOTLOADER_BL31"
-            "-device" "loader,force-raw=on,addr=0x430080000,file=$BOOTLOADER_OPTEE"
+            "-device" "loader,force-raw=on,addr=0x400000000,file=$QEMU_LAUNCH_BOOTLOADER_UBOOT_NODTB"
+            "-device" "loader,force-raw=on,addr=$((0x400000000 + QEMU_LAUNCH_BOOTLOADER_UBOOT_SIZE)),file=$QEMU_LAUNCH_BOOTLOADER_UBOOT_DTB"
+            "-device" "loader,force-raw=on,addr=0x430000000,file=$QEMU_LAUNCH_BOOTLOADER_BL31"
+            "-device" "loader,force-raw=on,addr=0x430080000,file=$QEMU_LAUNCH_BOOTLOADER_OPTEE"
             "-device" "loader,cpu-num=0,addr=0x430000000"
             "-device" "loader,cpu-num=1,addr=0x430000000"
             "-device" "loader,cpu-num=2,addr=0x430000000"
@@ -587,14 +897,11 @@ build_qemu_cmd() {
     # AST2600: bootloader is embedded in MTD image, no extra params needed
 
     # QB_MEM (-m flag): include only if resolved from bitbake
-    if [[ -n "$QB_MEM_SIZE_FLAG" ]]; then
+    if [[ -n "$QEMU_LAUNCH_MEM_FLAG" ]]; then
         local -a qemu_mem_args=()
-        read -r -a qemu_mem_args <<< "$QB_MEM_SIZE_FLAG"
+        read -r -a qemu_mem_args <<< "$QEMU_LAUNCH_MEM_FLAG"
         QEMU_CMD+=("${qemu_mem_args[@]}")
     fi
-
-    local serial_log="$6"
-    local serial_sock="$7"
 
     # Common tail: drive, network, serial, display
     QEMU_CMD+=(
@@ -607,7 +914,7 @@ build_qemu_cmd() {
         "-monitor" "none"
         "-display" "none"
     )
-    if [[ -d "$QEMU_PCBIOS_DIR" ]]; then
+    if [[ "$QEMU_LAUNCH_REQUIRES_PCBIOS" == "yes" && -d "$QEMU_PCBIOS_DIR" ]]; then
         QEMU_CMD+=("-L" "$QEMU_PCBIOS_DIR")
     fi
     QEMU_CMD+=("-daemonize")
@@ -628,7 +935,7 @@ build_qemu_cmd() {
 ensure_qemu_firmware() {
     QEMU_PCBIOS_DIR="$QEMU_BIN_DIR/pc-bios"
 
-    if [[ "$SOC_TYPE" != "ast2700" ]]; then
+    if [[ "$QEMU_LAUNCH_REQUIRES_PCBIOS" != "yes" ]]; then
         return 0
     fi
 
@@ -639,86 +946,6 @@ ensure_qemu_firmware() {
     fi
 
     require_path "$QEMU_PCBIOS_DIR/ast27x0_bootrom.bin" "AST2700 bootrom" "Provide the pc-bios directory itself, or a QEMU root directory that contains pc-bios/." 3
-}
-
-resolve_qb_vars() {
-    # Validate build environment exists
-    require_path "$BUILD_DIR" "Build directory" "Run 'ob init $MACHINE' first." 3
-
-    require_path "$OPENBMC_DIR/setup" "OpenBMC setup script" "Run 'ob init' first." 3
-
-    info "Resolving QEMU variables via BitBake (this takes a few seconds)..."
-
-    local bitbake_output
-    bitbake_output=$(cd "$OPENBMC_DIR" && set +u; source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null && bitbake -e 2>/dev/null)
-
-    if [[ -z "$bitbake_output" ]]; then
-        error "Failed to run 'bitbake -e' for machine '$MACHINE'."
-        error "Ensure the build environment is healthy (try 'ob init $MACHINE' if unsure)."
-        exit 1
-    fi
-
-    QB_MACHINE_NAME=""
-    QB_MEM_SIZE_FLAG=""
-    QB_SYSTEM_NAME=""
-
-    # Extract QB_MACHINE
-    local qb_machine_raw
-    qb_machine_raw=$(echo "$bitbake_output" | grep '^QB_MACHINE=' | head -1 | cut -d= -f2-)
-    qb_machine_raw=$(trim_whitespace "$qb_machine_raw")
-    # Strip quotes
-    qb_machine_raw="${qb_machine_raw#\"}"
-    qb_machine_raw="${qb_machine_raw%\"}"
-    qb_machine_raw="${qb_machine_raw#\'}"
-    qb_machine_raw="${qb_machine_raw%\'}"
-
-    if [[ -z "$qb_machine_raw" ]]; then
-        warn "QB_MACHINE not defined for machine '$MACHINE' — will derive from machine name or SoC fallback."
-        QB_MACHINE_NAME=""
-    else
-        # Extract the machine name from "-machine <name>"
-        QB_MACHINE_NAME=$(echo "$qb_machine_raw" | sed 's/^-machine[[:space:]]*//' | awk '{print $1}')
-        if [[ -z "$QB_MACHINE_NAME" ]]; then
-            warn "Could not parse QEMU machine name from QB_MACHINE='$qb_machine_raw' — will use fallback."
-            QB_MACHINE_NAME=""
-        fi
-    fi
-
-    # Extract QB_MEM
-    local qb_mem_raw
-    qb_mem_raw=$(echo "$bitbake_output" | grep '^QB_MEM=' | head -1 | cut -d= -f2-)
-    qb_mem_raw=$(trim_whitespace "$qb_mem_raw")
-    qb_mem_raw="${qb_mem_raw#\"}"
-    qb_mem_raw="${qb_mem_raw%\"}"
-    qb_mem_raw="${qb_mem_raw#\'}"
-    qb_mem_raw="${qb_mem_raw%\'}"
-
-    if [[ -z "$qb_mem_raw" ]]; then
-        verbose "QB_MEM not defined for machine '$MACHINE' — QEMU will use default memory."
-        QB_MEM_SIZE_FLAG=""
-    else
-        QB_MEM_SIZE_FLAG="$qb_mem_raw"
-    fi
-
-    # Extract QB_SYSTEM_NAME (qemu-system-arm | qemu-system-aarch64)
-    local qb_system_raw
-    qb_system_raw=$(echo "$bitbake_output" | grep '^QB_SYSTEM_NAME=' | head -1 | cut -d= -f2-)
-    qb_system_raw=$(trim_whitespace "$qb_system_raw")
-    qb_system_raw="${qb_system_raw#\"}"
-    qb_system_raw="${qb_system_raw%\"}"
-    qb_system_raw="${qb_system_raw#\'}"
-    qb_system_raw="${qb_system_raw%\'}"
-
-    if [[ -z "$qb_system_raw" ]]; then
-        warn "QB_SYSTEM_NAME not defined for machine '$MACHINE' — will detect from SoC fallback."
-        QB_SYSTEM_NAME=""
-    else
-        QB_SYSTEM_NAME="$qb_system_raw"
-    fi
-
-    verbose "  QB_MACHINE → -machine $QB_MACHINE_NAME"
-    verbose "  QB_MEM → $QB_MEM_SIZE_FLAG"
-    verbose "  QB_SYSTEM_NAME → $QB_SYSTEM_NAME"
 }
 
 resolve_machine_conf_include() {
@@ -740,7 +967,7 @@ resolve_machine_conf_include() {
         return 0
     fi
 
-    find "$OPENBMC_DIR" -path "*/$include_spec" -type f 2>/dev/null | head -1
+    find "$OPENBMC_DIR" -path "*/$include_spec" -type f -print -quit 2>/dev/null
 }
 
 machine_conf_chain_contains() {
@@ -790,99 +1017,6 @@ machine_conf_chain_contains() {
     done
 
     return 1
-}
-
-detect_soc_type() {
-    # 1. If QB_SYSTEM_NAME already set by bitbake, infer directly
-    if [[ -n "$QB_SYSTEM_NAME" ]]; then
-        case "$QB_SYSTEM_NAME" in
-            qemu-system-aarch64) SOC_TYPE="ast2700" ;;
-            qemu-system-arm)     SOC_TYPE="ast2600" ;;
-            *)
-                warn "Unknown QB_SYSTEM_NAME '$QB_SYSTEM_NAME' — cannot infer SoC type."
-                SOC_TYPE=""
-                ;;
-        esac
-        if [[ -n "$SOC_TYPE" ]]; then
-            verbose "SoC detected from QB_SYSTEM_NAME: $SOC_TYPE"
-            return 0
-        fi
-    fi
-
-    # 2. Deploy directory file detection
-    local deploy_dir="$BUILD_DIR/tmp/deploy/images/$MACHINE"
-    local deploy_hint=""
-    if [[ -d "$deploy_dir" ]]; then
-        if [[ -f "$deploy_dir/bl31-ast2700.bin" ]]; then
-            deploy_hint="ast2700"
-        else
-            deploy_hint="ast2600"
-        fi
-    fi
-    verbose "SoC deploy hint: ${deploy_hint:-<none>} (from $deploy_dir)"
-
-    # 3. Machine conf include chain detection
-    local conf_hint=""
-    local machine_conf=""
-    machine_conf=$(find "$OPENBMC_DIR" -path "*/conf/machine/$MACHINE.conf" -type f 2>/dev/null | head -1 || true)
-
-    if [[ -n "$machine_conf" && -f "$machine_conf" ]]; then
-        if machine_conf_chain_contains "$machine_conf" 'ast2700-sdk\.inc|ast2700[^[:space:]#]*\.inc'; then
-            conf_hint="ast2700"
-        elif machine_conf_chain_contains "$machine_conf" 'ast2600[^[:space:]#]*\.inc|ast2600-default'; then
-            conf_hint="ast2600"
-        fi
-    fi
-    verbose "SoC conf hint: ${conf_hint:-<none>} (from machine conf include chain)"
-
-    # 4. Cross-validate
-    if [[ -n "$deploy_hint" && -n "$conf_hint" && "$deploy_hint" != "$conf_hint" ]]; then
-        error "SoC type conflict: deploy dir says '$deploy_hint', machine conf says '$conf_hint'"
-        error "Resolve the mismatch before continuing."
-        exit 1
-    fi
-
-    # 5. Determine SOC_TYPE
-    if [[ -n "$deploy_hint" ]]; then
-        SOC_TYPE="$deploy_hint"
-    elif [[ -n "$conf_hint" ]]; then
-        SOC_TYPE="$conf_hint"
-    else
-        error "Cannot determine SoC type for machine '$MACHINE'."
-        error "Neither QB_SYSTEM_NAME, deploy artifacts, nor machine conf provide SoC information."
-        exit 3
-    fi
-
-    # 6. Backfill QB_SYSTEM_NAME if still empty
-    if [[ -z "$QB_SYSTEM_NAME" ]]; then
-        case "$SOC_TYPE" in
-            ast2700) QB_SYSTEM_NAME="qemu-system-aarch64" ;;
-            ast2600) QB_SYSTEM_NAME="qemu-system-arm" ;;
-        esac
-        verbose "Backfilled QB_SYSTEM_NAME=$QB_SYSTEM_NAME from SoC detection"
-    fi
-
-    info "SoC detected: $SOC_TYPE (arch: $QB_SYSTEM_NAME)"
-}
-
-derive_qemu_machine_name() {
-    # If QB_MACHINE_NAME already resolved from bitbake, use it directly
-    if [[ -n "$QB_MACHINE_NAME" ]]; then
-        verbose "QEMU machine name from QB_MACHINE: $QB_MACHINE_NAME"
-        return 0
-    fi
-
-    # Fallback: extract first segment before '-' and append '-bmc'
-    # e.g. b865g8-bytedance → b865g8-bmc, k709g8-bytedance → k709g8-bmc
-    local prefix="${MACHINE%%-*}"
-    if [[ "$prefix" == "$MACHINE" ]]; then
-        error "Cannot derive QEMU machine name from '$MACHINE' (no '-' separator)."
-        error "Define QB_MACHINE in your machine conf, or use a machine name with 'xxx-yyy' format."
-        exit 3
-    fi
-
-    QB_MACHINE_NAME="${prefix}-bmc"
-    info "QEMU machine name derived: $QB_MACHINE_NAME (from machine '$MACHINE')"
 }
 
 check_ports_available() {

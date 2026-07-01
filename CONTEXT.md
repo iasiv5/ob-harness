@@ -57,11 +57,11 @@ _Avoid_: QEMU 配置, QEMU metadata
 _Avoid_: QEMU lock, QEMU state
 
 **QB variable**:
-BitBake 变量（`QB_MACHINE`、`QB_MEM` 等），定义在 OpenBMC machine conf 及其 include 链中。`ob start-qemu` 通过 `bitbake -e` 解析最终生效值；变量缺失时是否采用兼容 fallback 由 `QEMU launch profile` 表达，fallback 不应被称为 QB variable。
+BitBake 变量（`QB_MACHINE`、`QB_MEM` 等），定义在 OpenBMC machine conf 及其 include 链中。`ob start-qemu` 优先读取 deploy 产物 `*.qemuboot.conf` 中的最终 QEMU 启动值；缺少该产物时才回退 `bitbake -e` 解析最终生效值。变量缺失时是否采用兼容 fallback 由 `QEMU launch profile` 表达，fallback 不应被称为 QB variable。
 _Avoid_: QEMU 配置变量, QEMU 参数, 把 legacy fallback 当 QB variable
 
 **QEMU launch profile**:
-`ob start-qemu` 启动某个 machine 前解析出的启动画像，汇总 SoC 类型、证据来源/置信度、QEMU system binary name（`QEMU_LAUNCH_SYSTEM_NAME`，来自 `QB_SYSTEM_NAME` 或 profile 推导）、QEMU machine 名、内存参数以及 AST2700 额外启动文件需求。它表达“这台 machine 应该如何被 QEMU 启动”，不同于记录 QEMU binary 来源和 sha256 的 `QEMU manifest`。
+`ob start-qemu` 启动某个 machine 前解析出的启动画像，汇总 SoC 类型、证据来源/置信度、QEMU system binary name（`QEMU_LAUNCH_SYSTEM_NAME`，来自 `QB_SYSTEM_NAME` 或 profile 推导）、QEMU machine 名、内存参数以及 AST2700 额外启动文件需求。已安装 QEMU binary 若支持由 machine 前缀派生的 `<prefix>-bmc` 平台机型（如 `sample-bmc`），会覆盖 qemuboot/BitBake 中的通用机型（如 `ast2700a1-evb`）。它表达“这台 machine 应该如何被 QEMU 启动”，不同于记录 QEMU binary 来源和 sha256 的 `QEMU manifest`。
 _Avoid_: QEMU metadata, QEMU 配置, QEMU 启动配置
 
 **confirmation banner**:
