@@ -40,6 +40,10 @@ _Avoid_: image-ready machine, built, build succeeded, image-present, image=yes, 
 存在 firmware image artifact，但对应 machine 尚未由 `init-done marker` 确认为 initialized 的状态诊断事实。它可以在 `ob status` 中解释残留产物，但不能让 machine 进入 `firmware-image-ready machine`。
 _Avoid_: invalid image, broken image, QEMU-ready artifact
 
+**machine lifecycle state**:
+ob 对单个 machine 当前生命周期事实的组合判断，由 `machine snapshot`、`init-done marker` 和 firmware image artifact 共同决定。它回答 machine 是否 initialized、是否 partial、是否是 `firmware-image-ready machine`、是否存在 `orphan firmware image artifact` 等状态问题；不包含 `ob status` 表格排版、`remedy line`、`exit-code 契约` 或用户交互策略。
+_Avoid_: UI state, command policy, 把展示文本当 lifecycle state
+
 **state file format**:
 ob 在 `workspace/configs/` 下的状态文件按数据形状选格式：扁平标量字段用 kv 文本（`key=value` + `#` 注释，如 `source manifest`，用 `read_kv_field` 读）；嵌套/列表结构用 JSON（如 `machine snapshot` 的 `sub_repos` 数组，用 python json 读写）。依据是数据形状匹配表达力，不为统一而把扁平数据塞进 JSON。
 _Avoid_: 强制单一格式, 把扁平状态文件写成 JSON
