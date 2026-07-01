@@ -254,66 +254,83 @@ _machine_state_discover_machines() {
     printf '%s\n' "${machines[@]}" | sort
 }
 
-_machine_state_print_record() {
+machine_state_snapshot_state() {
     local machine="$1"
-    local snapshot_path init_done_path
-    local snapshot_state="missing"
-    local init_state="uninitialized"
-    local repo_count="?"
-    local firmware_image_ready="no"
-    local firmware_image_orphaned="no"
-    local firmware_image_path=""
-    local firmware_image_mtime=""
-    local init_time=""
-    local discovered_by=""
 
-    snapshot_path="$(machine_state_snapshot_path "$machine")"
-    init_done_path="$(machine_state_init_done_path "$machine")"
-
-    if [[ -f "$snapshot_path" ]]; then
-        snapshot_state="present"
-        repo_count="$(machine_state_repo_count "$machine")"
-        discovered_by="snapshot"
+    if [[ -f "$(machine_state_snapshot_path "$machine")" ]]; then
+        echo "present"
+    else
+        echo "missing"
     fi
-
-    if [[ -f "$init_done_path" ]]; then
-        init_state="initialized"
-        if ! IFS= read -r init_time < "$init_done_path"; then
-            init_time=""
-        fi
-        if [[ -n "$discovered_by" ]]; then
-            discovered_by+=",init_done"
-        else
-            discovered_by="init_done"
-        fi
-    elif [[ "$snapshot_state" == "present" ]]; then
-        init_state="partial"
-    fi
-
-    firmware_image_path="$(machine_state_firmware_image_path "$machine" 2>/dev/null || true)"
-    if [[ -n "$firmware_image_path" ]]; then
-        firmware_image_mtime="$(_machine_state_file_mtime_iso "$firmware_image_path" 2>/dev/null || true)"
-        if [[ "$init_state" == "initialized" ]]; then
-            firmware_image_ready="yes"
-        else
-            firmware_image_orphaned="yes"
-        fi
-        if [[ -n "$discovered_by" ]]; then
-            discovered_by+=",firmware_image"
-        else
-            discovered_by="firmware_image"
-        fi
-    fi
-
-    printf 'machine=%s\tdiscovered_by=%s\tinit_state=%s\tsnapshot_state=%s\trepo_count=%s\tfirmware_image_ready=%s\tfirmware_image_orphaned=%s\tfirmware_image_path=%s\tfirmware_image_mtime=%s\tinit_time=%s\n' \
-        "$machine" "$discovered_by" "$init_state" "$snapshot_state" "$repo_count" "$firmware_image_ready" "$firmware_image_orphaned" "$firmware_image_path" "$firmware_image_mtime" "$init_time"
 }
 
-machine_state_records() {
+machine_state_init_state() {
+    local machine="$1"
+
+    if machine_state_is_initialized "$machine"; then
+        echo "initialized"
+    elif [[ "$(machine_state_snapshot_state "$machine")" == "present" ]]; then
+        echo "partial"
+    else
+        echo "uninitialized"
+    fi
+}
+
+machine_state_init_time() {
+    local machine="$1"
+    local marker
+    local init_time=""
+
+    marker="$(machine_state_init_done_path "$machine")"
+    if [[ -f "$marker" ]]; then
+        IFS= read -r init_time < "$marker" || init_time=""
+    fi
+    echo "$init_time"
+}
+
+machine_state_firmware_image_mtime() {
+    local machine="$1"
+    local image_path
+    local mtime=""
+
+    image_path="$(machine_state_firmware_image_path "$machine" 2>/dev/null || true)"
+    if [[ -n "$image_path" ]]; then
+        mtime="$(_machine_state_file_mtime_iso "$image_path" 2>/dev/null || true)"
+    fi
+    echo "$mtime"
+}
+
+machine_state_is_firmware_image_ready() {
+    local machine="$1"
+
+    machine_state_is_initialized "$machine" || return 1
+    machine_state_firmware_image_path "$machine" >/dev/null 2>&1
+}
+
+machine_state_is_orphan_firmware_image() {
+    local machine="$1"
+
+    machine_state_is_initialized "$machine" && return 1
+    machine_state_firmware_image_path "$machine" >/dev/null 2>&1
+}
+
+machine_state_display_machines() {
     local machine
 
     while IFS= read -r machine; do
-        [[ -n "$machine" ]] && _machine_state_print_record "$machine"
+        [[ -n "$machine" ]] || continue
+        if [[ -f "$(machine_state_snapshot_path "$machine")" || -f "$(machine_state_init_done_path "$machine")" ]]; then
+            echo "$machine"
+        fi
+    done < <(_machine_state_discover_machines)
+}
+
+machine_state_orphan_firmware_image_machines() {
+    local machine
+
+    while IFS= read -r machine; do
+        [[ -n "$machine" ]] || continue
+        machine_state_is_orphan_firmware_image "$machine" && echo "$machine"
     done < <(_machine_state_discover_machines)
 }
 

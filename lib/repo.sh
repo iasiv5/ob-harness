@@ -348,41 +348,17 @@ require_openbmc_repo() {
     return 3   # repo 未就绪:信号交给调用方(cmd_init)编排 clone_openbmc
 }
 
-# Print "Previously initialized" separator showing init-done machines
-# with their original index from the full machine list.
-# Args:
-#   $1: machine name array (nameref)
-_repo_machine_record_field() {
-    local record="$1"
-    local key="$2"
-    local field
-    local IFS=$'\t'
-
-    for field in $record; do
-        if [[ "$field" == "$key="* ]]; then
-            echo "${field#*=}"
-            return 0
-        fi
-    done
-    return 1
-}
-
 print_previously_initialized() {
     local -n _mpi_arr="$1"
 
-    # Discover initialized machines from machine_state records; this UI only needs display metadata.
     local -A _mpi_done=()
-    local _mpi_record _mpi_mname _mpi_init_state _mpi_raw_time _mpi_fmt_time
-    while IFS= read -r _mpi_record; do
-        [[ -n "$_mpi_record" ]] || continue
-        _mpi_mname=$(_repo_machine_record_field "$_mpi_record" machine)
+    local _mpi_mname _mpi_raw_time _mpi_fmt_time
+    while IFS= read -r _mpi_mname; do
         [[ -n "$_mpi_mname" ]] || continue
-        _mpi_init_state=$(_repo_machine_record_field "$_mpi_record" init_state)
-        [[ "$_mpi_init_state" == "initialized" ]] || continue
-        _mpi_raw_time=$(_repo_machine_record_field "$_mpi_record" init_time)
+        _mpi_raw_time=$(machine_state_init_time "$_mpi_mname")
         _mpi_fmt_time=$(format_timestamp "$_mpi_raw_time")
         _mpi_done["$_mpi_mname"]="$_mpi_fmt_time"
-    done < <(machine_state_records)
+    done < <(machine_state_initialized_machines)
 
     # No init-done machines → nothing to show
     if [[ ${#_mpi_done[@]} -eq 0 ]]; then

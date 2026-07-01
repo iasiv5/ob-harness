@@ -60,73 +60,22 @@ status_section_main_repo() {
     echo "  First init   : ${first_init:-<unknown>}"
 }
 
-_commands_machine_record_field() {
-    local record="$1"
-    local key="$2"
-    local field
-    local IFS=$'\t'
-
-    for field in $record; do
-        if [[ "$field" == "$key="* ]]; then
-            echo "${field#*=}"
-            return 0
-        fi
-    done
-    return 1
-}
-
-_commands_record_has_discovery_source() {
-    local record="$1"
-    local expected="$2"
-    local discovered_by
-    local source
-    local IFS=','
-
-    discovered_by="$(_commands_machine_record_field "$record" discovered_by)"
-    for source in $discovered_by; do
-        [[ "$source" == "$expected" ]] && return 0
-    done
-    return 1
-}
-
-_commands_collect_machine_state_records() {
-    local -n _records_ref="$1"
-    local _record
-
-    _records_ref=()
-    while IFS= read -r _record; do
-        [[ -n "$_record" ]] && _records_ref+=("$_record")
-    done < <(machine_state_records)
-}
-
 status_section_machines() {
-    local -n records="$1"
-    local record
-
     step_header "Machines"
-
-    if [[ ${#records[@]} -eq 0 ]]; then
-        echo "  (none)"
-        return 0
-    fi
 
     # --- Summary table ---
     # Collect per-machine data
     local -a machines=()
     local -A m_init=() m_repos=() m_firmware=() m_firmware_path=() m_firmware_mtime=() m_snapshot=() m_init_time=()
+    local m
 
-    for record in "${records[@]}"; do
-        _commands_record_has_discovery_source "$record" snapshot || _commands_record_has_discovery_source "$record" init_done || continue
-
-        local m init_state snapshot_state repo_count firmware_image_ready firmware_image_path firmware_image_mtime raw_init_time
-        m=$(_commands_machine_record_field "$record" machine)
-        init_state=$(_commands_machine_record_field "$record" init_state)
-        snapshot_state=$(_commands_machine_record_field "$record" snapshot_state)
-        repo_count=$(_commands_machine_record_field "$record" repo_count)
-        firmware_image_ready=$(_commands_machine_record_field "$record" firmware_image_ready)
-        firmware_image_path=$(_commands_machine_record_field "$record" firmware_image_path)
-        firmware_image_mtime=$(_commands_machine_record_field "$record" firmware_image_mtime)
-        raw_init_time=$(_commands_machine_record_field "$record" init_time)
+    while IFS= read -r m; do
+        [[ -n "$m" ]] || continue
+        local init_state snapshot_state repo_count firmware_image_path firmware_image_mtime raw_init_time
+        init_state=$(machine_state_init_state "$m")
+        snapshot_state=$(machine_state_snapshot_state "$m")
+        repo_count=$(machine_state_repo_count "$m")
+        raw_init_time=$(machine_state_init_time "$m")
         machines+=("$m")
 
         case "$init_state" in
@@ -139,14 +88,16 @@ status_section_machines() {
         m_repos["$m"]="$repo_count"
         m_init_time["$m"]="$raw_init_time"
 
-        if [[ "$firmware_image_ready" == "yes" ]]; then
+        if machine_state_is_firmware_image_ready "$m"; then
+            firmware_image_path=$(machine_state_firmware_image_path "$m" 2>/dev/null || true)
+            firmware_image_mtime=$(machine_state_firmware_image_mtime "$m")
             m_firmware["$m"]="📦 ready"
             m_firmware_path["$m"]="$firmware_image_path"
             m_firmware_mtime["$m"]="$firmware_image_mtime"
         else
             m_firmware["$m"]="— missing"
         fi
-    done
+    done < <(machine_state_display_machines)
 
     if [[ ${#machines[@]} -eq 0 ]]; then
         echo "  (none)"
@@ -193,17 +144,14 @@ status_section_machines() {
 }
 
 status_section_diagnostics() {
-    local -n records="$1"
-    local -a orphan_records=()
-    local record
+    local -a orphan_machines=()
+    local machine
 
-    for record in "${records[@]}"; do
-        [[ -n "$record" ]] || continue
-        [[ "$(_commands_machine_record_field "$record" firmware_image_orphaned)" == "yes" ]] || continue
-        orphan_records+=("$record")
-    done
+    while IFS= read -r machine; do
+        [[ -n "$machine" ]] && orphan_machines+=("$machine")
+    done < <(machine_state_orphan_firmware_image_machines)
 
-    if [[ ${#orphan_records[@]} -eq 0 ]]; then
+    if [[ ${#orphan_machines[@]} -eq 0 ]]; then
         return 0
     fi
 
@@ -211,10 +159,9 @@ status_section_diagnostics() {
     step_header "Diagnostics"
     echo "  Orphan firmware image artifacts"
 
-    for record in "${orphan_records[@]}"; do
-        local machine firmware_path
-        machine=$(_commands_machine_record_field "$record" machine)
-        firmware_path=$(_commands_machine_record_field "$record" firmware_image_path)
+    for machine in "${orphan_machines[@]}"; do
+        local firmware_path
+        firmware_path=$(machine_state_firmware_image_path "$machine" 2>/dev/null || true)
         echo ""
         echo "    $machine"
         echo "      Path      : ${firmware_path:-<unknown>}"
@@ -248,37 +195,28 @@ cmd_status() {
     local repo_exists=0
     [[ -d "$OPENBMC_DIR/.git" ]] && repo_exists=1
 
-    local -a machine_records=()
-    _commands_collect_machine_state_records machine_records
-
     # Section 1: Main repo info (always shown)
     status_section_main_repo
 
     echo ""
 
     # Section 2: Machine list + expansion (always shown, even if repo missing — may have residual data)
-    status_section_machines machine_records
+    status_section_machines
 
     # Section 3: Diagnostics for residual artifacts
-    status_section_diagnostics machine_records
+    status_section_diagnostics
 
     # Section 4: Dynamic tips
     local has_initialized_machine=0
     local has_initialized_without_firmware_image=0
-    local _ms_record
-    for _ms_record in "${machine_records[@]}"; do
-        [[ -n "$_ms_record" ]] || continue
-        local _ms_init_state=""
-        local _ms_firmware_ready=""
-        _ms_init_state="$(_commands_machine_record_field "$_ms_record" init_state)"
-        _ms_firmware_ready="$(_commands_machine_record_field "$_ms_record" firmware_image_ready)"
-        if [[ "$_ms_init_state" == "initialized" ]]; then
-            has_initialized_machine=1
-            if [[ "$_ms_firmware_ready" != "yes" ]]; then
-                has_initialized_without_firmware_image=1
-            fi
+    local _ms_machine
+    while IFS= read -r _ms_machine; do
+        [[ -n "$_ms_machine" ]] || continue
+        has_initialized_machine=1
+        if ! machine_state_is_firmware_image_ready "$_ms_machine"; then
+            has_initialized_without_firmware_image=1
         fi
-    done
+    done < <(machine_state_initialized_machines)
 
     status_section_tips "$repo_exists" "$has_initialized_machine" "$has_initialized_without_firmware_image"
 
@@ -343,22 +281,13 @@ cmd_build() {
         local -a repo_counts=()
         local -A init_time_by_machine=()
         local -A repo_count_by_machine=()
-        local record=""
-
-        while IFS= read -r record; do
-            [[ -n "$record" ]] || continue
-            local mname raw_init_time repo_count
-            mname=$(_commands_machine_record_field "$record" machine)
-            [[ -n "$mname" ]] || continue
-            raw_init_time=$(_commands_machine_record_field "$record" init_time)
-            repo_count=$(_commands_machine_record_field "$record" repo_count)
-            init_time_by_machine["$mname"]="$raw_init_time"
-            repo_count_by_machine["$mname"]="$repo_count"
-        done < <(machine_state_records)
 
         local initialized_machine
         while IFS= read -r initialized_machine; do
-            [[ -n "$initialized_machine" ]] && machines+=("$initialized_machine")
+            [[ -n "$initialized_machine" ]] || continue
+            machines+=("$initialized_machine")
+            init_time_by_machine["$initialized_machine"]="$(machine_state_init_time "$initialized_machine")"
+            repo_count_by_machine["$initialized_machine"]="$(machine_state_repo_count "$initialized_machine")"
         done < <(machine_state_initialized_machines)
 
         if [[ ${#machines[@]} -eq 0 ]]; then
