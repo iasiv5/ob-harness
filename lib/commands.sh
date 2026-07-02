@@ -191,6 +191,21 @@ status_section_tips() {
     fi
 }
 
+# exit_on_user_cancel <rc> <verb>
+# 消费 select_from_list / confirm_action 的 rc (0=ok / 2=cancel / 1=read-fail)。
+# rc 0 → return 0 继续下行;rc 2 → warn "<verb> cancelled by user." + exit 2;
+# 否则 exit 1(read-fail 的 error 已由 L3 调用方 select_from_list/confirm_action 打印)。
+# L1 exit-seam helper;调用方负责先 `|| rc=$?` 捕获 rc 再传入。
+exit_on_user_cancel() {
+    local rc="$1" verb="$2"
+    if   [[ "$rc" -eq 2 ]]; then
+        warn "$verb cancelled by user."
+        exit 2
+    elif [[ "$rc" -ne 0 ]]; then
+        exit 1
+    fi
+}
+
 cmd_status() {
     local repo_exists=0
     [[ -d "$OPENBMC_DIR/.git" ]] && repo_exists=1
@@ -338,12 +353,7 @@ cmd_build() {
 
         local sfl_rc=0
         select_from_list "Select a machine to build [1-${total}]" "$total" || sfl_rc=$?
-        if [[ "$sfl_rc" -eq 2 ]]; then
-            warn "Build cancelled by user."
-            exit 2
-        elif [[ "$sfl_rc" -ne 0 ]]; then
-            exit 1
-        fi
+        exit_on_user_cancel "$sfl_rc" "Build"
         local chosen="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
 
         MACHINE="$chosen"
@@ -360,12 +370,7 @@ cmd_build() {
     if [[ "$interactive_selection" -eq 1 ]]; then
         local ca_rc=0
         confirm_action "build" "$MACHINE" || ca_rc=$?
-        if [[ "$ca_rc" -eq 2 ]]; then
-            warn "Build cancelled by user."
-            exit 2
-        elif [[ "$ca_rc" -ne 0 ]]; then
-            exit 1
-        fi
+        exit_on_user_cancel "$ca_rc" "Build"
     fi
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -510,12 +515,7 @@ cmd_start_qemu() {
 
         local sfl_rc=0
         select_from_list "Select a machine [1-${total}]" "$total" || sfl_rc=$?
-        if [[ "$sfl_rc" -eq 2 ]]; then
-            warn "Start QEMU cancelled by user."
-            exit 2
-        elif [[ "$sfl_rc" -ne 0 ]]; then
-            exit 1
-        fi
+        exit_on_user_cancel "$sfl_rc" "Start QEMU"
         MACHINE="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
     fi
 
@@ -632,12 +632,7 @@ cmd_start_qemu() {
     # ── Safety confirmation (same pattern as ob init / ob build) ──
     local ca_rc=0
     confirm_action "start QEMU for" "$MACHINE" || ca_rc=$?
-    if [[ "$ca_rc" -eq 2 ]]; then
-        warn "QEMU start cancelled by user."
-        exit 2
-    elif [[ "$ca_rc" -ne 0 ]]; then
-        exit 1
-    fi
+    exit_on_user_cancel "$ca_rc" "QEMU start"
     echo ""
     info "QEMU start confirmed for machine '$MACHINE'."
 
@@ -821,12 +816,7 @@ cmd_stop_qemu() {
 
         local sfl_rc=0
         select_from_list "Select instance to stop [1-${total}]" "$total" || sfl_rc=$?
-        if [[ "$sfl_rc" -eq 2 ]]; then
-            warn "Stop QEMU cancelled by user."
-            exit 2
-        elif [[ "$sfl_rc" -ne 0 ]]; then
-            exit 1
-        fi
+        exit_on_user_cancel "$sfl_rc" "Stop QEMU"
         targets+=("${available[$((SELECT_FROM_LIST_CHOICE - 1))]}")
     fi
 
