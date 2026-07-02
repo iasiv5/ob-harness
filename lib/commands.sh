@@ -380,14 +380,7 @@ cmd_build() {
     fi
 
     # === Re-enter bitbake environment ===
-    cd "$OPENBMC_DIR"
-
-    local prev_opts
-    prev_opts=$(set +o | grep nounset)
-    set +u
-    # shellcheck disable=SC1091
-    source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null
-    eval "$prev_opts"
+    build_env_enter "$MACHINE" "$BUILD_DIR" 2>/dev/null
 
     # === npm registry auto-detection ===
     resolve_npm_registry
