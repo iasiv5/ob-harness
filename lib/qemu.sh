@@ -373,9 +373,9 @@ resolve_qemu_launch_profile() {
     else
         info "Resolving QEMU launch profile via BitBake (this can take a while)..."
         local bitbake_output
-        # shellcheck disable=SC1091
-        bitbake_output=$(cd "$OPENBMC_DIR" && set +u; source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null && bitbake -e 2>/dev/null)
-        if [[ -z "$bitbake_output" ]]; then
+        local bitbake_rc=0
+        bitbake_output=$(bitbake_env_query_vars "$MACHINE" "$BUILD_DIR") || bitbake_rc=$?
+        if [[ "$bitbake_rc" -ne 0 || -z "$bitbake_output" ]]; then
             # An empty `bitbake -e` means the build environment itself is unhealthy,
             # not merely a missing QB input that profile fallback can repair.
             error "Failed to run 'bitbake -e' for machine '$MACHINE'."

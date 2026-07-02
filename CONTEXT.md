@@ -73,8 +73,12 @@ _Avoid_: QEMU metadata, QEMU 配置, QEMU 启动配置
 _Avoid_: 三次重复提示, heavy gate, 确认门, 破坏性够分量（旧口径，已收紧为路径风险）
 
 **function semantic layer**:
-`ob` 内部对函数角色的调用层级词汇：L1（`cmd_*` 命令编排，exit seam）、L2（前置检查点，如 `require_path`）、L3（底层通用工具，如 `log`/`select_from_list`/`read_kv_field`）。**已物化为 `lib/*.sh` 文件边界**：原 ob 内 §2-§6 注释分区现由 `lib/{util,repo,qemu,machine_state,init_pipeline,commands}.sh` 六文件承载（util=L3 底层、repo=仓库/machine 解析、qemu=QEMU runtime、machine_state=Machine lifecycle state、init_pipeline=init 流水线、commands=cmd_* 编排），结构边界从注释锚点转为文件名；`exit_contract` Y 规则按 basename 配置的 leaf-pure modules（当前 `util.sh` / `machine_state.sh`）断言下层 module 不 exit（除各自例外集）。讨论代码用的层级启发式语义仍适用（cmd_* 是 exit seam、util/machine_state 是下层 no-exit module），但结构边界已从注释转为文件。
+`ob` 内部对函数角色的调用层级词汇：L1（`cmd_*` 命令编排，exit seam）、L2（前置检查点，如 `require_path`）、L3（底层通用工具，如 `log`/`select_from_list`/`read_kv_field`）。**已物化为 `lib/*.sh` 文件边界**：原 ob 内 §2-§6 注释分区现由 `lib/{util,repo,bitbake_env,qemu,machine_state,init_pipeline,commands}.sh` 承载（util=L3 底层、repo=仓库/machine 解析、bitbake_env=BitBake environment one-shot 查询、qemu=QEMU runtime、machine_state=Machine lifecycle state、init_pipeline=init 流水线、commands=cmd_* 编排），结构边界从注释锚点转为文件名；`exit_contract` Y 规则按 basename 配置的 leaf-pure modules（当前 `bitbake_env.sh` / `util.sh` / `machine_state.sh`）断言下层 module 不 exit（除各自例外集）。讨论代码用的层级启发式语义仍适用（cmd_* 是 exit seam、bitbake_env/util/machine_state 是下层 no-exit module），但结构边界已从注释转为文件。
 _Avoid_: 调用层级, 函数分级；勿与 test layer（protocol/unit/orchestration/integration，曾用 L0–L3）混用
+
+**BitBake environment support module**:
+`lib/bitbake_env.sh` 中封装的 one-shot BitBake environment 查询 module。它只负责隔离执行无参 `source setup` 的 machine 列表解析，以及 `source setup <machine> <build_dir> && bitbake -e` 的原始输出查询；不接管需要把 setup 副作用留在当前 shell 的 init/build 路径，不解析 `QB_*`，不打印 remedy，不决定 exit-code 契约。调用者负责前置检查、失败诊断、exit/remedy 和领域解释。
+_Avoid_: BitBake environment manager, current-shell setup wrapper, 把 QEMU launch profile 决策下沉到 bitbake_env
 
 **test layer**:
 `ob` 测试体系的分层，自下而上为 protocol（退出码协议，非交互）、unit（纯函数单测，零依赖毫秒级）、orchestration（编排函数，PATH 注入 stub）、integration（真实集成，init→build→QEMU 全流程）。曾用 L0–L3 编号，为脱离与「function semantic layer」的 L1/L2/L3 撞名而改语义名。

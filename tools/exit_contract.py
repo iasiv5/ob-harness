@@ -51,6 +51,7 @@ LEGAL_LITERAL = {'0', '1', '2', '3'}
 # util 层允许 exit 的例外集。对偶式 Y：leaf-pure 函数绝不 exit，除各 basename 的例外。
 EXIT_EXCEPTIONS = {'fn_quit', 'resolve_npm_registry', 'require_path'}
 LEAF_EXIT_EXCEPTIONS_BY_BASENAME = {
+    'bitbake_env.sh': set(),
     'util.sh': EXIT_EXCEPTIONS,
     'machine_state.sh': set(),
 }

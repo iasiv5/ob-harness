@@ -307,18 +307,10 @@ select_openbmc_repo_url() {
     done
 }
 
-# Capture `source setup` (no args) output, extract available machine names
+# Capture `source setup` (no args) output, extract available machine names.
 list_available_machines() {
     [[ -d "$OPENBMC_DIR/.git" ]] || return 0
-    local raw
-    raw=$(cd "$OPENBMC_DIR" && set +u; source setup 2>&1 || true)
-    # setup prints "Use one of:" followed by multi-column machine names
-    echo "$raw" \
-      | sed -n '/Use one of:/,$p' \
-      | tail -n +2 \
-      | tr -s ' \t' '\n' \
-      | sed '/^$/d' \
-      | sort -u
+    bitbake_env_list_available_machines
 }
 
 # Print supported machine list (passthrough for readability)

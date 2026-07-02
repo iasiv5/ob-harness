@@ -149,6 +149,16 @@ assert_contains "bitbake arm system" "$out" "system=qemu-system-arm"
 assert_contains "bitbake mem" "$out" "mem=-m 512"
 rm -rf "$TMP" "$DB"
 
+# --- BitBake command failure is fatal even when stdout is non-empty ---
+TMP="$(mktemp -d)"; DB="$(mktemp -d)"; mkfake_bin "$DB" bitbake
+make_case_root "$TMP" romulus
+write_bitbake_output "$DB" "-machine romulus" "" "qemu-system-arm"
+stub_exit "$DB" bitbake 42
+out="$(run_profile_subshell "$TMP" "$DB" romulus)"; rc=$?
+assert_eq "bitbake nonzero with output rc" "$rc" "1"
+assert_contains "bitbake nonzero with output diagnosis" "$out" "Failed to run 'bitbake -e'"
+rm -rf "$TMP" "$DB"
+
 # --- BitBake strong evidence: AST2700 with bootloaders ---
 TMP="$(mktemp -d)"; DB="$(mktemp -d)"; mkfake_bin "$DB" bitbake
 make_case_root "$TMP" ast2700a1-evb
