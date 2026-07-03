@@ -19,6 +19,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 取消 → exit 2 | cmd_init;confirm_action | protocol/manual_matrix.exp | confirm_action 见 unit/interact.sh |
 | source manifest 读写 | read_source_label;write_source_manifest;normalize_repo_url;derive_source_label | unit/source_manifest.sh;unit/url.sh | |
 | 前置检查 | prerequisites_check | orchestration/prerequisites_check.sh | exit 函数 |
+| BitBake 环境初始化 | init_bitbake_env;build_env_enter | orchestration/build_env_enter.sh;protocol/build_env_enter_structure.sh | local.conf 产物检查仍在 init_bitbake_env |
 | 子仓库克隆 | clone_sub_repos | orchestration/clone_sub_repos.sh | |
 | machine snapshot 生成 | generate_machine_snapshot;machine_state_write_snapshot | orchestration/generate_config.sh;unit/machine_state.sh | |
 | build config 生成 | generate_build_config | orchestration/generate_config.sh | |
@@ -29,6 +30,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 |---|---|---|---|
 | 空 workspace → exit 3 | cmd_build | protocol/smoke_ob.sh | |
 | 取消 → exit 2 | cmd_build;confirm_action | protocol/manual_matrix.exp | |
+| 进入 bitbake 环境 + bitbake handoff | build_env_enter;cmd_build | orchestration/build_env_enter.sh;orchestration/cmd_build_bitbake_handoff.sh;protocol/build_env_enter_structure.sh | build_env_enter=进入原语(副作用契约); cmd_build_bitbake_handoff=非 dry-run 调 bitbake + 失败 exit 1 兜底 |
 
 ## status
 
@@ -68,3 +70,4 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | QEMU launch profile 纯规则 | qemu_launch_profile_apply_system_name;qemu_launch_profile_apply_machine_name;machine_conf_chain_contains | unit/soc.sh | start-qemu SoC/机型派生 |
 | conf/url 工具 | read_local_conf_var;resolve_effective_dl_dir;resolve_effective_sstate_dir;is_private_url;parse_hostkey_offending;machine_conf_chain_contains | unit/conf_read.sh;unit/url_extra.sh | 子工具 |
 | machine_state public records surface 门禁 | machine_state_records;_commands_machine_record_field;_commands_record_has_discovery_source;_commands_collect_machine_state_records;_repo_machine_record_field | tools/ob_check.sh;unit/repo_previously_initialized.sh;protocol/status_machine_state.sh | 禁止生产代码调用 machine_state_records / record parser helper |
+| current-shell build environment 进入 | build_env_enter | orchestration/build_env_enter.sh;protocol/build_env_enter_structure.sh | current-shell 副作用原语,leaf-no-exit |

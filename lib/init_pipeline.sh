@@ -117,17 +117,10 @@ init_bitbake_env() {
         return 0
     fi
 
-    cd "$OPENBMC_DIR"
-
     # Use OpenBMC's official `source setup <machine>` to initialize the build environment.
-    # This handles TEMPLATECONF, bblayers.conf, and local.conf correctly.
-    # Temporarily disable nounset — setup sources oe-init-build-env which references unset vars.
-    local prev_opts
-    prev_opts=$(set +o | grep nounset)
-    set +u
-    # shellcheck disable=SC1091
-    source setup "$MACHINE" "$BUILD_DIR"
-    eval "$prev_opts"
+    # build_env_enter handles TEMPLATECONF/bblayers/local.conf + nounset protection;
+    # stderr 透传(首次 init 想看 setup 输出).
+    build_env_enter "$MACHINE" "$BUILD_DIR"
 
     # Verify build dir was created
     if [[ ! -f "$BUILD_DIR/conf/local.conf" ]]; then
@@ -185,15 +178,8 @@ generate_dep_graph() {
         return 0
     fi
 
-    cd "$OPENBMC_DIR"
-
     # Re-enter build environment (needed after cd)
-    local prev_opts
-    prev_opts=$(set +o | grep nounset)
-    set +u
-    # shellcheck disable=SC1091
-    source setup "$MACHINE" "$BUILD_DIR" 2>/dev/null
-    eval "$prev_opts"
+    build_env_enter "$MACHINE" "$BUILD_DIR" 2>/dev/null
 
     # Generate pn-buildlist via bitbake -g (~3 min).
     # This gives us ~570 target-dependent recipes instead of ~4492 total.

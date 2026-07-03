@@ -11,8 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: install shellcheck + expect
-        run: sudo apt-get update && sudo apt-get install -y shellcheck expect
+      - name: install shellcheck + expect + ripgrep
+        run: sudo apt-get update && sudo apt-get install -y shellcheck expect ripgrep
       - name: run_all(默认只跑 .sh,~1.5s;--full 才跑慢的交互矩阵)
         run: bash tests/run_all.sh
       - name: shellcheck 防退化(baseline multiset 判定,免疫行号漂移)

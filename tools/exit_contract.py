@@ -52,6 +52,7 @@ LEGAL_LITERAL = {'0', '1', '2', '3'}
 EXIT_EXCEPTIONS = {'fn_quit', 'resolve_npm_registry', 'require_path'}
 LEAF_EXIT_EXCEPTIONS_BY_BASENAME = {
     'bitbake_env.sh': set(),
+    'build_env.sh': set(),
     'util.sh': EXIT_EXCEPTIONS,
     'machine_state.sh': set(),
 }
