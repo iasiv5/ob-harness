@@ -282,4 +282,8 @@ assert_eq "dry-run mark rc" "$?" 0
 assert_false "dry-run mark no file" test -f "$CONFIGS_DIR/drymark.init-done"
 DRY_RUN=0
 
+# --- build_dir / deploy_dir: 纯路径拼接(F5 真漏候选补测,降 coverage N5) ---
+assert_eq "build_dir path"  "$(machine_state_build_dir romulus)" "$OPENBMC_DIR/build/romulus"
+assert_eq "deploy_dir path" "$(machine_state_deploy_dir romulus)" "$OPENBMC_DIR/build/romulus/tmp/deploy/images/romulus"
+
 assert_summary

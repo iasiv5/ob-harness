@@ -66,6 +66,18 @@ assert_true  "chain contains ast2600"   machine_conf_chain_contains "$OPENBMC_DI
 assert_true  "chain contains ast2700"   machine_conf_chain_contains "$OPENBMC_DIR/meta-a/conf/machine/ast2700.conf" 'ast2700-sdk\.inc|aspeed-g7'
 assert_false "chain loop terminates"    machine_conf_chain_contains "$OPENBMC_DIR/meta-b/conf/machine/loop-a.conf" 'ast2700-sdk'
 assert_false "chain missing file"       machine_conf_chain_contains "$TMP/nonexist.conf" 'anything'
+
+# --- system_name_for_soc / extract_qemuboot_var(F5 真漏候选补测,降 coverage N5) ---
+assert_eq "soc ast2600 → arm"     "$(qemu_launch_profile_system_name_for_soc ast2600)" "qemu-system-arm"
+assert_eq "soc ast2700 → aarch64" "$(qemu_launch_profile_system_name_for_soc ast2700)" "qemu-system-aarch64"
+assert_eq "soc unknown → empty"   "$(qemu_launch_profile_system_name_for_soc unknownsoc)" ""
+
+QB_CONF="$TMP/qemuboot.conf"
+printf 'QB_MEM = "512"\n# comment\nQB_SYSTEM_NAME = "qemu-system-arm"\n' > "$QB_CONF"
+assert_eq "extract QB_MEM"         "$(qemu_launch_profile_extract_qemuboot_var "$QB_CONF" QB_MEM)" '"512"'
+assert_eq "extract QB_SYSTEM_NAME" "$(qemu_launch_profile_extract_qemuboot_var "$QB_CONF" QB_SYSTEM_NAME)" '"qemu-system-arm"'
+assert_eq "extract missing var"    "$(qemu_launch_profile_extract_qemuboot_var "$QB_CONF" QB_NOMATCH)" ""
+
 rm -rf "$TMP"
 
 assert_summary
