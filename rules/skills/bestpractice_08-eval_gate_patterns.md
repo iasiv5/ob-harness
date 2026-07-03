@@ -39,7 +39,7 @@
 
 跑测试套件出报告，分析失败模式改进 harness。适用于可自动化测试的代码产出。
 
-- **本仓库实例**：`run_all.sh` 四层测试（protocol/unit/orchestration/integration）+ `coverage_radar.py` 盲区透明化（92 函数按五档列全自动化归属，不制造覆盖率虚高）。覆盖率定义 = 分层各司其职，**非单一行覆盖**。
+- **本仓库实例**：`run_all.sh` 四层测试（protocol/unit/orchestration/integration）+ `coverage_radar.py` 盲区透明化（ob + lib/*.sh 全部函数按五档列全自动化归属，不制造覆盖率虚高；F5 修复 radar scope：06-22 模块化后曾失效只测 ob 入口 3 函数，扩到 ob+lib ~134，cross_check 不再静默丢弃 out-of-scope 声明）。覆盖率定义 = 分层各司其职，**非单一行覆盖**。
 
 ## acceptable threshold
 

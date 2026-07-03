@@ -15,11 +15,24 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck expect ripgrep
       - name: run_all(默认只跑 .sh,~1.5s;--full 才跑慢的交互矩阵)
         run: bash tests/run_all.sh
+      - name: init dry-run sanity(ob init 8 步编排端到端;临时 harness + fake checkout,CI 友好,无真实 clone)
+        run: bash tests/integration/init_dryrun_sanity.sh
       - name: shellcheck 防退化(baseline multiset 判定,免疫行号漂移)
         run: |
           # 复用 ob_check.sh 已验证的行号无关判定(logic: 只比对告警文本集合,
           # 行号因上方插行而平移 / 告警减少都判 CLEAN/REGEN 通过; 仅"同类型+1"或全新类型才失败)。
           # SKIP_TESTS 跳过 run_all(本 job 上一步已跑); READONLY 避免重生成 baseline 架空门禁。
           OB_CHECK_SKIP_TESTS=1 OB_CHECK_READONLY=1 bash tools/ob_check.sh
-      - name: coverage radar(报告,不阻断)
-        run: tools/trace_collect.sh | python3 tools/coverage_radar.py - | grep '^TOTAL'
+      - name: coverage radar 告警(ob+lib 口径;F5 scope 修复后;阶段1 不阻断,阶段2 阻断待 F5 稳定后议)
+        run: |
+          tools/trace_collect.sh | python3 tools/coverage_radar.py - --fail-if-uncovered 25 || true
+
+  slow:
+    name: protocol .exp 交互矩阵(--full)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install expect
+        run: sudo apt-get update && sudo apt-get install -y expect
+      - name: run_all --full(跑 .exp 交互矩阵;无 workspace 的取消分支自动 skip)
+        run: bash tests/run_all.sh --full
