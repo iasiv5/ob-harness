@@ -22,11 +22,23 @@ extract_shell_function() {
     ' "$file"
 }
 
+# regex 匹配: 优先 rg, 无 rg 回退 grep -E(POSIX; [[:space:]] 等字符类两者都支持).
+# ubuntu-24.04 CI runner 不预装 ripgrep(已核实 actions/runner-images Ubuntu2404-Readme),
+# 回退保证结构锁在无 rg 环境也真测(否则 assert_function_match 因 rg 缺失误 fail).
+match_regex() {
+    local pattern="$1" text="$2"
+    if command -v rg >/dev/null 2>&1; then
+        printf '%s' "$text" | rg -q --no-messages -e "$pattern"
+    else
+        printf '%s' "$text" | grep -E -q -- "$pattern"
+    fi
+}
+
 assert_function_not_match() {
     local label="$1" file="$2" function_name="$3" pattern="$4" body
     body=$(extract_shell_function "$file" "$function_name") || {
         _assert_bad "$label (function '$function_name' not found)"; return; }
-    if rg -q "$pattern" <<< "$body"; then
+    if match_regex "$pattern" "$body"; then
         _assert_bad "$label (matched /$pattern/)"
     else
         _assert_ok "$label"
@@ -39,7 +51,7 @@ assert_function_match() {
     local label="$1" file="$2" function_name="$3" pattern="$4" body
     body=$(extract_shell_function "$file" "$function_name") || {
         _assert_bad "$label (function '$function_name' not found)"; return; }
-    if rg -q "$pattern" <<< "$body"; then
+    if match_regex "$pattern" "$body"; then
         _assert_ok "$label"
     else
         _assert_bad "$label (no match /$pattern/)"
