@@ -272,7 +272,7 @@ select_openbmc_repo_url() {
         if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Choose [1/2/Q]: ")" selection; then
             error "Unable to read repository source selection from stdin."
             error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
-            exit 1
+            exit 3
         fi
 
         case "$selection" in
@@ -285,7 +285,7 @@ select_openbmc_repo_url() {
                 if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Enter the full repository URL: ")" OPENBMC_REPO_URL; then
                     error "Unable to read custom repository URL from stdin."
                     error "Use --url <url> or set OB_OPENBMC_URL in non-interactive mode."
-                    exit 1
+                    exit 3
                 fi
                 if [[ -z "$OPENBMC_REPO_URL" ]]; then
                     info "Returning to source selection."
