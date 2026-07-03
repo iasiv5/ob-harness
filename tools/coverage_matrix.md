@@ -30,7 +30,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 |---|---|---|---|
 | 空 workspace → exit 3 | cmd_build | protocol/smoke_ob.sh | |
 | 取消 → exit 2 | cmd_build;confirm_action | protocol/manual_matrix.exp | |
-| 进入 bitbake 环境 + run bitbake | build_env_enter;bitbake | orchestration/build_env_enter.sh;protocol/build_env_enter_structure.sh | build_env_enter=current-shell 进入; bitbake 失败由 cmd_build exit 1 兜 |
+| 进入 bitbake 环境 + bitbake handoff | build_env_enter;cmd_build | orchestration/build_env_enter.sh;orchestration/cmd_build_bitbake_handoff.sh;protocol/build_env_enter_structure.sh | build_env_enter=进入原语(副作用契约); cmd_build_bitbake_handoff=非 dry-run 调 bitbake + 失败 exit 1 兜底 |
 
 ## status
 
