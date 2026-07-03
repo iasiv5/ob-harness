@@ -25,3 +25,13 @@ jobs:
           OB_CHECK_SKIP_TESTS=1 OB_CHECK_READONLY=1 bash tools/ob_check.sh
       - name: coverage radar(报告,不阻断)
         run: tools/trace_collect.sh | python3 tools/coverage_radar.py - | grep '^TOTAL'
+
+  slow:
+    name: protocol .exp 交互矩阵(--full)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: install expect
+        run: sudo apt-get update && sudo apt-get install -y expect
+      - name: run_all --full(跑 .exp 交互矩阵;无 workspace 的取消分支自动 skip)
+        run: bash tests/run_all.sh --full
