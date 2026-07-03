@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# lib/bitbake_env.sh — BitBake environment one-shot helpers, sourced by ob.
-# Leaf-pure support module: no exit; callers own exit-code/remedy semantics.
+# lib/bitbake_env.sh — BitBake environment one-shot 查询(子进程隔离, 副作用不泄漏到当前 shell). 术语见 CONTEXT.md BitBake environment support module.
+# Exit: leaf-no-exit（leaf-pure module）; 调用者负责 exit-code/remedy/诊断.
 
 
 bitbake_env_list_available_machines() {

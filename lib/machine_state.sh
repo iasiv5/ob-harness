@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# lib/machine_state.sh — Machine lifecycle state(snapshot/init marker/build artifact),被 ob source。
-# 纯函数定义集;下层 module 不 exit,由 commands.sh 决定 exit-code/remedy。
+# lib/machine_state.sh — machine lifecycle state(snapshot/init marker/build artifact 读写). 术语见 CONTEXT.md machine lifecycle state.
+# Exit: leaf-no-exit（leaf-pure module）; 调用者负责 exit-code/remedy.
 
 
 machine_state_snapshot_path() {

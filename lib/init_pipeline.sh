@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# lib/init_pipeline.sh — ob §5 init 流水线(clone/snapshot/config),被 ob source。纯函数定义集。
+# lib/init_pipeline.sh — init 流水线(clone/snapshot/config). 术语见 CONTEXT.md.
+# Exit: direct-exit module（非 leaf-pure, 使用 exit-code 契约值 0/1/2/3）.
 
 
 prerequisites_check() {

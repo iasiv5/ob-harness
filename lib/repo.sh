@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# lib/repo.sh — ob §3 仓库与 machine 解析,被 ob source。纯函数定义集(含解耦后的 require_openbmc_repo)。
+# lib/repo.sh — 仓库与 machine 解析(require_openbmc_repo/write_source_manifest). 术语见 CONTEXT.md source manifest.
+# Exit: direct-exit module（非 leaf-pure, 使用 exit-code 契约值 0/1/2/3）.
 
 
 read_source_label() {

@@ -3,7 +3,7 @@
 # Usage: ob [command] [options]    (run without arguments for interactive menu)
 set -euo pipefail
 
-# === §1 全局变量 (Global Variables) ===
+# === 全局变量 (Global Variables) ===
 HARNESS_ROOT=""
 WORKSPACE_DIR=""
 COMMAND=""
@@ -65,13 +65,13 @@ NC='\033[0m' # No Color
 PROMPT_PREFIX='\033[38;2;255;210;80mob-harness>\033[0m'
 
 
-# === ob 入口: sourced lib 分区(OB_ENTRY_DIR 须在 source lib 前算好) ===
+# === sourced lib 分区(以下 lib/*.sh 均被 ob source; OB_ENTRY_DIR 须在 source 前算好) ===
 OB_ENTRY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 for f in "$OB_ENTRY_DIR"/lib/*.sh; do
     # shellcheck disable=SC1090
     source "$f"
 done
-# === §7 入口 (parse_args / usage / main) ===
+# === 入口 (parse_args / usage / main) ===
 
 parse_args() {
     if [[ $# -lt 1 ]]; then

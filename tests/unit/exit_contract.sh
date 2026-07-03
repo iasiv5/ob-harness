@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tests/unit/exit_contract.sh — exit_contract.py 逻辑自测(unit 层)。
 # 通过子进程跑 Python 扫描器(不 source ob 函数),用 fixture 钉死真·bash-exit
-# 判定的假阳排除(sys.exit/awk/散文/exited 子串)与真阳捕获(exit 4/§2 误 exit/
+# 判定的假阳排除(sys.exit/awk/散文/exited 子串)与真阳捕获(exit 4/util.sh 误 exit/
 # 空 remedy)。fixture 严格镜像 ob 行规:一行一语句、闭合 } 独占行(Z(b) 的「前置行」
 # 模型与 extract_funcs 的 ^} 定界都依赖此)。
 source "$(dirname "$0")/../lib/assert.sh"

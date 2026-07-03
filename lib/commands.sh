@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# lib/commands.sh — ob §6 cmd_* 命令编排(exit seam),被 ob source。纯函数定义集。
+# lib/commands.sh — cmd_* 命令编排(status/init/build/start-qemu/stop-qemu/menu). 术语见 CONTEXT.md function semantic layer / exit-code 契约.
+# Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
 
 
 status_section_main_repo() {

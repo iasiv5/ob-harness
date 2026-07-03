@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# lib/util.sh — ob §2 通用工具 (Utility / L3),被 ob source。
-# 纯函数定义集;不写 set -euo(ob 顶部已 set);detect_harness_root 用 OB_ENTRY_DIR(入口算好)。
+# lib/util.sh — 底层通用工具(log/select_from_list/read_kv_field/require_path). 术语见 CONTEXT.md function semantic layer.
+# Exit: leaf-no-exit（leaf-pure module; 例外 fn_quit/resolve_npm_registry/require_path 可 direct exit, require_path 使用 caller code）; 调用者负责 exit-code/remedy.
 
 
 log()   { echo -e "$*"; }
@@ -274,6 +274,7 @@ print(reference_root / gitsrcname)
 PY
 }
 
+# 用 OB_ENTRY_DIR(由 ob 入口在 source lib 前算好)定位 HARNESS_ROOT。
 detect_harness_root() {
     HARNESS_ROOT="$OB_ENTRY_DIR"
     WORKSPACE_DIR="$HARNESS_ROOT/workspace"

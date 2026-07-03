@@ -73,7 +73,7 @@ _Avoid_: QEMU metadata, QEMU 配置, QEMU 启动配置
 _Avoid_: 三次重复提示, heavy gate, 确认门, 破坏性够分量（旧口径，已收紧为路径风险）
 
 **function semantic layer**:
-`ob` 内部对函数角色的调用层级词汇：L1（`cmd_*` 命令编排，exit seam）、L2（前置检查点，如 `require_path`）、L3（底层通用工具，如 `log`/`select_from_list`/`read_kv_field`）。**已物化为 `lib/*.sh` 文件边界**：原 ob 内 §2-§6 注释分区现由 `lib/{util,repo,bitbake_env,qemu,machine_state,init_pipeline,commands}.sh` 承载（util=L3 底层、repo=仓库/machine 解析、bitbake_env=BitBake environment one-shot 查询、qemu=QEMU runtime、machine_state=Machine lifecycle state、init_pipeline=init 流水线、commands=cmd_* 编排），结构边界从注释锚点转为文件名；`exit_contract` Y 规则按 basename 配置的 leaf-pure modules（当前 `bitbake_env.sh` / `util.sh` / `machine_state.sh`）断言下层 module 不 exit（除各自例外集）。讨论代码用的层级启发式语义仍适用（cmd_* 是 exit seam、bitbake_env/util/machine_state 是下层 no-exit module），但结构边界已从注释转为文件。
+`ob` 内部对函数角色的调用层级词汇：L1（`cmd_*` 命令编排，exit seam）、L2（前置检查点，如 `require_path`）、L3（底层通用工具，如 `log`/`select_from_list`/`read_kv_field`）。L1/L2/L3 是**函数角色**轴，与**文件级 exit 契约**轴正交。文件级 exit 契约由 `exit_contract` 的 Y 规则按 basename 划分三态：`leaf-pure module`（Y 规则覆盖；除配置例外外函数不直接 exit；"pure" 仅指 no-direct-exit，**不指函数纯度**——其函数仍可有文件/进程/网络副作用）、`direct-exit module`（函数体内直接 exit，受 `exit-code 契约` 约束，非 L1 收口）、`exit seam`（L1 `cmd_*` 顶层编排，对用户命令收口）。leaf-pure basename 归属与各 module 的 exit 例外集以 `exit_contract` 配置（`LEAF_EXIT_EXCEPTIONS_BY_BASENAME`）为唯一权威——不在此罗列，避免文字副本漂移。结构边界由 `lib/*.sh` 文件名承载——曾用 § 注释分区锚点，因会漂移已退役。
 _Avoid_: 调用层级, 函数分级；勿与 test layer（protocol/unit/orchestration/integration，曾用 L0–L3）混用
 
 **BitBake environment support module**:
