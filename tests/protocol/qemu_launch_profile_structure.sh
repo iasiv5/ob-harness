@@ -10,6 +10,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 OB="$ROOT/ob"
 QEMU_SH="$ROOT/lib/qemu.sh"
 QEMU_LAUNCH_PROFILE_SH="$ROOT/lib/qemu_launch_profile.sh"
+QEMU_BINARY_SH="$ROOT/lib/qemu_binary.sh"
 COMMANDS_SH="$ROOT/lib/commands.sh"
 
 extract_shell_function() {
@@ -70,11 +71,11 @@ assert_function_not_match "cmd_start_qemu no old launch calls" "$COMMANDS_SH" cm
 
 assert_function_not_match "build_qemu_cmd no discovery/old vars" "$QEMU_SH" build_qemu_cmd 'find_ast2700_bootloaders|machine_conf_chain_contains|detect_soc_type|\bQB_MEM_SIZE_FLAG\b|\bSOC_TYPE\b'
 assert_function_not_match "derive_qemu_paths no old arch vars" "$QEMU_SH" derive_qemu_paths 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
-assert_function_not_match "check_jenkins_update no old arch vars" "$QEMU_SH" check_jenkins_update 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
-assert_function_not_match "ensure_qemu_binary_community no old arch vars" "$QEMU_SH" ensure_qemu_binary_community 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
-assert_function_not_match "ensure_qemu_binary_custom no old arch vars" "$QEMU_SH" ensure_qemu_binary_custom 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
-assert_function_not_match "ensure_qemu_firmware no soc-derived gating" "$QEMU_SH" ensure_qemu_firmware 'QB_SYSTEM_NAME|QEMU_LAUNCH_SOC_TYPE|\bSOC_TYPE\b'
-assert_function_contains "ensure_qemu_firmware uses pcbios flag" "$QEMU_SH" ensure_qemu_firmware "QEMU_LAUNCH_REQUIRES_PCBIOS"
+assert_function_not_match "check_jenkins_update no old arch vars" "$QEMU_BINARY_SH" check_jenkins_update 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
+assert_function_not_match "ensure_qemu_binary_community no old arch vars" "$QEMU_BINARY_SH" ensure_qemu_binary_community 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
+assert_function_not_match "ensure_qemu_binary_custom no old arch vars" "$QEMU_BINARY_SH" ensure_qemu_binary_custom 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
+assert_function_not_match "ensure_qemu_firmware no soc-derived gating" "$QEMU_BINARY_SH" ensure_qemu_firmware 'QB_SYSTEM_NAME|QEMU_LAUNCH_SOC_TYPE|\bSOC_TYPE\b'
+assert_function_contains "ensure_qemu_firmware uses pcbios flag" "$QEMU_BINARY_SH" ensure_qemu_firmware "QEMU_LAUNCH_REQUIRES_PCBIOS"
 assert_function_contains "machine conf lookup stops after first hit" "$QEMU_LAUNCH_PROFILE_SH" qemu_launch_profile_find_machine_conf "-print -quit"
 assert_function_contains "include lookup stops after first hit" "$QEMU_LAUNCH_PROFILE_SH" resolve_machine_conf_include "-print -quit"
 
