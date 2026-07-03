@@ -6,6 +6,8 @@
 tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 ```
 
+> radar 全集 = ob + lib/*.sh(F5 修复后;曾因 06-22 模块化未同步而只测 ob 入口 3 函数)。cross-check 会列出"matrix 声明但不在 radar 全集"的 out-of-scope 项(surface gate 等刻意 out-of-radar,其它是 typo/过期名)。
+
 **规则**:涉及函数分号 `;` 分隔;覆盖 test 留空=未覆盖(TODO);备注标 `exit 函数`(radar 低估,良性)/ `TTY`(靠 expect)/ `integration`(需 QEMU)。
 
 > 这是骨架(5 关键功能点 + 横切),随 test 扩充持续维护。
@@ -69,5 +71,5 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 字符串/工具子函数 | is_valid_repo_url;read_kv_field;read_manifest_field;trim_whitespace | unit/url.sh;unit/source_manifest.sh | 子工具,被上层调用 |
 | QEMU launch profile 纯规则 | qemu_launch_profile_apply_system_name;qemu_launch_profile_apply_machine_name;machine_conf_chain_contains | unit/soc.sh | start-qemu SoC/机型派生 |
 | conf/url 工具 | read_local_conf_var;resolve_effective_dl_dir;resolve_effective_sstate_dir;is_private_url;parse_hostkey_offending;machine_conf_chain_contains | unit/conf_read.sh;unit/url_extra.sh | 子工具 |
-| machine_state public records surface 门禁 | machine_state_records;_commands_machine_record_field;_commands_record_has_discovery_source;_commands_collect_machine_state_records;_repo_machine_record_field | tools/ob_check.sh;unit/repo_previously_initialized.sh;protocol/status_machine_state.sh | 禁止生产代码调用 machine_state_records / record parser helper |
+| machine_state public records surface 门禁 | machine_state_records;_commands_machine_record_field;_commands_record_has_discovery_source;_commands_collect_machine_state_records;_repo_machine_record_field | tools/ob_check.sh;unit/repo_previously_initialized.sh;protocol/status_machine_state.sh | 禁止生产代码调用 machine_state_records / record parser helper;out-of-radar(surface gate 回归锁,不在 ob+lib 函数全集,cross-check out-of-scope 列) |
 | current-shell build environment 进入 | build_env_enter | orchestration/build_env_enter.sh;protocol/build_env_enter_structure.sh | current-shell 副作用原语,leaf-no-exit |

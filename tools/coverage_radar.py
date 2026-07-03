@@ -56,7 +56,7 @@ def parse_trace(text):
 
 def cross_check(matrix_path, covered, all_funcs):
     """读 coverage_matrix.md 的'涉及函数'列,与 radar 覆盖集交叉。"""
-    declared = set()
+    declared_all, declared = set(), set()
     for line in Path(matrix_path).read_text().splitlines():
         if not line.startswith('|') or '功能点' in line or '---' in line:
             continue
@@ -65,10 +65,13 @@ def cross_check(matrix_path, covered, all_funcs):
         if len(cols) > 2:
             for fn in re.split(r'[;,]', cols[2]):
                 fn = fn.strip()
+                if not fn:
+                    continue
+                declared_all.add(fn)
                 if fn in all_funcs:
                     declared.add(fn)
     print("=== cross-check: checklist(语义)× radar(结构)===")
-    print(f"checklist 声明函数: {len(declared)}")
+    print(f"checklist 声明函数: {len(declared)}(radar 全集内) / {len(declared_all)}(含 out-of-scope)")
     print(f"radar 覆盖函数:    {len(covered)}")
     decl_not_cov = sorted(declared - covered)
     cov_not_decl = sorted(covered - declared)
@@ -79,6 +82,11 @@ def cross_check(matrix_path, covered, all_funcs):
     if cov_not_decl:
         print(f"\nradar 覆盖但 checklist 未声明({len(cov_not_decl)};transitive 命中或 checklist 漏):")
         for f in cov_not_decl:
+            print(f"  - {f}")
+    out_of_scope = sorted(declared_all - all_funcs)
+    if out_of_scope:
+        print(f"\nmatrix 声明但不在 radar 全集({len(out_of_scope)};应为 surface gate 等刻意 out-of-radar,其它是 typo/过期名待修):")
+        for f in out_of_scope:
             print(f"  - {f}")
 
 
