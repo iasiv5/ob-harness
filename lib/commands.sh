@@ -536,18 +536,9 @@ cmd_start_qemu() {
     fi
     verbose "Image file: $image_file"
 
-    resolve_qemu_launch_profile "$MACHINE"
-
-    # ── Prerequisite 4: QEMU binary ──
-    ensure_qemu_binary
-    qemu_launch_profile_apply_binary_machine_override
-
-    # ── Prerequisite 4b: QEMU firmware (bootroms, etc.) ──
-    ensure_qemu_firmware
-
-    # ── Check for existing QEMU instance (before port resolution) ──
-    #     Same-machine check must come first — port conflicts are usually
-    #     caused by *this* instance; asking user to reassign ports is misleading.
+    # ── Existing-instance conflict (F1 invariant: must precede qemu_prepare_launch,
+    #     whose check_ports_available exits 3 on occupied ports; killing the old
+    #     same-machine instance first avoids a spurious port-conflict exit) ──
     derive_qemu_paths
     if read_pid_file; then
         local pid_status
@@ -592,35 +583,15 @@ cmd_start_qemu() {
         fi
     fi
 
-    # ── Resolve ports: CLI > env var > default ──
-    local ssh_port redfish_port ipmi_port http_port serial_log
-
-    ssh_port="${QEMU_SSH_PORT:-${OB_QEMU_SSH_PORT:-2222}}"
-    redfish_port="${QEMU_REDFISH_PORT:-${OB_QEMU_REDFISH_PORT:-2443}}"
-    ipmi_port="${QEMU_IPMI_PORT:-${OB_QEMU_IPMI_PORT:-2623}}"
-    http_port="${QEMU_HTTP_PORT:-${OB_QEMU_HTTP_PORT:-}}"
-    serial_log="${QEMU_SERIAL_LOG:-${OB_QEMU_SERIAL_LOG:-${HOME%/}/tmp/qemu-${MACHINE}-serial.log}}"
-    serial_sock="${serial_log%.log}.sock"
-
-    # ── Interactive port conflict resolution for additional QEMU instances ──
-    resolve_qemu_ports_interactive ssh_port redfish_port ipmi_port http_port
-
-    # ── Prerequisite 6: port availability ──
-    local -a ports_to_check=("tcp" "$ssh_port" "tcp" "$redfish_port" "udp" "$ipmi_port")
-    if [[ -n "$http_port" ]]; then
-        ports_to_check+=("tcp" "$http_port")
-    fi
-    check_ports_available "${ports_to_check[@]}"
-
-    # ── Build QEMU command (SoC-specific template) ──
-    build_qemu_cmd "$image_file" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log" "$serial_sock"
+    # ── Prepare launch (Shape 2 half 1: profile/binary/firmware/ports/build) ──
+    qemu_prepare_launch "$MACHINE" "$image_file"
 
     step_header "Starting QEMU for '$MACHINE' ($QEMU_LAUNCH_SOC_TYPE)"
     echo "  Machine   : $QEMU_LAUNCH_MACHINE_NAME"
     echo "  SoC       : $QEMU_LAUNCH_SOC_TYPE"
     echo "  Binary    : $QEMU_BIN_FILE"
     echo "  Image     : $image_file"
-    echo "  Serial log: $serial_log"
+    echo "  Serial log: $QEMU_LAUNCH_SERIAL_LOG"
     echo ""
 
     # ── Safety confirmation (same pattern as ob init / ob build) ──
@@ -646,7 +617,7 @@ cmd_start_qemu() {
     fi
 
     # Ensure serial log directory exists
-    mkdir -p "$(dirname "$serial_log")"
+    mkdir -p "$(dirname "$QEMU_LAUNCH_SERIAL_LOG")"
 
     local qemu_stderr
     qemu_stderr=$(mktemp "${TMPDIR:-/tmp}/qemu-stderr-XXXXXX")
@@ -657,14 +628,14 @@ cmd_start_qemu() {
         if [[ -n "$qemu_err_msg" ]]; then
             error "$(echo "$qemu_err_msg" | head -5)"
         fi
-        error "Check serial log: $serial_log"
+        error "Check serial log: $QEMU_LAUNCH_SERIAL_LOG"
         error "Verify QEMU binary: $QEMU_BIN_FILE"
         rm -f "$qemu_stderr"
         exit 1
     fi
     rm -f "$qemu_stderr"
 
-    _qemu_post_launch "$QEMU_LAUNCH_MACHINE_NAME" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log" "$serial_sock"
+    _qemu_post_launch "$QEMU_LAUNCH_MACHINE_NAME" "$QEMU_LAUNCH_SSH_PORT" "$QEMU_LAUNCH_REDFISH_PORT" "$QEMU_LAUNCH_IPMI_PORT" "$QEMU_LAUNCH_HTTP_PORT" "$QEMU_LAUNCH_SERIAL_LOG" "$QEMU_LAUNCH_SERIAL_SOCK"
 }
 
 _qemu_post_launch() {

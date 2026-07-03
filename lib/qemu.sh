@@ -77,6 +77,44 @@ build_qemu_cmd() {
     QEMU_CMD+=("-daemonize")
 }
 
+# qemu_prepare_launch <machine> <image_file>
+# launch 编排的"准备"半段(Shape 2): resolve_profile → binary/firmware provisioning →
+# 端口协商 → check_ports → build_qemu_cmd。产出 QEMU_LAUNCH_*_PORT/SERIAL_* 全局 + QEMU_CMD。
+# 有 I/O(可能联网下载 binary、TTY 端口协商),但不 setsid、不写 PID(那些归 execute)。
+# 调用者负责:冲突实例处理(须在本函数之前,因 check_ports_available 占用即 exit 3)、
+# 前置 guard、confirm、exit 收口。
+qemu_prepare_launch() {
+    local machine="$1"
+    local image_file="$2"
+
+    resolve_qemu_launch_profile "$machine"
+
+    ensure_qemu_binary
+    qemu_launch_profile_apply_binary_machine_override
+
+    ensure_qemu_firmware
+
+    # ── Resolve ports: CLI > env var > default ──
+    QEMU_LAUNCH_SSH_PORT="${QEMU_SSH_PORT:-${OB_QEMU_SSH_PORT:-2222}}"
+    QEMU_LAUNCH_REDFISH_PORT="${QEMU_REDFISH_PORT:-${OB_QEMU_REDFISH_PORT:-2443}}"
+    QEMU_LAUNCH_IPMI_PORT="${QEMU_IPMI_PORT:-${OB_QEMU_IPMI_PORT:-2623}}"
+    QEMU_LAUNCH_HTTP_PORT="${QEMU_HTTP_PORT:-${OB_QEMU_HTTP_PORT:-}}"
+    QEMU_LAUNCH_SERIAL_LOG="${QEMU_SERIAL_LOG:-${OB_QEMU_SERIAL_LOG:-${HOME%/}/tmp/qemu-${machine}-serial.log}}"
+    QEMU_LAUNCH_SERIAL_SOCK="${QEMU_LAUNCH_SERIAL_LOG%.log}.sock"
+
+    # ── Interactive port conflict resolution for additional QEMU instances ──
+    resolve_qemu_ports_interactive QEMU_LAUNCH_SSH_PORT QEMU_LAUNCH_REDFISH_PORT QEMU_LAUNCH_IPMI_PORT QEMU_LAUNCH_HTTP_PORT
+
+    # ── Port availability ──
+    local -a ports_to_check=("tcp" "$QEMU_LAUNCH_SSH_PORT" "tcp" "$QEMU_LAUNCH_REDFISH_PORT" "udp" "$QEMU_LAUNCH_IPMI_PORT")
+    if [[ -n "$QEMU_LAUNCH_HTTP_PORT" ]]; then
+        ports_to_check+=("tcp" "$QEMU_LAUNCH_HTTP_PORT")
+    fi
+    check_ports_available "${ports_to_check[@]}"
+
+    build_qemu_cmd "$image_file" "$QEMU_LAUNCH_SSH_PORT" "$QEMU_LAUNCH_REDFISH_PORT" "$QEMU_LAUNCH_IPMI_PORT" "$QEMU_LAUNCH_HTTP_PORT" "$QEMU_LAUNCH_SERIAL_LOG" "$QEMU_LAUNCH_SERIAL_SOCK"
+}
+
 check_ports_available() {
     local -a port_args=("$@")
     local -a conflicts=()

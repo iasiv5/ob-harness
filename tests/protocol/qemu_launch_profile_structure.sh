@@ -66,7 +66,8 @@ assert_function_not_match() {
     fi
 }
 
-assert_function_contains "cmd_start_qemu uses profile" "$COMMANDS_SH" cmd_start_qemu "resolve_qemu_launch_profile"
+assert_function_contains "cmd_start_qemu calls qemu_prepare_launch" "$COMMANDS_SH" cmd_start_qemu "qemu_prepare_launch"
+assert_function_contains "qemu_prepare_launch resolves profile" "$QEMU_SH" qemu_prepare_launch "resolve_qemu_launch_profile"
 assert_function_not_match "cmd_start_qemu no old launch calls" "$COMMANDS_SH" cmd_start_qemu '^[[:space:]]*(resolve_qb_vars|detect_soc_type|derive_qemu_machine_name|find_ast2700_bootloaders)([[:space:]]|$)'
 
 assert_function_not_match "build_qemu_cmd no discovery/old vars" "$QEMU_SH" build_qemu_cmd 'find_ast2700_bootloaders|machine_conf_chain_contains|detect_soc_type|\bQB_MEM_SIZE_FLAG\b|\bSOC_TYPE\b'
