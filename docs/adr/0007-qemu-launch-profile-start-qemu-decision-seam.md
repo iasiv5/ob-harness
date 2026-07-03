@@ -14,7 +14,7 @@ Amends: ADR-0002 for `start-qemu` missing-input policy. ADR-0002 owns QB variabl
 
 ## Consequences
 
-- `QEMU launch profile` 是启动时解析出的画像，不新增持久化 profile 文件；现阶段实现留在 `lib/qemu.sh`，不拆 `lib/qemu_launch_profile.sh`。
+- `QEMU launch profile` 是启动时解析出的画像，不新增持久化 profile 文件。实现自 `lib/qemu.sh` 拆出独立 `lib/qemu_launch_profile.sh`（**2026-07-04 修订**：原"现阶段留在 qemu.sh、不拆 launch_profile.sh"的 deferral 撤销——深 module 稳定、`tests/protocol/qemu_launch_profile_structure.sh` 结构锁就位，物理独立已安全；此为 qemu.sh deepening 一部分，同次另拆 `lib/qemu_binary.sh` 承载 binary provisioning、qemu.sh 收为 runtime）。
 - `resolve_qemu_launch_profile` 入口必须先清空全部 `QEMU_LAUNCH_*` 变量，成功后再设置新的启动画像；调用者不能从上一次解析中继承 AST2700 bootloader 或 pc-bios 状态。
 - `resolve_qemu_launch_profile` 成功后设置 `QEMU_LAUNCH_*` 变量；`cmd_start_qemu`、`ensure_qemu_binary`、`ensure_qemu_firmware` 和 `build_qemu_cmd` 不再直接依赖 `QB_*` 或裸 `SOC_TYPE`。`build_qemu_cmd` 仍可消费 image path、ports、serial path、`QEMU_BIN_FILE` / `QEMU_PCBIOS_DIR` 等运行时路径。
 - `QB_MACHINE` 缺失时允许 legacy machine-name fallback，`QB_MEM` 缺失时表示不传 `-m` 参数；这些是 `QEMU_LAUNCH_*` 生成策略，不是 QB variable fallback，也不能回填为 `QB_*` 语义。
