@@ -15,6 +15,8 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y shellcheck expect ripgrep
       - name: run_all(默认只跑 .sh,~1.5s;--full 才跑慢的交互矩阵)
         run: bash tests/run_all.sh
+      - name: init dry-run sanity(ob init 8 步编排端到端;临时 harness + fake checkout,CI 友好,无真实 clone)
+        run: bash tests/integration/init_dryrun_sanity.sh
       - name: shellcheck 防退化(baseline multiset 判定,免疫行号漂移)
         run: |
           # 复用 ob_check.sh 已验证的行号无关判定(logic: 只比对告警文本集合,
