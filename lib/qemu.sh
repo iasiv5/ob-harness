@@ -115,6 +115,108 @@ qemu_prepare_launch() {
     build_qemu_cmd "$image_file" "$QEMU_LAUNCH_SSH_PORT" "$QEMU_LAUNCH_REDFISH_PORT" "$QEMU_LAUNCH_IPMI_PORT" "$QEMU_LAUNCH_HTTP_PORT" "$QEMU_LAUNCH_SERIAL_LOG" "$QEMU_LAUNCH_SERIAL_SOCK"
 }
 
+# qemu_execute_launch — launch 编排的"执行"半段(Shape 2): setsid 启动 + PID 写入 +
+# BMC-ready 等待 + hostkey 检测 + 连接 summary。读 prepare 产出的 QEMU_LAUNCH_* 全局。
+# 副作用重(setsid 真启动、写 PID 文件、ssh 轮询);启动失败 exit 1。调用者负责 DRY_RUN 短路与 exit 收口。
+qemu_execute_launch() {
+    mkdir -p "$(dirname "$QEMU_LAUNCH_SERIAL_LOG")"
+
+    local qemu_stderr
+    qemu_stderr=$(mktemp "${TMPDIR:-/tmp}/qemu-stderr-XXXXXX")
+    if ! setsid "${QEMU_CMD[@]}" >"$qemu_stderr" 2>&1; then
+        error "QEMU failed to start."
+        local qemu_err_msg
+        qemu_err_msg=$(grep -v "^qemu-system.*: warning:" "$qemu_stderr" 2>/dev/null || true)
+        if [[ -n "$qemu_err_msg" ]]; then
+            error "$(echo "$qemu_err_msg" | head -5)"
+        fi
+        error "Check serial log: $QEMU_LAUNCH_SERIAL_LOG"
+        error "Verify QEMU binary: $QEMU_BIN_FILE"
+        rm -f "$qemu_stderr"
+        exit 1
+    fi
+    rm -f "$qemu_stderr"
+
+    # ── Write PID file ──
+    sleep 1
+    local qemu_pid=""
+    # 用 serial socket 路径(每实例唯一)+ 当前用户过滤定位 PID,避免多用户同 SoC
+    # (如 ast2700a1-evb)machine 名相同导致 pgrep 误匹配到他人 QEMU。fallback 用 binary 路径。
+    qemu_pid=$(pgrep -u "$(whoami)" -f "$QEMU_LAUNCH_SERIAL_SOCK" 2>/dev/null | head -1 || true)
+    if [[ -z "$qemu_pid" ]]; then
+        qemu_pid=$(pgrep -u "$(whoami)" -f "$QEMU_BIN_FILE" 2>/dev/null | head -1 || true)
+    fi
+
+    mkdir -p "$QEMU_PIDS_DIR"
+    cat > "$QEMU_PID_FILE" <<PIDFILE_EOF
+pid=$qemu_pid
+user=$(whoami)
+machine=$MACHINE
+binary=$QEMU_BIN_FILE
+qemu_machine=$QEMU_LAUNCH_MACHINE_NAME
+started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+ssh_port=$QEMU_LAUNCH_SSH_PORT
+redfish_port=$QEMU_LAUNCH_REDFISH_PORT
+ipmi_port=$QEMU_LAUNCH_IPMI_PORT
+http_port=${QEMU_LAUNCH_HTTP_PORT:-none}
+serial_log=$QEMU_LAUNCH_SERIAL_LOG
+serial_sock=$QEMU_LAUNCH_SERIAL_SOCK
+PIDFILE_EOF
+
+    verbose "PID file written: $QEMU_PID_FILE (PID: $qemu_pid)"
+
+    # ── Wait for BMC ready (unless --no-wait) ──
+    if [[ "$QEMU_NO_WAIT" -eq 0 ]]; then
+        echo ""
+        info "Waiting for BMC to become ready (SSH on port $QEMU_LAUNCH_SSH_PORT)..."
+        local attempts=0
+        local max_attempts=30
+        local ready=0
+
+        while [[ $attempts -lt $max_attempts ]]; do
+            attempts=$((attempts + 1))
+            if sshpass -p 0penBmc ssh -o StrictHostKeyChecking=no -o ConnectTimeout=3 \
+                 -o UserKnownHostsFile=/dev/null -p "$QEMU_LAUNCH_SSH_PORT" root@localhost echo "OK" >/dev/null 2>&1; then
+                ready=1
+                break
+            fi
+            printf "\r  Waiting... attempt %d/%d" "$attempts" "$max_attempts"
+            sleep 5
+        done
+        echo ""
+
+        if [[ $ready -eq 0 ]]; then
+            warn "BMC did not become SSH-ready within $((max_attempts * 5)) seconds."
+            warn "It may still be booting. Check serial log: $QEMU_LAUNCH_SERIAL_LOG"
+        else
+            info "BMC ready after attempt $attempts (~$((attempts * 5))s)"
+        fi
+    fi
+
+    # ── Detect stale SSH host key (image rebuild regenerates host keys) ──
+    check_ssh_hostkey_conflict "$QEMU_LAUNCH_SSH_PORT"
+
+    # ── Print connection summary ──
+    echo ""
+    echo -e "${GREEN}✅ QEMU started for '$MACHINE'${NC} (PID $qemu_pid)"
+    echo ""
+    echo "Connect:"
+    echo "  SSH     : ssh root@localhost -p $QEMU_LAUNCH_SSH_PORT  (password: 0penBmc)"
+    echo "  WebUI   : https://localhost:$QEMU_LAUNCH_REDFISH_PORT  (root / 0penBmc)"
+    echo "  Redfish : curl -sk -u root:0penBmc https://localhost:$QEMU_LAUNCH_REDFISH_PORT/redfish/v1"
+    echo "  IPMI    : ipmitool -I lanplus -H localhost -p $QEMU_LAUNCH_IPMI_PORT -U root -P 0penBmc mc info"
+    echo "  Console : socat -,rawer,escape=0x1d UNIX-CONNECT:$QEMU_LAUNCH_SERIAL_SOCK"
+    echo "            (Ctrl+] to exit socat session)"
+    echo ""
+    echo "Logs:"
+    echo "  Serial  : $QEMU_LAUNCH_SERIAL_LOG"
+    echo "  PID file: $QEMU_PID_FILE"
+    echo ""
+    echo "Stop:"
+    echo "  ob stop-qemu $MACHINE"
+    echo ""
+}
+
 check_ports_available() {
     local -a port_args=("$@")
     local -a conflicts=()
