@@ -1,0 +1,24 @@
+interface:
+  display_name: "Handoff 交接"
+  short_description: "为新的 GitHub Copilot chat 生成面向下一任务的接续上下文"
+  default_prompt: "使用 $handoff，围绕我接下来要继续的任务，为新的 GitHub Copilot chat 生成接续上下文。"
+compatibility:
+  canonical_format: "agent-skills"
+  adapter_targets:
+    - "openai"
+    - "claude"
+    - "generic"
+  activation:
+    mode: "manual"
+    paths: []
+  execution:
+    context: "inline"
+    shell: "bash"
+  trust:
+    source_tier: "local"
+    remote_inline_execution: "forbid"
+    remote_metadata_policy: "allow-metadata-only"
+  degradation:
+    openai: "metadata-adapter"
+    claude: "neutral-source-plus-adapter"
+    generic: "neutral-source"
