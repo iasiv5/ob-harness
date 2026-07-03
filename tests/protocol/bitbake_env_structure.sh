@@ -9,6 +9,7 @@ ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 BITBAKE_ENV_SH="$ROOT/lib/bitbake_env.sh"
 REPO_SH="$ROOT/lib/repo.sh"
 QEMU_SH="$ROOT/lib/qemu.sh"
+QEMU_LAUNCH_PROFILE_SH="$ROOT/lib/qemu_launch_profile.sh"
 INIT_PIPELINE_SH="$ROOT/lib/init_pipeline.sh"
 COMMANDS_SH="$ROOT/lib/commands.sh"
 EXIT_CONTRACT_PY="$ROOT/tools/exit_contract.py"
@@ -116,7 +117,7 @@ assert_file_contains "bitbake_env registered leaf-pure" "$EXIT_CONTRACT_PY" "'bi
 assert_no_real_exit_command "bitbake_env has no exit command" "$BITBAKE_ENV_SH"
 
 assert_function_contains "repo machine list uses bitbake_env helper" "$REPO_SH" list_available_machines "bitbake_env_list_available_machines"
-assert_function_contains "qemu profile uses bitbake_env query" "$QEMU_SH" resolve_qemu_launch_profile "bitbake_env_query_vars"
+assert_function_contains "qemu profile uses bitbake_env query" "$QEMU_LAUNCH_PROFILE_SH" resolve_qemu_launch_profile "bitbake_env_query_vars"
 
 assert_function_not_match "init_bitbake_env keeps current-shell setup" "$INIT_PIPELINE_SH" init_bitbake_env 'bitbake_env_'
 assert_function_not_match "generate_dep_graph keeps current-shell setup" "$INIT_PIPELINE_SH" generate_dep_graph 'bitbake_env_'
