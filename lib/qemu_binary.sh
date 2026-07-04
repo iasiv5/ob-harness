@@ -226,36 +226,60 @@ download_and_replace_community_qemu() {
 # If update available and interactive, prompt user to update.
 # Non-interactive: notify only.
 # On any failure: silently continue with existing binary.
+# qemu_binary_update_decision <local_build> <remote_build> <manifest_url>
+# 纯决策(无 IO、不 exit):是否需要更新 community QEMU binary。echo token:
+#   skip_no_build / skip_not_jenkins / skip_no_remote / up_to_date / update_available
+# 检查顺序:local 空 → 非 jenkins → remote 空 → build 比较(与原 check_jenkins_update 守卫一致)。
+qemu_binary_update_decision() {
+    local local_build="$1" remote_build="$2" manifest_url="$3"
+    if   [[ -z "$local_build" ]];                          then echo "skip_no_build"
+    elif [[ "$manifest_url" != *"jenkins.openbmc.org"* ]]; then echo "skip_not_jenkins"
+    elif [[ -z "$remote_build" ]];                         then echo "skip_no_remote"
+    elif [[ "$remote_build" == "$local_build" ]];          then echo "up_to_date"
+    else                                                        echo "update_available"
+    fi
+}
+
+# qemu_binary_resolve_url <env_url> <config_url> <label> <arch>
+# 纯决策(无 IO、不 exit):QEMU binary URL 的来源优先级。echo token:
+#   use_env / use_config / default_jenkins / none_aarch64 / needs_input
+# 优先级:env > config > community+arm 默认 jenkins > community+aarch64(无) > 其他(需输入)。
+qemu_binary_resolve_url() {
+    local env_url="$1" config_url="$2" label="$3" arch="$4"
+    if   [[ -n "$env_url" ]]; then echo "use_env"
+    elif [[ -n "$config_url" ]]; then echo "use_config"
+    elif [[ "$label" == "community" && "$arch" == "qemu-system-arm" ]]; then echo "default_jenkins"
+    elif [[ "$label" == "community" && "$arch" == "qemu-system-aarch64" ]]; then echo "none_aarch64"
+    else echo "needs_input"
+    fi
+}
+
 check_jenkins_update() {
     local manifest="${QEMU_BIN_FILE}.manifest"
 
     # ── Guard: manifest must exist ──
     [[ -f "$manifest" ]] || return 0
 
-    # ── Guard: build_number must be present ──
-    local local_build
+    local local_build manifest_url
     local_build=$(read_kv_field "$manifest" build_number 2>/dev/null) || local_build=""
-    [[ -z "$local_build" ]] && return 0
-
-    # ── Guard: URL must be Jenkins ──
-    local manifest_url
     manifest_url=$(read_kv_field "$manifest" url 2>/dev/null) || manifest_url=""
-    [[ "$manifest_url" != *"jenkins.openbmc.org"* ]] && return 0
 
-    # ── Guard: extract job URL ──
+    # 网络规避:local 空 / 非 jenkins 不查 remote(决策函数 skip_no_build/skip_not_jenkins 分支)
+    case "$(qemu_binary_update_decision "$local_build" "" "$manifest_url")" in
+        skip_*) return 0 ;;
+    esac
+
+    # ── extract job URL + query Jenkins ──
     local job_url
     job_url=$(echo "$manifest_url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||')
-
-    # ── Query Jenkins ──
     local remote_build
     remote_build=$(query_jenkins_build_number "$job_url")
-    [[ -z "$remote_build" ]] && return 0  # Jenkins unreachable
 
-    # ── Same version? ──
-    if [[ "$remote_build" == "$local_build" ]]; then
-        verbose "QEMU binary is up to date (build #${local_build})."
-        return 0
-    fi
+    case "$(qemu_binary_update_decision "$local_build" "$remote_build" "$manifest_url")" in
+        skip_no_remote) return 0 ;;                                  # Jenkins unreachable
+        up_to_date) verbose "QEMU binary is up to date (build #${local_build})."; return 0 ;;
+        update_available) ;;
+    esac
 
     # ── Update available ──
     info "QEMU binary update available: build #${local_build} → #${remote_build}"
@@ -298,20 +322,25 @@ ensure_qemu_binary_community() {
 
     local arch="${QEMU_LAUNCH_SYSTEM_NAME:-qemu-system-arm}"
     local qemu_url=""
+    local env_url="${OB_QEMU_BINARY_URL:-}"
+    local config_url=""
+    # env 空才读 config(匹配原时序,避免 env 已设时多余读)
+    [[ -z "$env_url" ]] && { config_url=$(read_qemu_url_config "$label" "$arch" 2>/dev/null) || config_url=""; }
 
-    if [[ -n "${OB_QEMU_BINARY_URL:-}" ]]; then
-        qemu_url="$OB_QEMU_BINARY_URL"
-        write_qemu_url_config "$label" "$arch" "$qemu_url"
-    else
-        qemu_url="$(read_qemu_url_config "$label" "$arch")"
-    fi
-
-    if [[ -z "$qemu_url" ]]; then
-        if [[ "$label" == "community" && "$arch" == "qemu-system-arm" ]]; then
+    case "$(qemu_binary_resolve_url "$env_url" "$config_url" "$label" "$arch")" in
+        use_env)
+            qemu_url="$env_url"
+            write_qemu_url_config "$label" "$arch" "$qemu_url"
+            ;;
+        use_config)
+            qemu_url="$config_url"
+            ;;
+        default_jenkins)
             qemu_url="https://jenkins.openbmc.org/job/latest-qemu-x86/lastSuccessfulBuild/artifact/qemu/build/qemu-system-arm"
             write_qemu_url_config "$label" "$arch" "$qemu_url"
             info "Using OpenBMC Jenkins default QEMU URL (recorded in $QEMU_URL_CONFIG_FILE)"
-        else
+            ;;
+        none_aarch64|needs_input)
             if [[ "$label" == "community" && "$arch" == "qemu-system-aarch64" ]]; then
                 info "Community source provides no aarch64 QEMU binary."
                 info "Provide a custom download URL below, or press Enter / Ctrl-C to abort."
@@ -339,8 +368,8 @@ ensure_qemu_binary_community() {
 
             qemu_url="$input_url"
             write_qemu_url_config "$label" "$arch" "$qemu_url"
-        fi
-    fi
+            ;;
+    esac
 
     info "Downloading QEMU binary..."
     if ! download_qemu_binary_core "$qemu_url" "$QEMU_BIN_DIR" "$arch"; then
