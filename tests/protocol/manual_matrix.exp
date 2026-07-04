@@ -87,7 +87,7 @@ if {$has_ws} {
     # start-qemu cancel：auto-select built machine → 到 confirm → N 取消 → exit 2。
     # 需 machine 完整 start-qemu-ready(init+build+binary);binary 缺失会 prompt URL / 前置
     # 缺失 / profile 失败 / 超时 → 走不到 confirm → 当环境不适用 SKIP(不 false-fail、不挂起)。
-    # (旧版硬编码 b865g8-bytedance + with-machine 调用 expect "0 to cancel"——machine 已给
+    # (旧版硬编码一个特定 machine 名 + with-machine 调用 expect "0 to cancel"——machine 已给
     #  则无选择列表,且硬编码名与 workspace 实际 built machine 不符 → 必假失败。)
     set timeout 300
     spawn ./ob start-qemu
