@@ -717,9 +717,50 @@ cmd_init() {
     run_repo_init_script
 
     # 解析 machine（Step 2 的一部分，交互选择或确认命令行参数）。
-    resolve_machine
+    # 显式编排（空 guard + arg 快路径 + 非TTY + 展示 + pick_machine + confirm）。
+    local -a _init_machines=()
+    local _im
+    while IFS= read -r _im; do
+        [[ -n "$_im" ]] && _init_machines+=("$_im")
+    done < <(list_available_machines)
 
-    # Re-derive paths (machine may have changed via interactive resolve_machine)
+    if [[ ${#_init_machines[@]} -eq 0 ]]; then
+        error "No machines found in $OPENBMC_DIR."
+        error "Check the OpenBMC main repository, or re-clone: cd $OPENBMC_DIR && git pull"
+        exit 3
+    fi
+
+    if [[ -n "$MACHINE" ]] && printf '%s\n' "${_init_machines[@]}" | grep -qx -- "$MACHINE"; then
+        print_available_machines
+        print_previously_initialized _init_machines
+        info "Machine '$MACHINE' confirmed."
+    else
+        if [[ -n "$MACHINE" ]]; then
+            warn "Machine '$MACHINE' is not in the available list."
+        else
+            warn "No machine specified."
+        fi
+
+        if [[ ! -t 0 ]]; then
+            error "No valid machine and no interactive terminal. Pass a valid machine: ob init <machine>"
+            exit 3
+        fi
+
+        print_available_machines
+        print_previously_initialized _init_machines
+
+        local pm_rc=0
+        pick_machine list_available_machines "init" || pm_rc=$?
+        exit_on_user_cancel "$pm_rc" "init"
+
+        local ca_rc=0
+        confirm_action "init" "$MACHINE" || ca_rc=$?
+        exit_on_user_cancel "$ca_rc" "init"
+        echo ""
+        info "Init confirmed for machine '$MACHINE'."
+    fi
+
+    # Re-derive paths (machine may have changed via interactive pick_machine)
     BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
     SRC_DIR="$WORKSPACE_DIR/src/$MACHINE"
 
