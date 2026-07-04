@@ -604,6 +604,16 @@ cmd_start_qemu() {
     qemu_execute_launch
 }
 
+# __stop_qemu_running_machines — 印当前 workspace 所有 QEMU 实例的 machine 名
+# （源自 qemu-bin/.pids/*.pid，每行一个）。作 pick_machine 的 list-source（module 级可见）。
+__stop_qemu_running_machines() {
+    local pid_file
+    for pid_file in "$WORKSPACE_DIR/qemu-bin/.pids/"*.pid; do
+        [[ -f "$pid_file" ]] || continue
+        basename "$pid_file" .pid
+    done
+}
+
 cmd_stop_qemu() {
     detect_harness_root
 
@@ -619,12 +629,9 @@ cmd_stop_qemu() {
     elif [[ -n "$MACHINE" ]]; then
         targets+=("$MACHINE")
     else
-        # No machine specified: list all and let user choose
+        # No machine specified: list running instances and let user choose
         local -a available=()
-        for pid_file in "$WORKSPACE_DIR/qemu-bin/.pids/"*.pid; do
-            [[ -f "$pid_file" ]] || continue
-            available+=("$(basename "$pid_file" .pid)")
-        done
+        mapfile -t available < <(__stop_qemu_running_machines)
 
         if [[ ${#available[@]} -eq 0 ]]; then
             info "No QEMU instances found."
@@ -639,27 +646,10 @@ cmd_stop_qemu() {
 
         echo ""
         step_header "Running QEMU Instances"
-        local total=${#available[@]}
-        local idx_width=${#total}
-        local i
-        for (( i=0; i<total; i++ )); do
-            local m="${available[$i]}"
-            MACHINE="$m"
-            QEMU_PID_FILE="$WORKSPACE_DIR/qemu-bin/.pids/$m.pid"
-            local status_str=""
-            if read_pid_file && validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
-                status_str="✅ running (PID $PIDFILE_PID)"
-            else
-                status_str="⚠️  stale"
-            fi
-            printf "  %${idx_width}d) %-20s %s\n" "$((i + 1))" "$m" "$status_str"
-        done
-        echo ""
-
-        local sfl_rc=0
-        select_from_list "Select instance to stop [1-${total}]" "$total" || sfl_rc=$?
-        exit_on_user_cancel "$sfl_rc" "Stop QEMU"
-        targets+=("${available[$((SELECT_FROM_LIST_CHOICE - 1))]}")
+        local pm_rc=0
+        pick_machine __stop_qemu_running_machines "Stop QEMU" || pm_rc=$?
+        exit_on_user_cancel "$pm_rc" "Stop QEMU"
+        targets+=("$MACHINE")
     fi
 
     if [[ ${#targets[@]} -eq 0 ]]; then
