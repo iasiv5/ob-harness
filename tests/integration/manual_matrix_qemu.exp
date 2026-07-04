@@ -8,9 +8,9 @@
 #   - 注意：会真实启动 QEMU（占端口），不要在共用机器上随便跑
 #
 # 【怎么用】
-#   前提：expect + workspace 里有 init+build 过的 machine（默认 romulus）。
-#   $ expect tests/manual_matrix_qemu.exp
-#   $ QEMU_MACHINE=romulus expect tests/manual_matrix_qemu.exp   # 换 machine
+#   前提：expect + workspace 里有 firmware-image-ready machine。
+#   $ expect tests/integration/manual_matrix_qemu.exp
+#   $ QEMU_MACHINE=<machine> expect tests/integration/manual_matrix_qemu.exp   # 指定 machine
 #   副作用：临时启动 QEMU（占端口），末尾正常停止清理；中途失败则 --force 兜底。
 #   退出：FAIL=0 → exit 0；FAIL>0 → exit 1（失败时已 --force 清理）。
 #
@@ -28,7 +28,17 @@
 #
 # 【由来】与 manual_matrix.exp 配对：后者不需 QEMU，本段补需运行中实例的 4 条路径。
 
-if {[info exists env(QEMU_MACHINE)]} { set MACHINE $env(QEMU_MACHINE) } else { set MACHINE "romulus" }
+if {[info exists env(OB_INTEGRATION_MACHINE)]} {
+    set MACHINE $env(OB_INTEGRATION_MACHINE)
+} elseif {[info exists env(QEMU_MACHINE)]} {
+    set MACHINE $env(QEMU_MACHINE)
+} else {
+    set MACHINE [exec sh -c {for marker in workspace/configs/*.init-done; do [ -f "$marker" ] || continue; machine=$(basename "$marker" .init-done); ls "workspace/openbmc/build/$machine/tmp/deploy/images/$machine/"*.static.mtd >/dev/null 2>&1 || continue; echo "$machine"; exit 0; done; exit 0}]
+}
+if {$MACHINE eq ""} {
+    puts "skip manual_matrix_qemu.exp (no firmware-image-ready machine)"
+    exit 0
+}
 set timeout 300
 log_user 0
 set PASS 0; set FAIL 0
