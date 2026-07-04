@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/util.sh — 底层通用工具(log/select_from_list/read_kv_field/require_path). 术语见 CONTEXT.md function semantic layer.
+# lib/util.sh — 底层通用工具(log/read_kv_field/require_path). 术语见 CONTEXT.md function semantic layer.
 # Exit: leaf-no-exit（leaf-pure module; 例外 fn_quit/resolve_npm_registry/require_path 可 direct exit, require_path 使用 caller code）; 调用者负责 exit-code/remedy.
 
 

@@ -53,6 +53,18 @@ else
     ok "machine-state public records surface removed"
 fi
 
+# ── 1c. machine selection 旧 surface 清零门禁 ──
+# 生产代码不得内联机器选择：不直调 select_from_list / 不引用 SELECT_FROM_LIST_CHOICE
+# （机器选择走 pick_machine）；repo.sh 不定义 resolve_machine。正则扫注释，故旧名注释也要清。
+machine_select_legacy_re='select_from_list|SELECT_FROM_LIST_CHOICE|(^|[^[:alnum:]_])resolve_machine($|[^[:alnum:]_])'
+machine_select_legacy_hits=$(grep -RInE "$machine_select_legacy_re" lib/*.sh 2>/dev/null || true)
+if [[ -n "$machine_select_legacy_hits" ]]; then
+    bad "machine selection legacy surface still in use (must go through pick_machine)"
+    printf '%s\n' "$machine_select_legacy_hits"
+else
+    ok "machine selection legacy surface removed"
+fi
+
 # ── 2. shellcheck baseline(合成 flat + 纯文本 multiset;不 per-file 避 SC2034 跨文件假阳) ──
 flat=/tmp/ob_check_sc.flat
 : > "$flat"
