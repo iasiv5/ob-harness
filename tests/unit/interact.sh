@@ -14,7 +14,7 @@ confirm_action init m <<< $'y\n' >/dev/null 2>&1;     assert_eq "confirm y rc" "
 confirm_action init m <<< $'n\n' >/dev/null 2>&1;     assert_eq "confirm n rc" "$?" 2
 confirm_action init m <<< $'x\ny\n' >/dev/null 2>&1;  assert_eq "confirm invalid then y rc" "$?" 0
 
-# --- exit_on_user_cancel: 消费 select_from_list/confirm_action 的 rc ---
+# --- exit_on_user_cancel: 消费 pick_machine/confirm_action 的 rc ---
 # 会 exit,用 $(...) 子 shell 跑,父 shell 捕 $?;函数已由 ob_loader source 进当前 shell。
 out=$( exit_on_user_cancel 0 "Build" ); assert_eq "exit rc0 returns 0" "$?" 0
 out=$( exit_on_user_cancel 2 "Build" ); assert_eq "exit rc2 exits 2" "$?" 2
