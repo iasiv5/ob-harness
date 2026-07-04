@@ -555,10 +555,7 @@ cmd_start_qemu() {
             elif [[ -t 0 ]]; then
                 echo ""
                 warn "QEMU instance already running for '$MACHINE':"
-                echo "  PID       : $PIDFILE_PID"
-                echo "  Started   : $PIDFILE_STARTED_AT"
-                echo "  Ports     : SSH($PIDFILE_SSH_PORT) Redfish($PIDFILE_REDFISH_PORT) IPMI($PIDFILE_IPMI_PORT/UDP)"
-                echo "  Serial log: $PIDFILE_SERIAL_LOG"
+                qemu_instance_describe
                 echo ""
                 print_confirm_banner "kill and restart QEMU for" "$MACHINE"
                 local answer
@@ -721,10 +718,7 @@ cmd_stop_qemu() {
 
         # Process is running — show info and confirm
         echo -e "Running QEMU instance for '${BOLD}$MACHINE${NC}':"
-        echo "  PID       : $PIDFILE_PID"
-        echo "  Started   : $PIDFILE_STARTED_AT"
-        echo "  Ports     : SSH($PIDFILE_SSH_PORT) Redfish($PIDFILE_REDFISH_PORT) IPMI($PIDFILE_IPMI_PORT/UDP)"
-        echo "  Serial log: $PIDFILE_SERIAL_LOG"
+        qemu_instance_describe
         echo ""
         print_confirm_banner "stop QEMU for" "$MACHINE"
 

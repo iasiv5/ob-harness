@@ -412,6 +412,15 @@ validate_pid() {
     return 0  # Running and matches
 }
 
+# qemu_instance_describe — 读 PIDFILE_* 全局(read_pid_file 设置)echo 统一四行实例信息。
+# 供 cmd_start_qemu 冲突块与 cmd_stop_qemu 复用(去重;cmd_status 多实例单行呈现不同源,不并入)。
+qemu_instance_describe() {
+    echo "  PID       : $PIDFILE_PID"
+    echo "  Started   : $PIDFILE_STARTED_AT"
+    echo "  Ports     : SSH($PIDFILE_SSH_PORT) Redfish($PIDFILE_REDFISH_PORT) IPMI($PIDFILE_IPMI_PORT/UDP)"
+    echo "  Serial log: $PIDFILE_SERIAL_LOG"
+}
+
 # Parse "Offending <TYPE> key in <file>:<line>" from an ssh changed-key stderr blob.
 # Stdout: "<file> <line>" on match; empty otherwise. Always exits 0 (pure parser,
 # safe under `set -euo pipefail`).
