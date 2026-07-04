@@ -52,6 +52,14 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 失效 host key 检测 | check_ssh_hostkey_conflict;_clear_stale_hostkey_menu | unit/hostkey_conflict.sh | Track A 删除菜单(确证失效);Track B sshd 未就绪仅提示不删 |
 | 取消 → exit 2 | cmd_start_qemu | protocol/manual_matrix.exp | TTY |
 | kill-restart | cmd_start_qemu | protocol/manual_matrix_qemu.exp | integration |
+| launch prepare 半段(profile/binary/firmware/ports/build) | qemu_prepare_launch | orchestration/qemu_prepare_launch.sh | Shape 2 half 1 |
+| launch execute 半段(setsid+PID+summary) | qemu_execute_launch | orchestration/qemu_execute_launch.sh | Shape 2 half 2;QEMU_NO_WAIT 跳 BMC-wait |
+| --force 同端口重启顺序(F1) | cmd_start_qemu | orchestration/start_qemu_force_restart.sh | F1 不变量:kill 先于 check_ports |
+| binary 下载链 | download_qemu_binary_core;ensure_qemu_binary_community | orchestration/qemu_binary_download.sh | flat-binary 路径;原 #1 盲区 |
+| binary 更新/URL 决策 | qemu_binary_update_decision;qemu_binary_resolve_url | unit/qemu_binary_decision.sh | 纯决策 |
+| 实例四行显示 | qemu_instance_describe | unit/qemu_instance_describe.sh | start↔stop 复用(status 不并入) |
+| binary 更新(flock+回滚) | download_and_replace_community_qemu | | 副作用残留(flock+backup+rollback) |
+| custom binary 配置 | ensure_qemu_binary_custom | | 交互残留(非 TTY exit 3 / TTY prompt) |
 
 ## stop-qemu
 
@@ -59,6 +67,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 |---|---|---|---|
 | 无实例 → exit 0 | cmd_stop_qemu | protocol/exit_codes.sh | exit 函数,radar 低估 |
 | 取消/正常停止 | cmd_stop_qemu | protocol/manual_matrix_qemu.exp | integration |
+| 统一 stop(kill+wait+SIGKILL+rm) | qemu_stop_instance | orchestration/qemu_stop_instance.sh | start 冲突 kill + cmd_stop_qemu 复用 |
 
 ## 横切(通用)
 
