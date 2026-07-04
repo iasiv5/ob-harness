@@ -45,6 +45,7 @@ assert_ob_rc() {
         fi
 
         case "$COMMAND" in
+            "")         cmd_menu ;;
             init)       cmd_init ;;
             build)      cmd_build ;;
             status)     cmd_status ;;
@@ -126,5 +127,8 @@ OB_RC_SETUP=_setup_build_candidates assert_ob_rc 3 "build candidates but non-TTY
 OB_RC_SETUP=_setup_start_qemu_candidates assert_ob_rc 3 "start-qemu candidates but non-TTY" start-qemu
 OB_RC_SETUP=_setup_stop_qemu_candidates assert_ob_rc 3 "stop-qemu candidates but non-TTY" stop-qemu
 OB_RC_SETUP=_setup_init_candidates assert_ob_rc 3 "init candidates but non-TTY" init
+
+# cmd_menu 非交互终端 = exit 3（ADR-0003 回归；无参触发 COMMAND="" → cmd_menu）
+assert_ob_rc 3 "menu non-TTY exits 3"
 
 assert_summary

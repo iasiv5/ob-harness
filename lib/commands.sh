@@ -846,8 +846,8 @@ cmd_init() {
 cmd_menu() {
     # Non-interactive terminal guard
     if [[ ! -t 0 ]]; then
-        echo -e "${PROMPT_PREFIX} Non-interactive terminal detected. Use CLI mode: ./ob <command> [args]"
-        exit 1
+        error "Non-interactive terminal detected. Use CLI mode: ./ob <command> [args]"
+        exit 3
     fi
 
     local first_run=1
