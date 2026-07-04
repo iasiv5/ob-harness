@@ -471,28 +471,6 @@ read_manifest_field() {
     read_kv_field "$SOURCE_MANIFEST_FILE" "$key"
 }
 
-# select_from_list <prompt> <total>
-# Reads a 1-based index in [1,total]; sets global SELECT_FROM_LIST_CHOICE on success.
-# Returns 0=selected / 2=cancelled (user entered 0) / 1=read failure.
-# Caller prints the numbered list first (formats vary across call sites). L3 — never exits.
-select_from_list() {
-    local prompt="$1"
-    local total="$2"
-    local selected
-    while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} ${prompt} (0 to cancel): ")" selected; then
-            error "Unable to read selection from stdin."
-            return 1
-        fi
-        [[ "$selected" == "0" ]] && return 2
-        if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
-            SELECT_FROM_LIST_CHOICE="$selected"
-            return 0
-        fi
-        warn "Please enter a number (1-${total})"
-    done
-}
-
 # confirm_action <verb> <object>
 # Prints confirmation banner, loops until Y/y (confirm) or N/n (cancel).
 # Returns 0=confirmed / 2=cancelled / 1=read failure. L3 — never exits.

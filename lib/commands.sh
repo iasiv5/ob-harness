@@ -193,9 +193,9 @@ status_section_tips() {
 }
 
 # exit_on_user_cancel <rc> <verb>
-# 消费 select_from_list / confirm_action 的 rc (0=ok / 2=cancel / 1=read-fail)。
+# 消费 pick_machine / confirm_action 的 rc (0=ok / 2=cancel / 1=read-fail)。
 # rc 0 → return 0 继续下行;rc 2 → warn "<verb> cancelled by user." + exit 2;
-# 否则 exit 1(read-fail 的 error 已由 L3 调用方 select_from_list/confirm_action 打印)。
+# 否则 exit 1(read-fail 的 error 已由 L3 调用方 pick_machine/confirm_action 打印)。
 # L1 exit-seam helper;调用方负责先 `|| rc=$?` 捕获 rc 再传入。
 exit_on_user_cancel() {
     local rc="$1" verb="$2"
@@ -293,17 +293,10 @@ cmd_build() {
     else
         # === Discover initialized machines ===
         local -a machines=()
-        local -a init_times=()
-        local -a repo_counts=()
-        local -A init_time_by_machine=()
-        local -A repo_count_by_machine=()
-
         local initialized_machine
         while IFS= read -r initialized_machine; do
             [[ -n "$initialized_machine" ]] || continue
             machines+=("$initialized_machine")
-            init_time_by_machine["$initialized_machine"]="$(machine_state_init_time "$initialized_machine")"
-            repo_count_by_machine["$initialized_machine"]="$(machine_state_repo_count "$initialized_machine")"
         done < <(machine_state_initialized_machines)
 
         if [[ ${#machines[@]} -eq 0 ]]; then
@@ -316,34 +309,17 @@ cmd_build() {
             exit 3
         fi
 
-        # === Read main repo info ===
+        # === Read main repo info（仓库信息块；machine 元数据看 ob status，选择表只列名字）===
         local manifest_origin_url manifest_source_label
         manifest_origin_url=$(read_manifest_field origin_url || echo "<unknown>")
         manifest_source_label=$(read_manifest_field source_label || echo "")
 
-        # === Display ===
         step_header "OpenBMC Repository"
         echo "  Source : $manifest_origin_url${manifest_source_label:+ ($manifest_source_label)}"
         echo "  Path   : $OPENBMC_DIR"
         echo ""
 
         step_header "Initialized Machines"
-
-        local total=${#machines[@]}
-        local idx_width=${#total}
-        local i
-        for (( i=0; i<total; i++ )); do
-            local init_time
-            init_time=$(format_timestamp "${init_time_by_machine[${machines[$i]}]:-}")
-            init_times+=("$init_time")
-            repo_counts+=("${repo_count_by_machine[${machines[$i]}]:-?}")
-            printf "  %${idx_width}d) %-20s %s    %s repos\n" \
-                "$((i + 1))" "${machines[$i]}" "${init_times[$i]}" "${repo_counts[$i]}"
-        done
-
-        echo ""
-        info "If the machine you want is not listed, run 'init' task or './ob init' first."
-        echo ""
 
         # === Interactive selection ===
         if [[ ! -t 0 ]]; then
@@ -352,12 +328,10 @@ cmd_build() {
             exit 3
         fi
 
-        local sfl_rc=0
-        select_from_list "Select a machine to build [1-${total}]" "$total" || sfl_rc=$?
-        exit_on_user_cancel "$sfl_rc" "Build"
-        local chosen="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
+        local pm_rc=0
+        pick_machine machine_state_initialized_machines "Build" || pm_rc=$?
+        exit_on_user_cancel "$pm_rc" "Build"
 
-        MACHINE="$chosen"
         BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
         interactive_selection=1
     fi
