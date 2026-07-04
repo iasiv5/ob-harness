@@ -499,18 +499,9 @@ cmd_start_qemu() {
 
         echo ""
         step_header "Select Machine"
-        local total=${#machines[@]}
-        local idx_width=${#total}
-        local i
-        for (( i=0; i<total; i++ )); do
-            printf "  %${idx_width}d) %s\n" "$((i + 1))" "${machines[$i]}"
-        done
-        echo ""
-
-        local sfl_rc=0
-        select_from_list "Select a machine [1-${total}]" "$total" || sfl_rc=$?
-        exit_on_user_cancel "$sfl_rc" "Start QEMU"
-        MACHINE="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
+        local pm_rc=0
+        pick_machine machine_state_firmware_image_ready_machines "Start QEMU" || pm_rc=$?
+        exit_on_user_cancel "$pm_rc" "Start QEMU"
     fi
 
     # Re-derive paths after machine resolution
