@@ -421,6 +421,25 @@ qemu_instance_describe() {
     echo "  Serial log: $PIDFILE_SERIAL_LOG"
 }
 
+# qemu_stop_instance <pid> <pid_file>
+# 统一 stop:kill → 等 /proc/$pid 退出(≤10s)→ SIGKILL 兜底 → 删 PID 文件。best-effort,恒返回 0。
+# 供 cmd_start_qemu 冲突 kill(--force / 确认重启)与 cmd_stop_qemu 复用,消除两套分歧实现。
+qemu_stop_instance() {
+    local pid="$1" pid_file="$2"
+    kill "$pid" 2>/dev/null || true
+    local wait_count=0
+    while [[ -d "/proc/$pid" ]] && [[ $wait_count -lt 10 ]]; do
+        sleep 1
+        wait_count=$((wait_count + 1))
+    done
+    if [[ -d "/proc/$pid" ]]; then
+        warn "Process $pid did not exit gracefully, sending SIGKILL..."
+        kill -9 "$pid" 2>/dev/null || true
+        sleep 1
+    fi
+    rm -f "$pid_file"
+}
+
 # Parse "Offending <TYPE> key in <file>:<line>" from an ssh changed-key stderr blob.
 # Stdout: "<file> <line>" on match; empty otherwise. Always exits 0 (pure parser,
 # safe under `set -euo pipefail`).

@@ -549,9 +549,7 @@ cmd_start_qemu() {
             # Instance is running and valid
             if [[ "$QEMU_FORCE" -eq 1 ]]; then
                 warn "Killing existing QEMU instance (PID $PIDFILE_PID)..."
-                kill "$PIDFILE_PID" 2>/dev/null || true
-                sleep 2
-                rm -f "$QEMU_PID_FILE"
+                qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
             elif [[ -t 0 ]]; then
                 echo ""
                 warn "QEMU instance already running for '$MACHINE':"
@@ -566,9 +564,7 @@ cmd_start_qemu() {
                     info "Aborted."
                     exit 2
                 fi
-                kill "$PIDFILE_PID" 2>/dev/null || true
-                sleep 2
-                rm -f "$QEMU_PID_FILE"
+                qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
             else
                 error "QEMU instance already running for '$MACHINE' (PID $PIDFILE_PID)."
                 error "Use --force to kill and restart, or 'ob stop-qemu $MACHINE' first."
@@ -749,20 +745,7 @@ cmd_stop_qemu() {
         fi
 
         # Kill and wait
-        kill "$PIDFILE_PID" 2>/dev/null || true
-        local wait_count=0
-        while [[ -d "/proc/$PIDFILE_PID" ]] && [[ $wait_count -lt 10 ]]; do
-            sleep 1
-            wait_count=$((wait_count + 1))
-        done
-
-        if [[ -d "/proc/$PIDFILE_PID" ]]; then
-            warn "Process $PIDFILE_PID did not exit gracefully, sending SIGKILL..."
-            kill -9 "$PIDFILE_PID" 2>/dev/null || true
-            sleep 1
-        fi
-
-        rm -f "$QEMU_PID_FILE"
+        qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
         info "QEMU instance for '$MACHINE' stopped."
     done
 }
