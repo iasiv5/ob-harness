@@ -536,18 +536,9 @@ cmd_start_qemu() {
     fi
     verbose "Image file: $image_file"
 
-    resolve_qemu_launch_profile "$MACHINE"
-
-    # ── Prerequisite 4: QEMU binary ──
-    ensure_qemu_binary
-    qemu_launch_profile_apply_binary_machine_override
-
-    # ── Prerequisite 4b: QEMU firmware (bootroms, etc.) ──
-    ensure_qemu_firmware
-
-    # ── Check for existing QEMU instance (before port resolution) ──
-    #     Same-machine check must come first — port conflicts are usually
-    #     caused by *this* instance; asking user to reassign ports is misleading.
+    # ── Existing-instance conflict (F1 invariant: must precede qemu_prepare_launch,
+    #     whose check_ports_available exits 3 on occupied ports; killing the old
+    #     same-machine instance first avoids a spurious port-conflict exit) ──
     derive_qemu_paths
     if read_pid_file; then
         local pid_status
@@ -558,16 +549,11 @@ cmd_start_qemu() {
             # Instance is running and valid
             if [[ "$QEMU_FORCE" -eq 1 ]]; then
                 warn "Killing existing QEMU instance (PID $PIDFILE_PID)..."
-                kill "$PIDFILE_PID" 2>/dev/null || true
-                sleep 2
-                rm -f "$QEMU_PID_FILE"
+                qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
             elif [[ -t 0 ]]; then
                 echo ""
                 warn "QEMU instance already running for '$MACHINE':"
-                echo "  PID       : $PIDFILE_PID"
-                echo "  Started   : $PIDFILE_STARTED_AT"
-                echo "  Ports     : SSH($PIDFILE_SSH_PORT) Redfish($PIDFILE_REDFISH_PORT) IPMI($PIDFILE_IPMI_PORT/UDP)"
-                echo "  Serial log: $PIDFILE_SERIAL_LOG"
+                qemu_instance_describe
                 echo ""
                 print_confirm_banner "kill and restart QEMU for" "$MACHINE"
                 local answer
@@ -578,9 +564,7 @@ cmd_start_qemu() {
                     info "Aborted."
                     exit 2
                 fi
-                kill "$PIDFILE_PID" 2>/dev/null || true
-                sleep 2
-                rm -f "$QEMU_PID_FILE"
+                qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
             else
                 error "QEMU instance already running for '$MACHINE' (PID $PIDFILE_PID)."
                 error "Use --force to kill and restart, or 'ob stop-qemu $MACHINE' first."
@@ -592,35 +576,15 @@ cmd_start_qemu() {
         fi
     fi
 
-    # ── Resolve ports: CLI > env var > default ──
-    local ssh_port redfish_port ipmi_port http_port serial_log
-
-    ssh_port="${QEMU_SSH_PORT:-${OB_QEMU_SSH_PORT:-2222}}"
-    redfish_port="${QEMU_REDFISH_PORT:-${OB_QEMU_REDFISH_PORT:-2443}}"
-    ipmi_port="${QEMU_IPMI_PORT:-${OB_QEMU_IPMI_PORT:-2623}}"
-    http_port="${QEMU_HTTP_PORT:-${OB_QEMU_HTTP_PORT:-}}"
-    serial_log="${QEMU_SERIAL_LOG:-${OB_QEMU_SERIAL_LOG:-${HOME%/}/tmp/qemu-${MACHINE}-serial.log}}"
-    serial_sock="${serial_log%.log}.sock"
-
-    # ── Interactive port conflict resolution for additional QEMU instances ──
-    resolve_qemu_ports_interactive ssh_port redfish_port ipmi_port http_port
-
-    # ── Prerequisite 6: port availability ──
-    local -a ports_to_check=("tcp" "$ssh_port" "tcp" "$redfish_port" "udp" "$ipmi_port")
-    if [[ -n "$http_port" ]]; then
-        ports_to_check+=("tcp" "$http_port")
-    fi
-    check_ports_available "${ports_to_check[@]}"
-
-    # ── Build QEMU command (SoC-specific template) ──
-    build_qemu_cmd "$image_file" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log" "$serial_sock"
+    # ── Prepare launch (Shape 2 half 1: profile/binary/firmware/ports/build) ──
+    qemu_prepare_launch "$MACHINE" "$image_file"
 
     step_header "Starting QEMU for '$MACHINE' ($QEMU_LAUNCH_SOC_TYPE)"
     echo "  Machine   : $QEMU_LAUNCH_MACHINE_NAME"
     echo "  SoC       : $QEMU_LAUNCH_SOC_TYPE"
     echo "  Binary    : $QEMU_BIN_FILE"
     echo "  Image     : $image_file"
-    echo "  Serial log: $serial_log"
+    echo "  Serial log: $QEMU_LAUNCH_SERIAL_LOG"
     echo ""
 
     # ── Safety confirmation (same pattern as ob init / ob build) ──
@@ -645,115 +609,8 @@ cmd_start_qemu() {
         exit 0
     fi
 
-    # Ensure serial log directory exists
-    mkdir -p "$(dirname "$serial_log")"
-
-    local qemu_stderr
-    qemu_stderr=$(mktemp "${TMPDIR:-/tmp}/qemu-stderr-XXXXXX")
-    if ! setsid "${QEMU_CMD[@]}" >"$qemu_stderr" 2>&1; then
-        error "QEMU failed to start."
-        local qemu_err_msg
-        qemu_err_msg=$(grep -v "^qemu-system.*: warning:" "$qemu_stderr" 2>/dev/null || true)
-        if [[ -n "$qemu_err_msg" ]]; then
-            error "$(echo "$qemu_err_msg" | head -5)"
-        fi
-        error "Check serial log: $serial_log"
-        error "Verify QEMU binary: $QEMU_BIN_FILE"
-        rm -f "$qemu_stderr"
-        exit 1
-    fi
-    rm -f "$qemu_stderr"
-
-    _qemu_post_launch "$QEMU_LAUNCH_MACHINE_NAME" "$ssh_port" "$redfish_port" "$ipmi_port" "$http_port" "$serial_log" "$serial_sock"
-}
-
-_qemu_post_launch() {
-    local qb_machine_name="$1"
-    local ssh_port="$2"
-    local redfish_port="$3"
-    local ipmi_port="$4"
-    local http_port="$5"
-    local serial_log="$6"
-    local serial_sock="$7"
-
-    # ── Write PID file ──
-    sleep 1
-    local qemu_pid=""
-    # 用 serial socket 路径（每实例唯一）+ 当前用户过滤定位 PID，避免多用户同 SoC
-    # （如 ast2700a1-evb）machine 名相同导致 pgrep 误匹配到他人 QEMU。fallback 用 binary 路径。
-    qemu_pid=$(pgrep -u "$(whoami)" -f "$serial_sock" 2>/dev/null | head -1 || true)
-    if [[ -z "$qemu_pid" ]]; then
-        qemu_pid=$(pgrep -u "$(whoami)" -f "$QEMU_BIN_FILE" 2>/dev/null | head -1 || true)
-    fi
-
-    mkdir -p "$QEMU_PIDS_DIR"
-    cat > "$QEMU_PID_FILE" <<PIDFILE_EOF
-pid=$qemu_pid
-user=$(whoami)
-machine=$MACHINE
-binary=$QEMU_BIN_FILE
-qemu_machine=$qb_machine_name
-started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-ssh_port=$ssh_port
-redfish_port=$redfish_port
-ipmi_port=$ipmi_port
-http_port=${http_port:-none}
-serial_log=$serial_log
-serial_sock=$serial_sock
-PIDFILE_EOF
-
-    verbose "PID file written: $QEMU_PID_FILE (PID: $qemu_pid)"
-
-    # ── Wait for BMC ready (unless --no-wait) ──
-    if [[ "$QEMU_NO_WAIT" -eq 0 ]]; then
-        echo ""
-        info "Waiting for BMC to become ready (SSH on port $ssh_port)..."
-        local attempts=0
-        local max_attempts=30
-        local ready=0
-
-        while [[ $attempts -lt $max_attempts ]]; do
-            attempts=$((attempts + 1))
-            if sshpass -p 0penBmc ssh -o StrictHostKeyChecking=no -o ConnectTimeout=3 \
-                 -o UserKnownHostsFile=/dev/null -p "$ssh_port" root@localhost echo "OK" >/dev/null 2>&1; then
-                ready=1
-                break
-            fi
-            printf "\r  Waiting... attempt %d/%d" "$attempts" "$max_attempts"
-            sleep 5
-        done
-        echo ""
-
-        if [[ $ready -eq 0 ]]; then
-            warn "BMC did not become SSH-ready within $((max_attempts * 5)) seconds."
-            warn "It may still be booting. Check serial log: $serial_log"
-        else
-            info "BMC ready after attempt $attempts (~$((attempts * 5))s)"
-        fi
-    fi
-
-    # ── Detect stale SSH host key (image rebuild regenerates host keys) ──
-    check_ssh_hostkey_conflict "$ssh_port"
-
-    # ── Print connection summary ──
-    echo ""
-    echo -e "${GREEN}✅ QEMU started for '$MACHINE'${NC} (PID $qemu_pid)"
-    echo ""
-    echo "Connect:"
-    echo "  SSH     : ssh root@localhost -p $ssh_port  (password: 0penBmc)"
-    echo "  WebUI   : https://localhost:$redfish_port  (root / 0penBmc)"
-    echo "  Redfish : curl -sk -u root:0penBmc https://localhost:$redfish_port/redfish/v1"
-    echo "  IPMI    : ipmitool -I lanplus -H localhost -p $ipmi_port -U root -P 0penBmc mc info"
-    echo "  Console : socat -,rawer,escape=0x1d UNIX-CONNECT:$serial_sock"
-    echo "            (Ctrl+] to exit socat session)"
-    echo ""
-    echo "Logs:"
-    echo "  Serial  : $serial_log"
-    echo "  PID file: $QEMU_PID_FILE"
-    echo ""
-    echo "Stop:"
-    echo "  ob stop-qemu $MACHINE"
-    echo ""
+    # ── Execute launch (Shape 2 half 2: setsid + PID write + BMC wait + summary) ──
+    qemu_execute_launch
 }
 
 cmd_stop_qemu() {
@@ -857,10 +714,7 @@ cmd_stop_qemu() {
 
         # Process is running — show info and confirm
         echo -e "Running QEMU instance for '${BOLD}$MACHINE${NC}':"
-        echo "  PID       : $PIDFILE_PID"
-        echo "  Started   : $PIDFILE_STARTED_AT"
-        echo "  Ports     : SSH($PIDFILE_SSH_PORT) Redfish($PIDFILE_REDFISH_PORT) IPMI($PIDFILE_IPMI_PORT/UDP)"
-        echo "  Serial log: $PIDFILE_SERIAL_LOG"
+        qemu_instance_describe
         echo ""
         print_confirm_banner "stop QEMU for" "$MACHINE"
 
@@ -891,20 +745,7 @@ cmd_stop_qemu() {
         fi
 
         # Kill and wait
-        kill "$PIDFILE_PID" 2>/dev/null || true
-        local wait_count=0
-        while [[ -d "/proc/$PIDFILE_PID" ]] && [[ $wait_count -lt 10 ]]; do
-            sleep 1
-            wait_count=$((wait_count + 1))
-        done
-
-        if [[ -d "/proc/$PIDFILE_PID" ]]; then
-            warn "Process $PIDFILE_PID did not exit gracefully, sending SIGKILL..."
-            kill -9 "$PIDFILE_PID" 2>/dev/null || true
-            sleep 1
-        fi
-
-        rm -f "$QEMU_PID_FILE"
+        qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
         info "QEMU instance for '$MACHINE' stopped."
     done
 }

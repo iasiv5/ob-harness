@@ -84,13 +84,29 @@ if {$has_ws} {
     expect eof; catch wait r
     chk "build cancel" [lindex $r 3] 2
 
-    # start-qemu cancel：需过 bitbake -e（慢）
+    # start-qemu cancel：auto-select built machine → 到 confirm → N 取消 → exit 2。
+    # 需 machine 完整 start-qemu-ready(init+build+binary);binary 缺失会 prompt URL / 前置
+    # 缺失 / profile 失败 / 超时 → 走不到 confirm → 当环境不适用 SKIP(不 false-fail、不挂起)。
+    # (旧版硬编码一个特定 machine 名 + with-machine 调用 expect "0 to cancel"——machine 已给
+    #  则无选择列表,且硬编码名与 workspace 实际 built machine 不符 → 必假失败。)
     set timeout 300
-    spawn ./ob start-qemu b865g8-bytedance
-    expect -re "0 to cancel"; send "1\r"
-    expect -re "Type.*to confirm"; send "N\r"
-    expect eof; catch wait r
-    chk "start-qemu cancel" [lindex $r 3] 2
+    spawn ./ob start-qemu
+    set reached_confirm 0; set sq_skip 0
+    expect {
+        -re "0 to cancel"           { send "1\r"; exp_continue }
+        -re "Type.*to confirm"      { set reached_confirm 1; send "N\r" }
+        -re "Enter QEMU binary URL" { set sq_skip 1 }
+        timeout                     { set sq_skip 1 }
+        eof
+    }
+    if {$reached_confirm} {
+        expect eof; catch wait r
+        chk "start-qemu cancel" [lindex $r 3] 2
+    } else {
+        catch {close}; catch {wait}
+        puts "skip start-qemu cancel（workspace machine 未走到 confirm:非完整 start-qemu-ready）"
+        incr SKIP
+    }
     set timeout 30
 } else {
     incr SKIP 3

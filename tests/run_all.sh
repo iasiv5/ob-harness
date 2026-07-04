@@ -3,8 +3,8 @@
 # 默认只跑 .sh(秒级快速回归);.exp(manual_matrix 等,慢)默认跳过。
 # 用法:
 #   tests/run_all.sh               快速:protocol/unit/orchestration 的 .sh
-#   tests/run_all.sh --full        含 .exp(manual_matrix 交互矩阵,慢)
-#   tests/run_all.sh --integration 加 integration 层(init→build E2E,需 workspace)
+#   tests/run_all.sh --full        安全全量:默认三层的 .sh + .exp;不进入 integration
+#   tests/run_all.sh --integration 追加 integration 层(可能 build / 启动 QEMU / 占端口 / 耗时)
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR/.." || exit 1   # 切到仓库根,使 expect 脚本的 spawn ./ob 成立
@@ -19,9 +19,31 @@ done
 LAYERS=(protocol unit orchestration); [[ "$INTEGRATION" == 1 ]] && LAYERS+=(integration)
 FAILED=()
 run_exp() { # <file>
-    command -v expect >/dev/null 2>&1 || { echo "skip $(basename "$1") (no expect)"; return; }
-    if expect "$1" >/dev/null 2>&1; then echo "ok   $(basename "$1")"; else echo "FAIL $(basename "$1")"; FAILED+=("$1"); fi
+    local file base output rc tmp_root
+    file="$1"
+    base="$(basename "$file")"
+    command -v expect >/dev/null 2>&1 || { echo "skip $base (no expect)"; return; }
+    tmp_root="${TMPDIR:-/tmp}"
+    output="$(mktemp "$tmp_root/ob-run-exp.XXXXXX")" || { echo "FAIL $base (mktemp failed)"; FAILED+=("$file"); return; }
+    expect "$file" >"$output" 2>&1
+    rc=$?
+    if [[ "$rc" -eq 0 ]]; then
+        if grep -q '^skip ' "$output"; then
+            grep '^skip ' "$output"
+        else
+            echo "ok   $base"
+        fi
+        rm -f "$output"
+        return
+    fi
+    echo "FAIL $base (rc=$rc)"
+    sed 's/^/  | /' "$output"
+    FAILED+=("$file")
+    rm -f "$output"
 }
+if [[ "$FULL" == 1 && "$INTEGRATION" != 1 ]]; then
+    echo "note --full excludes integration layer; add --integration for real build/QEMU tests"
+fi
 for layer in "${LAYERS[@]}"; do
     echo "=== $layer ==="
     shopt -s nullglob

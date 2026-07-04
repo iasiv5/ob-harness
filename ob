@@ -52,6 +52,12 @@ QEMU_LAUNCH_BOOTLOADER_UBOOT_DTB=""
 QEMU_LAUNCH_BOOTLOADER_BL31=""
 QEMU_LAUNCH_BOOTLOADER_OPTEE=""
 QEMU_LAUNCH_BOOTLOADER_UBOOT_SIZE=""
+QEMU_LAUNCH_SSH_PORT=""           # resolved by qemu_prepare_launch (CLI > env > default)
+QEMU_LAUNCH_REDFISH_PORT=""
+QEMU_LAUNCH_IPMI_PORT=""
+QEMU_LAUNCH_HTTP_PORT=""
+QEMU_LAUNCH_SERIAL_LOG=""
+QEMU_LAUNCH_SERIAL_SOCK=""
 QEMU_URL_CONFIG_FILE=""   # derived: workspace/qemu-bin/qemu-binary-urls.conf
 QEMU_PCBIOS_DIR=""        # derived: workspace/qemu-bin/<source>/pc-bios
 
