@@ -19,10 +19,15 @@ pick_machine() {
 
     local total=${#machines[@]}
     local idx_width=${#total}
-    local i
+    local term_cols i _list _row
+    term_cols=$(tput cols 2>/dev/null) || term_cols=80
+    _list=""
     for (( i=0; i<total; i++ )); do
-        printf "  %${idx_width}d) %s\n" "$((i + 1))" "${machines[$i]}"
+        printf -v _row "  %${idx_width}d) %s\n" "$((i + 1))" "${machines[$i]}"
+        _list+="$_row"
     done
+    # column 按终端宽度紧凑分列；无 column 则单列兜底
+    printf '%s' "$_list" | column -c "$term_cols" 2>/dev/null || printf '%s' "$_list"
 
     [[ -n "$post_list_msg" ]] && printf '%s\n' "$post_list_msg"
 

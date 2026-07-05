@@ -314,21 +314,6 @@ list_available_machines() {
     bitbake_env_list_available_machines
 }
 
-# Print supported machine list (passthrough for readability)
-print_available_machines() {
-    local machines
-    machines=$(list_available_machines)
-    if [[ -z "$machines" ]]; then
-        warn "No machines found. The OpenBMC main repository may be incomplete."
-        warn "Try updating it: cd $OPENBMC_DIR && git pull"
-        return 0
-    fi
-    info "Available machines in this repository:"
-    local term_cols
-    term_cols=$(tput cols 2>/dev/null) || term_cols=80
-    echo "$machines" | column -c "$term_cols" 2>/dev/null || echo "$machines"
-}
-
 require_openbmc_repo() {
     if [[ -d "$OPENBMC_DIR/.git" ]]; then
         step_header "Step 2/8: Preparing OpenBMC main repository and resolving machine..."

@@ -731,7 +731,6 @@ cmd_init() {
     fi
 
     if [[ -n "$MACHINE" ]] && printf '%s\n' "${_init_machines[@]}" | grep -qx -- "$MACHINE"; then
-        print_available_machines
         print_previously_initialized _init_machines
         info "Machine '$MACHINE' confirmed."
     else
@@ -745,8 +744,6 @@ cmd_init() {
             error "No valid machine and no interactive terminal. Pass a valid machine: ob init <machine>"
             exit 3
         fi
-
-        print_available_machines
 
         local pm_rc=0
         # Previously 段作 pick_machine 的 post-list-msg: 列表后、提示词前打印,
