@@ -4,13 +4,13 @@
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+source "$ROOT/tests/lib/assert.sh"
+assert_reset
+
 MACHINE="${OB_INTEGRATION_MACHINE:-romulus}"
 TMPROOT="$(mktemp -d)"
 OUT="$(mktemp)"
-
-cleanup() {
-    rm -rf "$TMPROOT" "$OUT"
-}
+cleanup() { rm -rf "$TMPROOT" "$OUT"; }
 trap cleanup EXIT
 
 cp "$ROOT/ob" "$TMPROOT/ob"
@@ -32,13 +32,12 @@ touch "\$build_dir/conf/local.conf"
 SETUP
 chmod +x "$TMPROOT/workspace/openbmc/setup"
 
-if ! "$TMPROOT/ob" init "$MACHINE" -d --url https://github.com/openbmc/openbmc.git >"$OUT" 2>&1; then
-    cat "$OUT"
-    exit 1
-fi
+"$TMPROOT/ob" init "$MACHINE" -d --url https://github.com/openbmc/openbmc.git >"$OUT" 2>&1
+_init_rc=$?
+if [[ "$_init_rc" -ne 0 ]]; then cat "$OUT"; fi   # 失败时打印输出辅助调试
+assert_eq "init dry-run exit rc ($MACHINE)" "$_init_rc" 0
+assert_contains "Step 1/8 present" "$(<"$OUT")" "Step 1/8"
+assert_contains "Step 8/8 present" "$(<"$OUT")" "Step 8/8"
+assert_contains "dry-run marker present" "$(<"$OUT")" "[DRY-RUN]"
 
-grep -q "Step 1/8" "$OUT" || { echo "missing Step 1/8"; cat "$OUT"; exit 1; }
-grep -q "Step 8/8" "$OUT" || { echo "missing Step 8/8"; cat "$OUT"; exit 1; }
-grep -q "\[DRY-RUN\]" "$OUT" || { echo "missing dry-run output"; cat "$OUT"; exit 1; }
-
-echo "ok   init dry-run sanity ($MACHINE)"
+assert_summary
