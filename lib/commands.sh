@@ -236,34 +236,15 @@ cmd_status() {
 
     status_section_tips "$repo_exists" "$has_initialized_machine" "$has_initialized_without_firmware_image"
 
-    # Section 5: QEMU instances (only shown when instances exist)
-    local _pids_dir="$WORKSPACE_DIR/qemu-bin/.pids"
+    # Section 5: QEMU instances（只读,含 stale 显示;不删 PID 文件——清理 owner = start-qemu/stop-qemu）
     local _has_qemu=0
     local -a _qemu_lines=()
-
-    for _pf in "$_pids_dir"/*.pid; do
-        [[ -f "$_pf" ]] || continue
-
-        local _qm="" _qp="" _qbin="" _qstart="" _qsport="" _qrport="" _qiport=""
-        _qm=$(basename "$_pf" .pid)
-
-        # Read PID file fields
-        _qp=$(read_kv_field "$_pf" pid) || _qp=""
-        _qbin=$(read_kv_field "$_pf" binary) || _qbin=""
-        _qstart=$(read_kv_field "$_pf" started_at) || _qstart=""
-        _qsport=$(read_kv_field "$_pf" ssh_port) || _qsport=""
-        _qrport=$(read_kv_field "$_pf" redfish_port) || _qrport=""
-        _qiport=$(read_kv_field "$_pf" ipmi_port) || _qiport=""
-
-        # Validate process is alive
-        if [[ -n "$_qp" ]] && [[ -d "/proc/$_qp" ]]; then
-            _has_qemu=1
-            _qemu_lines+=("  $_qm   PID $_qp   SSH($_qsport) Redfish($_qrport) IPMI($_qiport/UDP)   ✅ running")
-        else
-            # Stale PID file — clean up silently
-            rm -f "$_pf"
-        fi
-    done
+    local _m
+    while IFS= read -r _m; do
+        [[ -n "$_m" ]] || continue
+        _has_qemu=1
+        _qemu_lines+=("  $_m   $(qemu_instance_summarize_brief "$_m")")
+    done < <(qemu_instance_list)
 
     if [[ "$_has_qemu" -eq 1 ]]; then
         echo ""
