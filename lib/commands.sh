@@ -517,8 +517,8 @@ cmd_start_qemu() {
                 exit 1
             fi
         else
-            # Stale PID file — clean up
-            rm -f "$QEMU_PID_FILE"
+            # Stale PID file — clean up via module
+            qemu_instance_clean_stale "$MACHINE"
         fi
     fi
 
