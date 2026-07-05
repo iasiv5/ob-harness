@@ -20,7 +20,7 @@
 # 【原理/注意】
 #   - ob 的三种交互提示，expect 需分别 -re 匹配：
 #       confirm_action  : "Type (Y/y) to confirm, (N/n) to cancel"
-#       select_from_list: "... (0 to cancel)"
+#       pick_machine    : "Select a machine for <verb> ... (0 to cancel)"
 #       单次 read       : "Stop this instance? [y/N]" / "Kill and restart? [y/N]"（见 qemu 段）
 #   - 交互用内联 spawn（非 proc 包装的 split/eval）——后者在 expect 里 spawn_id 作用域
 #     不可靠，内联形态经实测稳定。

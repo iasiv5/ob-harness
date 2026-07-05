@@ -65,6 +65,17 @@ else
     ok "machine selection legacy surface removed"
 fi
 
+# ── 1d. 交互 prompt 文案契约（.exp expect 依赖这些源码字符串；read -p 非 tty 不输出，故静态守）──
+_prompt_bad=""
+grep -q 'Select a machine for' lib/machine_picker.sh 2>/dev/null || _prompt_bad="${_prompt_bad} pick_machine('Select a machine for')"
+grep -q '0 to cancel' lib/machine_picker.sh 2>/dev/null || _prompt_bad="${_prompt_bad} pick_machine('0 to cancel')"
+grep -q 'Type (Y/y) to confirm' lib/util.sh 2>/dev/null || _prompt_bad="${_prompt_bad} confirm_action('Type (Y/y) to confirm')"
+if [[ -n "$_prompt_bad" ]]; then
+    bad "交互 prompt 文案契约破坏（.exp expect 依赖）：$_prompt_bad"
+else
+    ok "交互 prompt 文案契约一致"
+fi
+
 # ── 2. shellcheck baseline(合成 flat + 纯文本 multiset;不 per-file 避 SC2034 跨文件假阳) ──
 flat=/tmp/ob_check_sc.flat
 : > "$flat"

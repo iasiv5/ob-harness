@@ -16,6 +16,9 @@ MACHINE=""; pick_machine __pick_test_list Build <<< $'witherspoon\n' >/dev/null 
 assert_eq "name MACHINE" "$MACHINE" "witherspoon"
 # cancel(0)
 MACHINE=""; pick_machine __pick_test_list Build <<< $'0\n' >/dev/null 2>&1; assert_eq "cancel rc" "$?" 2
+# 渲染序号+名字表（read -p 的 prompt 非 tty 不输出，prompt 文案契约改由 ob_check lint 静态守）
+_pmt_out=$(pick_machine __pick_test_list "Build" <<< $'0\n' 2>&1)
+assert_contains "渲染序号+名字表" "$_pmt_out" "1) romulus"
 # read 失败(EOF/非TTY) → 打印 error + return 1（遵 select_from_list 旧约定：L3 helper 自打 read-fail error，exit_on_user_cancel 只 exit）
 MACHINE=""; pick_machine __pick_test_list Build </dev/null >/dev/null 2>&1; assert_eq "eof read-fail rc" "$?" 1
 # 越界/非法 → 重试后有效
