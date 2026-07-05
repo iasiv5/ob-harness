@@ -3,12 +3,14 @@
 # Exit: leaf-no-exit（leaf-pure module）; return 0(设 $MACHINE)/2(cancel)/1(read 失败), 绝不 exit.
 
 
-# pick_machine <list-source-cmd> <verb>
+# pick_machine <list-source-cmd> <verb> [post-list-msg]
 # 前提(调用者保证): <list-source-cmd> 产出非空 machine 列表(每行一名) + 交互终端。
-# 渲染纯序号+名字选择表 → 读输入(数字或名字) → 设 $MACHINE / return 2(cancel)。
+# 渲染纯序号+名字选择表 → [打印 post-list-msg] → 读输入(数字或名字) → 设 $MACHINE / return 2(cancel)。
+# post-list-msg(可选): 列表后、提示词前打印的 caller 上下文(如 init 的 Previously initialized
+#                     高亮),让用户在选择时紧邻看到、不必往上翻; 不传则跳过。
 # 不判空/不判 TTY/不做 arg 校验/不 exit — 这些是调用者命令前置。
 pick_machine() {
-    local list_source="$1" verb="$2"
+    local list_source="$1" verb="$2" post_list_msg="${3:-}"
     local -a machines=()
     local line
     while IFS= read -r line; do
@@ -21,6 +23,8 @@ pick_machine() {
     for (( i=0; i<total; i++ )); do
         printf "  %${idx_width}d) %s\n" "$((i + 1))" "${machines[$i]}"
     done
+
+    [[ -n "$post_list_msg" ]] && printf '%s\n' "$post_list_msg"
 
     local selected m
     while true; do

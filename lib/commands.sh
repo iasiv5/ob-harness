@@ -747,10 +747,11 @@ cmd_init() {
         fi
 
         print_available_machines
-        print_previously_initialized _init_machines
 
         local pm_rc=0
-        pick_machine list_available_machines "init" || pm_rc=$?
+        # Previously 段作 pick_machine 的 post-list-msg: 列表后、提示词前打印,
+        # 用户选择时紧邻看到已 init 的 machine(不必往上翻序号列表对序号)
+        pick_machine list_available_machines "init" "$(print_previously_initialized _init_machines)" || pm_rc=$?
         exit_on_user_cancel "$pm_rc" "init"
 
         local ca_rc=0
