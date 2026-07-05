@@ -24,6 +24,14 @@ _plm_out=$(pick_machine __pick_test_list "init" "PREV_MARKER" <<< $'0\n' 2>&1)
 assert_contains "post-list-msg 打印" "$_plm_out" "PREV_MARKER"
 # 不传第三参数时正常工作（向后兼容）
 MACHINE=""; pick_machine __pick_test_list Build <<< $'1\n' >/dev/null 2>&1; assert_eq "无 post-list-msg 兼容" "$?" 0
+
+# read_machine_choice（caller 自渲染列表时复用 read 循环；cmd_stop_qemu 用）
+__rmc_test=(romulus witherspoon)
+MACHINE=""; read_machine_choice 2 "Stop QEMU" __rmc_test <<< $'1\n' >/dev/null 2>&1; assert_eq "read_choice number rc" "$?" 0
+assert_eq "read_choice number MACHINE" "$MACHINE" "romulus"
+MACHINE=""; read_machine_choice 2 "Stop QEMU" __rmc_test <<< $'witherspoon\n' >/dev/null 2>&1; assert_eq "read_choice name rc" "$?" 0
+assert_eq "read_choice name MACHINE" "$MACHINE" "witherspoon"
+MACHINE=""; read_machine_choice 2 "Stop QEMU" __rmc_test <<< $'0\n' >/dev/null 2>&1; assert_eq "read_choice cancel rc" "$?" 2
 # read 失败(EOF/非TTY) → 打印 error + return 1（遵 select_from_list 旧约定：L3 helper 自打 read-fail error，exit_on_user_cancel 只 exit）
 MACHINE=""; pick_machine __pick_test_list Build </dev/null >/dev/null 2>&1; assert_eq "eof read-fail rc" "$?" 1
 # 越界/非法 → 重试后有效

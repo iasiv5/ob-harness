@@ -620,8 +620,27 @@ cmd_stop_qemu() {
 
         echo ""
         step_header "Running QEMU Instances"
+        # 渲染实例详情（PID/端口/状态，同 ob status 格式）帮用户决定停哪个；
+        # pick_machine 只渲染纯序号+名字（Q3），故 cmd_stop_qemu 自渲染带详情列表 + 复用 read_machine_choice
+        local total=${#available[@]}
+        local idx_width=${#total}
+        local i m _pf _pid _sport _rport _iport _detail
+        for (( i=0; i<total; i++ )); do
+            m="${available[$i]}"
+            _pf="$WORKSPACE_DIR/qemu-bin/.pids/$m.pid"
+            _pid=$(read_kv_field "$_pf" pid 2>/dev/null) || _pid=""
+            if [[ -n "$_pid" ]] && [[ -d "/proc/$_pid" ]]; then
+                _sport=$(read_kv_field "$_pf" ssh_port 2>/dev/null) || _sport=""
+                _rport=$(read_kv_field "$_pf" redfish_port 2>/dev/null) || _rport=""
+                _iport=$(read_kv_field "$_pf" ipmi_port 2>/dev/null) || _iport=""
+                _detail="PID $_pid   SSH($_sport) Redfish($_rport) IPMI($_iport/UDP)   ✅ running"
+            else
+                _detail="⚠️ stale"
+            fi
+            printf "  %${idx_width}d) %-20s %s\n" "$((i + 1))" "$m" "$_detail"
+        done
         local pm_rc=0
-        pick_machine __stop_qemu_running_machines "Stop QEMU" || pm_rc=$?
+        read_machine_choice "$total" "Stop QEMU" available || pm_rc=$?
         exit_on_user_cancel "$pm_rc" "Stop QEMU"
         targets+=("$MACHINE")
     fi
