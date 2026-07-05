@@ -1,0 +1,5 @@
+timestamp	commit	skill	old_score	new_score	status	dimension	note	eval_mode
+2026-07-05T15:07	baseline	writing-plans	-	89.1	baseline	-	structure=68.4/76 dim8=9.0; runtime_warn=0	dry_run
+2026-07-05T15:20	pending	writing-plans	89.1	89.6	keep	整体架构	压缩硬约束重复规则; structure=68.9/76 dim8=9.0	dry_run
+2026-07-05T15:32	pending	writing-plans	89.6	89.6	keep	实测表现	新增 missing-design-path-stop 失败路径测试; dim8 coverage broadened	dry_run
+2026-07-05T15:40	pending	writing-plans	89.6	91.0	keep	失败模式编码	补充设计路径不确定/不可读 STOP 分支; structure=69.6/76 dim8=9.3; touch_top=1	dry_run

@@ -1,0 +1,155 @@
+[
+  {
+    "id": "happy-path-cli-json",
+    "prompt": "先想一下，我想给现有 CLI 加一个 --json 输出模式，先别写代码。",
+    "expected": "不写代码；先读取最小必要 CLI 上下文；只问一个选择题澄清目标或兼容性；后续比较 2-3 个方案并触发 CHECKPOINT A。",
+    "assertions": [
+      "response states that implementation will not start yet",
+      "response asks exactly one clarification question",
+      "question is about CLI JSON goal, compatibility, or success criteria",
+      "response does not provide code or patch instructions"
+    ],
+    "must_not": [
+      "write code",
+      "propose a full implementation plan before design approval",
+      "ask multiple unrelated questions in one turn"
+    ]
+  },
+  {
+    "id": "mixed-implement-and-design",
+    "prompt": "帮我实现登录接口，顺便设计一下错误处理。",
+    "expected": "识别为实现和设计混合意图；不直接编码；要求用户确认本轮是否改成仅设计，或停止 brainstorming 并路由到实现流程。",
+    "assertions": [
+      "response identifies the request as mixed implementation and design intent",
+      "response does not start coding",
+      "response asks exactly one routing confirmation question",
+      "response offers a design-only route or an implementation route outside brainstorming"
+    ],
+    "must_not": [
+      "implement the login API",
+      "write endpoint code",
+      "silently continue as if the request were pure brainstorming"
+    ]
+  },
+  {
+    "id": "compare-config-merge",
+    "prompt": "我们要把两个模块的配置加载流程合并，先比较几种做法。",
+    "expected": "进入方案比较；先读最小必要上下文；说明边界、trade-offs 和推荐方案；要求用户用 `接受：...` 通过 CHECKPOINT A。",
+    "assertions": [
+      "response gathers or references minimal relevant context before final design",
+      "response compares 2-3 approaches",
+      "each approach includes trade-offs or applicability",
+      "response ends with a CHECKPOINT A confirmation token request"
+    ],
+    "must_not": [
+      "collapse both modules into one large unscoped design without boundaries",
+      "skip方案比较",
+      "start writing implementation tasks"
+    ]
+  },
+  {
+    "id": "existing-design-to-plan",
+    "prompt": "设计文档已经批准了，在 docs/specs/config-merge-design.md，帮我拆实施计划。",
+    "expected": "停止 brainstorming；说明应切到 `writing-plans`；不重新澄清需求或比较方案。",
+    "assertions": [
+      "response stops brainstorming",
+      "response routes to writing-plans",
+      "response preserves docs/specs/config-merge-design.md as the approved design input"
+    ],
+    "must_not": [
+      "restart requirement discovery",
+      "compare alternative designs",
+      "ask for approval that has already been supplied"
+    ]
+  },
+  {
+    "id": "ambiguous-approval-token",
+    "prompt": "看起来可以，你继续吧。",
+    "expected": "不把含糊认同当批准；只问一个确认问题，要求用户回复 `接受：推荐方案` 或 `批准：<path>`。",
+    "assertions": [
+      "response refuses to treat the phrase as CHECKPOINT approval",
+      "response asks exactly one confirmation-token question",
+      "response includes either `接受：...` or `批准：<path>` as the required format"
+    ],
+    "must_not": [
+      "advance to PHASE 5 or PHASE 8",
+      "start writing a design document",
+      "start writing an implementation plan"
+    ]
+  },
+  {
+    "id": "bugfix-not-brainstorming",
+    "prompt": "这个单元测试挂了，帮我定位原因并修掉。",
+    "expected": "识别为 bugfix 请求；停止 brainstorming；进入调试或实现流程，不做设计文档流程。",
+    "assertions": [
+      "response states that brainstorming is not the right route",
+      "response routes to debugging or implementation",
+      "response does not ask for design approval"
+    ],
+    "must_not": [
+      "write a design document",
+      "compare alternative product designs",
+      "request `接受：推荐方案`"
+    ]
+  },
+  {
+    "id": "review-not-brainstorming",
+    "prompt": "帮我 review 这个 PR 有没有风险。",
+    "expected": "识别为代码审查请求；停止 brainstorming；进入 review 流程，优先找风险和缺陷。",
+    "assertions": [
+      "response states that the request is code review rather than brainstorming",
+      "response routes to review behavior",
+      "response prioritizes risks or defects over design ideation"
+    ],
+    "must_not": [
+      "ask for CHECKPOINT A approval",
+      "write a product design document",
+      "turn the review into a feature planning session"
+    ]
+  },
+  {
+    "id": "direct-doc-before-checkpoint",
+    "prompt": "不用讨论了，直接把这个需求写成设计文档吧。",
+    "expected": "如果方案尚未确认，先给推荐方案和 trade-offs 并触发 CHECKPOINT A；不得把草稿当已批准设计。",
+    "assertions": [
+      "response detects that方案尚未确认",
+      "response does not treat the document as approved",
+      "response asks for `接受：...` before writing or finalizing the design document"
+    ],
+    "must_not": [
+      "skip CHECKPOINT A",
+      "produce a final approved design document",
+      "transition to writing-plans"
+    ]
+  },
+  {
+    "id": "multi-subsystem-split",
+    "prompt": "我们想同时重做账号体系、计费流程和通知中心，先设计一下。",
+    "expected": "识别为多个独立子系统；先拆分并说明依赖顺序；本轮只继续第一个子项目或只写父级拆分设计。",
+    "assertions": [
+      "response identifies multiple independent subsystems",
+      "response proposes subsystem boundaries or dependency order",
+      "response limits the current round to the first subsystem or a parent split document"
+    ],
+    "must_not": [
+      "pretend all subsystems fit one directly implementable design",
+      "ask detailed questions for all subsystems at once",
+      "write one giant implementation-ready design"
+    ]
+  },
+  {
+    "id": "visual-tool-fallback",
+    "prompt": "先帮我画一个交互流程图比较两个方案。",
+    "expected": "只在工具可用时承诺可视化；工具不可用时降级为 Mermaid、ASCII 图或文字结构，不伪造已验证视觉方案。",
+    "assertions": [
+      "response conditions visual output on available tools or uses a text fallback",
+      "response does not claim browser or drawing-tool verification unless actually available",
+      "response keeps the request in design mode rather than implementation"
+    ],
+    "must_not": [
+      "promise an interactive mockup without tool availability",
+      "claim a screenshot or rendered diagram has been verified without evidence",
+      "start coding the UI"
+    ]
+  }
+]

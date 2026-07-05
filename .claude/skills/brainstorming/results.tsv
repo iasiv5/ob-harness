@@ -1,0 +1,4 @@
+timestamp	commit	skill	old_score	new_score	status	dimension	note	eval_mode
+2026-07-05T15:25	baseline	brainstorming	-	85.3	baseline	-	structure=65.5/76 dim8=8.6; runtime_warn=0	dry_run
+2026-07-05T15:32	pending	brainstorming	85.3	86.6	keep	失败模式编码	新增 mixed intent 路由确认分支; structure=66.4/76 dim8=8.8	dry_run
+2026-07-05T15:38	pending	brainstorming	86.6	87.2	keep	可执行具体性	将 mixed intent 触发条件改为双分组; touch_top=1	dry_run

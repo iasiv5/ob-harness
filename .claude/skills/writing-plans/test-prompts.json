@@ -1,0 +1,68 @@
+[
+  {
+    "id": "approved-design-to-plan",
+    "prompt": "设计文档已经批准了，在 docs/specs/config-merge-design.md，帮我拆成可执行实施计划，先不要写代码。",
+    "expected": "进入 writing-plans；读取设计文档和最小必要上下文；先规划文件结构与职责，再拆任务；产出含验证命令、接口契约和最终审阅 checkpoint 的实施计划；不进入编码。",
+    "assertions": [
+      "response treats docs/specs/config-merge-design.md as an approved design input",
+      "response does not restart brainstorming or compare alternative designs",
+      "plan includes file structure and responsibilities before task breakdown",
+      "each task has a concrete validation command or observable check",
+      "plan ends with a review checkpoint and does not start implementation"
+    ],
+    "must_not": [
+      "write code or patches",
+      "ask for design approval that was already supplied",
+      "omit task-level verification",
+      "promise to begin implementation after the checkpoint"
+    ]
+  },
+  {
+    "id": "unapproved-design-stop",
+    "prompt": "我们还没定最终方案，但你先把 Redis 缓存和数据库读写重构写个实施计划吧。",
+    "expected": "识别设计尚未批准且关键方案未定；触发 STOP；退回 brainstorming 或要求先明确方案，不编造计划。",
+    "assertions": [
+      "response states that the input is not ready for an implementation plan",
+      "response identifies missing approved design or unresolved key decisions",
+      "response routes back to brainstorming or asks for the required design artifact",
+      "response does not produce a full task list"
+    ],
+    "must_not": [
+      "invent a plan despite unresolved design",
+      "guess files, commands, or validation paths",
+      "continue as if the design were approved"
+    ]
+  },
+  {
+    "id": "multi-subsystem-split-before-plan",
+    "prompt": "设计已经大致批准了，我们要同时重做账号体系、计费流程和通知中心，帮我写一份总实施计划。",
+    "expected": "识别为多个独立子系统；触发 STOP 或先拆成多份计划；每份计划需要独立目标、文件范围和验证方式；不得写一个巨型混合计划。",
+    "assertions": [
+      "response identifies multiple independent subsystems",
+      "response refuses to collapse all subsystems into one implementation plan",
+      "response proposes separate plan boundaries or asks which subsystem to plan first",
+      "response does not fabricate shared files or one-size-fits-all validation"
+    ],
+    "must_not": [
+      "write one giant cross-subsystem task list",
+      "merge unrelated validation commands into a single plan",
+      "skip the STOP condition for independent subsystems"
+    ]
+  },
+  {
+    "id": "missing-design-path-stop",
+    "prompt": "批准的设计文档应该在 docs/specs/cache-plan.md，但我不确定这个文件是否存在。先帮我写实施计划。",
+    "expected": "先读取最小必要上下文并检查设计文档是否存在；如果路径不存在或读完后仍无法确定关键文件范围/验证方式，触发 STOP；说明缺口，不猜路径、不猜命令，不产出完整计划。",
+    "assertions": [
+      "response checks or asks to verify docs/specs/cache-plan.md before treating it as usable design input",
+      "response stops if the design file is missing or insufficient",
+      "response states the missing information needed to proceed",
+      "response does not invent affected files, commands, or validation paths"
+    ],
+    "must_not": [
+      "write a full implementation plan without reading or verifying the design input",
+      "guess repository paths or test commands",
+      "treat uncertain design input as approved and sufficient"
+    ]
+  }
+]
