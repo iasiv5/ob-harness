@@ -90,3 +90,14 @@ qemu_instance_stop() {
     fi
     rm -f "$pid_file"
 }
+
+# qemu_instance_list — 枚举当前 workspace 所有 QEMU PID 文件对应的 machine 名（全集，
+# 每行一个）。作 list-source；存活判断不在此（caller 调 qemu_instance_is_alive）。
+# 与 lib/qemu.sh derive_qemu_paths 的 QEMU_PIDS_DIR 同源（$WORKSPACE_DIR/qemu-bin/.pids）。
+qemu_instance_list() {
+    local pid_file
+    for pid_file in "$WORKSPACE_DIR/qemu-bin/.pids/"*.pid; do
+        [[ -f "$pid_file" ]] || continue
+        basename "$pid_file" .pid
+    done
+}
