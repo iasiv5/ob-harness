@@ -40,4 +40,22 @@ assert_contains "full has PID line"     "$out" "PID       : 12345"
 assert_contains "full has Ports line"   "$out" "SSH(2222) Redfish(2443) IPMI(2623/UDP)"
 assert_contains "full has Serial line"  "$out" "Serial log: /tmp/serial.log"
 
+# --- qemu_instance_summarize_brief ---
+# 路径 A: stale（pid 不在 /proc）
+printf 'pid=99999999\nbinary=qemu-system-arm\nmachine=romulus\nssh_port=2222\nredfish_port=2443\nipmi_port=2623\n' > "$PIDS_DIR/romulus.pid"
+out="$(qemu_instance_summarize_brief romulus)"
+assert_contains "brief stale marks stale" "$out" "⚠️ stale"
+assert_contains "brief stale has ports"   "$out" "SSH(2222) Redfish(2443) IPMI(2623/UDP)"
+assert_false "brief excludes machine name (caller lays out)" grep -q "romulus" <<< "$out"
+
+# 路径 B: running（stub 放子 shell,不污染父 shell 的真实 is_alive——unset -f 是删除不是恢复,
+# 父 shell 若被污染会让路径 C 的 recycled 判断假绿）
+out="$(qemu_instance_is_alive() { return 0; }; qemu_instance_summarize_brief romulus)"
+assert_contains "brief running marks running" "$out" "✅ running"
+
+# 路径 C: recycled（pid=$$ 测试进程存在,但 cmdline 不匹配 qemu binary/machine → is_alive 返 2 → stale）
+printf 'pid=%s\nbinary=qemu-system-arm\nmachine=recyc\nssh_port=2222\nredfish_port=2443\nipmi_port=2623\n' "$$" > "$PIDS_DIR/recyc.pid"
+out="$(qemu_instance_summarize_brief recyc)"
+assert_contains "brief recycled marks stale" "$out" "⚠️ stale"
+
 assert_summary

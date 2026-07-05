@@ -72,6 +72,21 @@ qemu_instance_summarize_full() {
     echo "  Serial log: $PIDFILE_SERIAL_LOG"
 }
 
+# qemu_instance_summarize_brief <machine> — echo 单行实例详情（PID + 三端口 + 状态）。
+# machine 名不含（caller 决定布局）；running 标 ✅，stale（exited/recycled）标 ⚠️。
+# 内部 load → is_alive，统一存活判断（消灭 cmd_status/cmd_stop_qemu 的简化版双轨）。
+qemu_instance_summarize_brief() {
+    local machine="$1"
+    qemu_instance_load "$machine" || return 1
+    local status_mark
+    if qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
+        status_mark="✅ running"
+    else
+        status_mark="⚠️ stale"
+    fi
+    echo "PID ${PIDFILE_PID}   SSH(${PIDFILE_SSH_PORT}) Redfish(${PIDFILE_REDFISH_PORT}) IPMI(${PIDFILE_IPMI_PORT}/UDP)   ${status_mark}"
+}
+
 # qemu_instance_stop <pid> <pid_file>
 # 统一 stop:kill → 等 /proc/$pid 退出(≤10s)→ SIGKILL 兜底 → 删 PID 文件。best-effort,恒返回 0。
 # 供 cmd_start_qemu 冲突 kill(--force / 确认重启)与 cmd_stop_qemu 复用,消除两套分歧实现。
