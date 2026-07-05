@@ -87,6 +87,14 @@ qemu_instance_summarize_brief() {
     echo "PID ${PIDFILE_PID}   SSH(${PIDFILE_SSH_PORT}) Redfish(${PIDFILE_REDFISH_PORT}) IPMI(${PIDFILE_IPMI_PORT}/UDP)   ${status_mark}"
 }
 
+# qemu_instance_clean_stale <machine> — rm stale PID 文件（best-effort，恒返回 0）。
+# owner = start-qemu 冲突块 / stop-qemu；cmd_status（只读）不调用。
+qemu_instance_clean_stale() {
+    local machine="$1"
+    rm -f "$(_qemu_instance_pid_file "$machine")" 2>/dev/null || true
+    return 0
+}
+
 # qemu_instance_stop <pid> <pid_file>
 # 统一 stop:kill → 等 /proc/$pid 退出(≤10s)→ SIGKILL 兜底 → 删 PID 文件。best-effort,恒返回 0。
 # 供 cmd_start_qemu 冲突 kill(--force / 确认重启)与 cmd_stop_qemu 复用,消除两套分歧实现。

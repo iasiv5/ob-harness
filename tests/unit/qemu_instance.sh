@@ -58,4 +58,13 @@ printf 'pid=%s\nbinary=qemu-system-arm\nmachine=recyc\nssh_port=2222\nredfish_po
 out="$(qemu_instance_summarize_brief recyc)"
 assert_contains "brief recycled marks stale" "$out" "⚠️ stale"
 
+# --- qemu_instance_clean_stale ---
+printf 'pid=99999999\nmachine=romulus\n' > "$PIDS_DIR/romulus.pid"
+[[ -f "$PIDS_DIR/romulus.pid" ]] || { echo "fixture missing"; exit 1; }
+qemu_instance_clean_stale romulus
+assert_false "clean_stale removes pid file" test -f "$PIDS_DIR/romulus.pid"
+# 不存在时也恒返回 0（best-effort；不能用 cmd && assert，set +e 下 cmd 失败不记 failure）
+qemu_instance_clean_stale nonexistent
+assert_eq "clean_stale idempotent rc" "$?" "0"
+
 assert_summary
