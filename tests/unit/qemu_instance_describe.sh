@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# tests/unit/qemu_instance_describe.sh — 实例四行显示 unit。
+# tests/unit/qemu_instance_summarize_full.sh — 实例四行显示 unit。
 # 锁住读 PIDFILE_* 全局的统一格式(PID/Started/Ports/Serial),供 start↔stop 复用。
 source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
@@ -12,7 +12,7 @@ PIDFILE_REDFISH_PORT="2443"
 PIDFILE_IPMI_PORT="2623"
 PIDFILE_SERIAL_LOG="/tmp/serial.log"
 
-out=$(qemu_instance_describe)
+out=$(qemu_instance_summarize_full)
 assert_contains "has PID line"       "$out" "PID       : 12345"
 assert_contains "has Started line"   "$out" "Started   : 2026-07-04T01:02:03Z"
 assert_contains "has Ports line"     "$out" "SSH(2222) Redfish(2443) IPMI(2623/UDP)"

@@ -505,20 +505,20 @@ cmd_start_qemu() {
     #     whose check_ports_available exits 3 on occupied ports; killing the old
     #     same-machine instance first avoids a spurious port-conflict exit) ──
     derive_qemu_paths
-    if read_pid_file; then
+    if qemu_instance_load "$MACHINE"; then
         local pid_status
-        validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$MACHINE"
+        qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$MACHINE"
         pid_status=$?
 
         if [[ $pid_status -eq 0 ]]; then
             # Instance is running and valid
             if [[ "$QEMU_FORCE" -eq 1 ]]; then
                 warn "Killing existing QEMU instance (PID $PIDFILE_PID)..."
-                qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
+                qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
             elif [[ -t 0 ]]; then
                 echo ""
                 warn "QEMU instance already running for '$MACHINE':"
-                qemu_instance_describe
+                qemu_instance_summarize_full
                 echo ""
                 print_confirm_banner "kill and restart QEMU for" "$MACHINE"
                 local answer
@@ -529,7 +529,7 @@ cmd_start_qemu() {
                     info "Aborted."
                     exit 2
                 fi
-                qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
+                qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
             else
                 error "QEMU instance already running for '$MACHINE' (PID $PIDFILE_PID)."
                 error "Use --force to kill and restart, or 'ob stop-qemu $MACHINE' first."
@@ -656,13 +656,13 @@ cmd_stop_qemu() {
         QEMU_PID_FILE="$WORKSPACE_DIR/qemu-bin/.pids/$MACHINE.pid"
 
         echo ""
-        if ! read_pid_file; then
+        if ! qemu_instance_load "$MACHINE"; then
             info "No PID file for '$MACHINE' — not running."
             continue
         fi
 
         local pid_status
-        validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"
+        qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"
         pid_status=$?
 
         if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -688,7 +688,7 @@ cmd_stop_qemu() {
 
         # Process is running — show info and confirm
         echo -e "Running QEMU instance for '${BOLD}$MACHINE${NC}':"
-        qemu_instance_describe
+        qemu_instance_summarize_full
         echo ""
         print_confirm_banner "stop QEMU for" "$MACHINE"
 
@@ -719,7 +719,7 @@ cmd_stop_qemu() {
         fi
 
         # Kill and wait
-        qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
+        qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
         info "QEMU instance for '$MACHINE' stopped."
     done
 }

@@ -3,7 +3,13 @@
 # Exit: leaf-pure module（函数绝不 exit, 只 return; 与 machine_state.sh 同构）.
 
 
-read_pid_file() {
+# module 内部路径拼接（caller 不直接用）；与 lib/qemu.sh derive_qemu_paths 的 QEMU_PIDS_DIR 同源。
+_qemu_instance_pid_file() { echo "$WORKSPACE_DIR/qemu-bin/.pids/$1.pid"; }
+
+# shellcheck disable=SC2034  # PIDFILE_* 字段供 caller（lib/commands.sh）跨文件读取
+qemu_instance_load() {
+    local machine="${1:-}"
+    [[ -n "$machine" ]] && QEMU_PID_FILE="$(_qemu_instance_pid_file "$machine")"
     if [[ ! -f "$QEMU_PID_FILE" ]]; then
         return 1
     fi
@@ -37,7 +43,7 @@ read_pid_file() {
     return 0
 }
 
-validate_pid() {
+qemu_instance_is_alive() {
     # return 0=running&match, 1=exited, 2=pid recycled — diagnostic only, NOT part of exit-code protocol
     local pid="$1"
     local expected_binary="$2"
@@ -48,7 +54,7 @@ validate_pid() {
     fi
 
     local cmdline
-    cmdline=$(cat "/proc/$pid/cmdline" 2>/dev/null | tr '\0' ' ' || true)
+    cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || true
 
     if [[ "$cmdline" != *"$expected_binary"* ]] || [[ "$cmdline" != *"$expected_machine"* ]]; then
         return 2  # PID recycled — different process
@@ -57,19 +63,19 @@ validate_pid() {
     return 0  # Running and matches
 }
 
-# qemu_instance_describe — 读 PIDFILE_* 全局(read_pid_file 设置)echo 统一四行实例信息。
+# qemu_instance_summarize_full — 读 PIDFILE_* 全局(qemu_instance_load 设置)echo 统一四行实例信息。
 # 供 cmd_start_qemu 冲突块与 cmd_stop_qemu 复用(去重;cmd_status 多实例单行呈现不同源,不并入)。
-qemu_instance_describe() {
+qemu_instance_summarize_full() {
     echo "  PID       : $PIDFILE_PID"
     echo "  Started   : $PIDFILE_STARTED_AT"
     echo "  Ports     : SSH($PIDFILE_SSH_PORT) Redfish($PIDFILE_REDFISH_PORT) IPMI($PIDFILE_IPMI_PORT/UDP)"
     echo "  Serial log: $PIDFILE_SERIAL_LOG"
 }
 
-# qemu_stop_instance <pid> <pid_file>
+# qemu_instance_stop <pid> <pid_file>
 # 统一 stop:kill → 等 /proc/$pid 退出(≤10s)→ SIGKILL 兜底 → 删 PID 文件。best-effort,恒返回 0。
 # 供 cmd_start_qemu 冲突 kill(--force / 确认重启)与 cmd_stop_qemu 复用,消除两套分歧实现。
-qemu_stop_instance() {
+qemu_instance_stop() {
     local pid="$1" pid_file="$2"
     kill "$pid" 2>/dev/null || true
     local wait_count=0
