@@ -193,9 +193,9 @@ status_section_tips() {
 }
 
 # exit_on_user_cancel <rc> <verb>
-# 消费 select_from_list / confirm_action 的 rc (0=ok / 2=cancel / 1=read-fail)。
+# 消费 pick_machine / confirm_action 的 rc (0=ok / 2=cancel / 1=read-fail)。
 # rc 0 → return 0 继续下行;rc 2 → warn "<verb> cancelled by user." + exit 2;
-# 否则 exit 1(read-fail 的 error 已由 L3 调用方 select_from_list/confirm_action 打印)。
+# 否则 exit 1(read-fail 的 error 已由 L3 调用方 pick_machine/confirm_action 打印)。
 # L1 exit-seam helper;调用方负责先 `|| rc=$?` 捕获 rc 再传入。
 exit_on_user_cancel() {
     local rc="$1" verb="$2"
@@ -293,17 +293,10 @@ cmd_build() {
     else
         # === Discover initialized machines ===
         local -a machines=()
-        local -a init_times=()
-        local -a repo_counts=()
-        local -A init_time_by_machine=()
-        local -A repo_count_by_machine=()
-
         local initialized_machine
         while IFS= read -r initialized_machine; do
             [[ -n "$initialized_machine" ]] || continue
             machines+=("$initialized_machine")
-            init_time_by_machine["$initialized_machine"]="$(machine_state_init_time "$initialized_machine")"
-            repo_count_by_machine["$initialized_machine"]="$(machine_state_repo_count "$initialized_machine")"
         done < <(machine_state_initialized_machines)
 
         if [[ ${#machines[@]} -eq 0 ]]; then
@@ -316,34 +309,17 @@ cmd_build() {
             exit 3
         fi
 
-        # === Read main repo info ===
+        # === Read main repo info（仓库信息块；machine 元数据看 ob status，选择表只列名字）===
         local manifest_origin_url manifest_source_label
         manifest_origin_url=$(read_manifest_field origin_url || echo "<unknown>")
         manifest_source_label=$(read_manifest_field source_label || echo "")
 
-        # === Display ===
         step_header "OpenBMC Repository"
         echo "  Source : $manifest_origin_url${manifest_source_label:+ ($manifest_source_label)}"
         echo "  Path   : $OPENBMC_DIR"
         echo ""
 
         step_header "Initialized Machines"
-
-        local total=${#machines[@]}
-        local idx_width=${#total}
-        local i
-        for (( i=0; i<total; i++ )); do
-            local init_time
-            init_time=$(format_timestamp "${init_time_by_machine[${machines[$i]}]:-}")
-            init_times+=("$init_time")
-            repo_counts+=("${repo_count_by_machine[${machines[$i]}]:-?}")
-            printf "  %${idx_width}d) %-20s %s    %s repos\n" \
-                "$((i + 1))" "${machines[$i]}" "${init_times[$i]}" "${repo_counts[$i]}"
-        done
-
-        echo ""
-        info "If the machine you want is not listed, run 'init' task or './ob init' first."
-        echo ""
 
         # === Interactive selection ===
         if [[ ! -t 0 ]]; then
@@ -352,12 +328,10 @@ cmd_build() {
             exit 3
         fi
 
-        local sfl_rc=0
-        select_from_list "Select a machine to build [1-${total}]" "$total" || sfl_rc=$?
-        exit_on_user_cancel "$sfl_rc" "Build"
-        local chosen="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
+        local pm_rc=0
+        pick_machine machine_state_initialized_machines "Build" || pm_rc=$?
+        exit_on_user_cancel "$pm_rc" "Build"
 
-        MACHINE="$chosen"
         BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
         interactive_selection=1
     fi
@@ -499,18 +473,9 @@ cmd_start_qemu() {
 
         echo ""
         step_header "Select Machine"
-        local total=${#machines[@]}
-        local idx_width=${#total}
-        local i
-        for (( i=0; i<total; i++ )); do
-            printf "  %${idx_width}d) %s\n" "$((i + 1))" "${machines[$i]}"
-        done
-        echo ""
-
-        local sfl_rc=0
-        select_from_list "Select a machine [1-${total}]" "$total" || sfl_rc=$?
-        exit_on_user_cancel "$sfl_rc" "Start QEMU"
-        MACHINE="${machines[$((SELECT_FROM_LIST_CHOICE - 1))]}"
+        local pm_rc=0
+        pick_machine machine_state_firmware_image_ready_machines "Start QEMU" || pm_rc=$?
+        exit_on_user_cancel "$pm_rc" "Start QEMU"
     fi
 
     # Re-derive paths after machine resolution
@@ -613,6 +578,16 @@ cmd_start_qemu() {
     qemu_execute_launch
 }
 
+# __stop_qemu_running_machines — 印当前 workspace 所有 QEMU 实例的 machine 名
+# （源自 qemu-bin/.pids/*.pid，每行一个）。作 pick_machine 的 list-source（module 级可见）。
+__stop_qemu_running_machines() {
+    local pid_file
+    for pid_file in "$WORKSPACE_DIR/qemu-bin/.pids/"*.pid; do
+        [[ -f "$pid_file" ]] || continue
+        basename "$pid_file" .pid
+    done
+}
+
 cmd_stop_qemu() {
     detect_harness_root
 
@@ -628,12 +603,9 @@ cmd_stop_qemu() {
     elif [[ -n "$MACHINE" ]]; then
         targets+=("$MACHINE")
     else
-        # No machine specified: list all and let user choose
+        # No machine specified: list running instances and let user choose
         local -a available=()
-        for pid_file in "$WORKSPACE_DIR/qemu-bin/.pids/"*.pid; do
-            [[ -f "$pid_file" ]] || continue
-            available+=("$(basename "$pid_file" .pid)")
-        done
+        mapfile -t available < <(__stop_qemu_running_machines)
 
         if [[ ${#available[@]} -eq 0 ]]; then
             info "No QEMU instances found."
@@ -648,27 +620,29 @@ cmd_stop_qemu() {
 
         echo ""
         step_header "Running QEMU Instances"
+        # 渲染实例详情（PID/端口/状态，同 ob status 格式）帮用户决定停哪个；
+        # pick_machine 只渲染纯序号+名字（Q3），故 cmd_stop_qemu 自渲染带详情列表 + 复用 read_machine_choice
         local total=${#available[@]}
         local idx_width=${#total}
-        local i
+        local i m _pf _pid _sport _rport _iport _detail
         for (( i=0; i<total; i++ )); do
-            local m="${available[$i]}"
-            MACHINE="$m"
-            QEMU_PID_FILE="$WORKSPACE_DIR/qemu-bin/.pids/$m.pid"
-            local status_str=""
-            if read_pid_file && validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
-                status_str="✅ running (PID $PIDFILE_PID)"
+            m="${available[$i]}"
+            _pf="$WORKSPACE_DIR/qemu-bin/.pids/$m.pid"
+            _pid=$(read_kv_field "$_pf" pid 2>/dev/null) || _pid=""
+            if [[ -n "$_pid" ]] && [[ -d "/proc/$_pid" ]]; then
+                _sport=$(read_kv_field "$_pf" ssh_port 2>/dev/null) || _sport=""
+                _rport=$(read_kv_field "$_pf" redfish_port 2>/dev/null) || _rport=""
+                _iport=$(read_kv_field "$_pf" ipmi_port 2>/dev/null) || _iport=""
+                _detail="PID $_pid   SSH($_sport) Redfish($_rport) IPMI($_iport/UDP)   ✅ running"
             else
-                status_str="⚠️  stale"
+                _detail="⚠️ stale"
             fi
-            printf "  %${idx_width}d) %-20s %s\n" "$((i + 1))" "$m" "$status_str"
+            printf "  %${idx_width}d) %-20s %s\n" "$((i + 1))" "$m" "$_detail"
         done
-        echo ""
-
-        local sfl_rc=0
-        select_from_list "Select instance to stop [1-${total}]" "$total" || sfl_rc=$?
-        exit_on_user_cancel "$sfl_rc" "Stop QEMU"
-        targets+=("${available[$((SELECT_FROM_LIST_CHOICE - 1))]}")
+        local pm_rc=0
+        read_machine_choice "$total" "Stop QEMU" available || pm_rc=$?
+        exit_on_user_cancel "$pm_rc" "Stop QEMU"
+        targets+=("$MACHINE")
     fi
 
     if [[ ${#targets[@]} -eq 0 ]]; then
@@ -762,9 +736,48 @@ cmd_init() {
     run_repo_init_script
 
     # 解析 machine（Step 2 的一部分，交互选择或确认命令行参数）。
-    resolve_machine
+    # 显式编排（空 guard + arg 快路径 + 非TTY + 展示 + pick_machine + confirm）。
+    local -a _init_machines=()
+    local _im
+    while IFS= read -r _im; do
+        [[ -n "$_im" ]] && _init_machines+=("$_im")
+    done < <(list_available_machines)
 
-    # Re-derive paths (machine may have changed via interactive resolve_machine)
+    if [[ ${#_init_machines[@]} -eq 0 ]]; then
+        error "No machines found in $OPENBMC_DIR."
+        error "Check the OpenBMC main repository, or re-clone: cd $OPENBMC_DIR && git pull"
+        exit 3
+    fi
+
+    if [[ -n "$MACHINE" ]] && printf '%s\n' "${_init_machines[@]}" | grep -qx -- "$MACHINE"; then
+        print_previously_initialized _init_machines
+        info "Machine '$MACHINE' confirmed."
+    else
+        if [[ -n "$MACHINE" ]]; then
+            warn "Machine '$MACHINE' is not in the available list."
+        else
+            warn "No machine specified."
+        fi
+
+        if [[ ! -t 0 ]]; then
+            error "No valid machine and no interactive terminal. Pass a valid machine: ob init <machine>"
+            exit 3
+        fi
+
+        local pm_rc=0
+        # Previously 段作 pick_machine 的 post-list-msg: 列表后、提示词前打印,
+        # 用户选择时紧邻看到已 init 的 machine(不必往上翻序号列表对序号)
+        pick_machine list_available_machines "init" "$(print_previously_initialized _init_machines)" || pm_rc=$?
+        exit_on_user_cancel "$pm_rc" "init"
+
+        local ca_rc=0
+        confirm_action "init" "$MACHINE" || ca_rc=$?
+        exit_on_user_cancel "$ca_rc" "init"
+        echo ""
+        info "Init confirmed for machine '$MACHINE'."
+    fi
+
+    # Re-derive paths (machine may have changed via interactive pick_machine)
     BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
     SRC_DIR="$WORKSPACE_DIR/src/$MACHINE"
 
@@ -850,8 +863,8 @@ cmd_init() {
 cmd_menu() {
     # Non-interactive terminal guard
     if [[ ! -t 0 ]]; then
-        echo -e "${PROMPT_PREFIX} Non-interactive terminal detected. Use CLI mode: ./ob <command> [args]"
-        exit 1
+        error "Non-interactive terminal detected. Use CLI mode: ./ob <command> [args]"
+        exit 3
     fi
 
     local first_run=1

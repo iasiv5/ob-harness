@@ -36,7 +36,7 @@ stub_cmd_init_dependencies() {
     require_openbmc_repo() { return 0; }
     clone_openbmc() { :; }
     run_repo_init_script() { :; }
-    resolve_machine() { MACHINE="romulus"; }
+    list_available_machines() { printf 'romulus\n'; }
     init_bitbake_env() { :; }
     generate_dep_graph() { :; }
     clone_sub_repos() { :; }

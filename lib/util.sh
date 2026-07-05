@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/util.sh — 底层通用工具(log/select_from_list/read_kv_field/require_path). 术语见 CONTEXT.md function semantic layer.
+# lib/util.sh — 底层通用工具(log/read_kv_field/require_path). 术语见 CONTEXT.md function semantic layer.
 # Exit: leaf-no-exit（leaf-pure module; 例外 fn_quit/resolve_npm_registry/require_path 可 direct exit, require_path 使用 caller code）; 调用者负责 exit-code/remedy.
 
 
@@ -469,28 +469,6 @@ read_kv_field() {
 read_manifest_field() {
     local key="$1"
     read_kv_field "$SOURCE_MANIFEST_FILE" "$key"
-}
-
-# select_from_list <prompt> <total>
-# Reads a 1-based index in [1,total]; sets global SELECT_FROM_LIST_CHOICE on success.
-# Returns 0=selected / 2=cancelled (user entered 0) / 1=read failure.
-# Caller prints the numbered list first (formats vary across call sites). L3 — never exits.
-select_from_list() {
-    local prompt="$1"
-    local total="$2"
-    local selected
-    while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} ${prompt} (0 to cancel): ")" selected; then
-            error "Unable to read selection from stdin."
-            return 1
-        fi
-        [[ "$selected" == "0" ]] && return 2
-        if [[ "$selected" =~ ^[0-9]+$ ]] && [[ "$selected" -ge 1 && "$selected" -le "$total" ]]; then
-            SELECT_FROM_LIST_CHOICE="$selected"
-            return 0
-        fi
-        warn "Please enter a number (1-${total})"
-    done
 }
 
 # confirm_action <verb> <object>

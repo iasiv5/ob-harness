@@ -314,21 +314,6 @@ list_available_machines() {
     bitbake_env_list_available_machines
 }
 
-# Print supported machine list (passthrough for readability)
-print_available_machines() {
-    local machines
-    machines=$(list_available_machines)
-    if [[ -z "$machines" ]]; then
-        warn "No machines found. The OpenBMC main repository may be incomplete."
-        warn "Try updating it: cd $OPENBMC_DIR && git pull"
-        return 0
-    fi
-    info "Available machines in this repository:"
-    local term_cols
-    term_cols=$(tput cols 2>/dev/null) || term_cols=80
-    echo "$machines" | column -c "$term_cols" 2>/dev/null || echo "$machines"
-}
-
 require_openbmc_repo() {
     if [[ -d "$OPENBMC_DIR/.git" ]]; then
         step_header "Step 2/8: Preparing OpenBMC main repository and resolving machine..."
@@ -374,94 +359,4 @@ print_previously_initialized() {
     done
 }
 
-resolve_machine() {
-    local machines
-    machines=$(list_available_machines)
-
-    # Build numbered machine list
-    local -a machine_arr=()
-    while IFS= read -r line; do
-        [[ -n "$line" ]] && machine_arr+=("$line")
-    done <<< "$machines"
-
-    # Fast path: machine specified and valid
-    if [[ -n "$MACHINE" ]] && echo "$machines" | grep -qx -- "$MACHINE"; then
-        print_available_machines
-        print_previously_initialized machine_arr
-        info "Machine '$MACHINE' confirmed."
-        return 0
-    fi
-
-    if [[ -n "$MACHINE" ]]; then
-        warn "Machine '$MACHINE' is not in the available list."
-    else
-        warn "No machine specified."
-    fi
-
-    if [[ ! -t 0 ]]; then
-        error "No valid machine and no interactive terminal. Pass a valid machine: ob init <machine>"
-        exit 3
-    fi
-
-    # Print numbered list in columns (adapt to terminal width)
-    info "Available machines (enter number or name):"
-    local total=${#machine_arr[@]}
-    local idx_width=${#total}
-    local term_cols
-    term_cols=$(tput cols 2>/dev/null) || term_cols=80
-    local i=0
-    {
-        for m in "${machine_arr[@]}"; do
-            i=$((i + 1))
-            printf "  %${idx_width}d) %s\n" "$i" "$m"
-        done
-    } | column -c "$term_cols" 2>/dev/null
-
-    print_previously_initialized machine_arr
-
-    local selected
-    local chosen=""
-    while true; do
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select a machine [1-${#machine_arr[@]}] or type machine name (0 to cancel): ")" selected; then
-            error "Unable to read machine selection from stdin."
-            exit 1
-        fi
-        if [[ "$selected" == "0" ]]; then
-            warn "Init cancelled by user."
-            exit 2
-        fi
-        # Try as number first
-        if [[ "$selected" =~ ^[0-9]+$ ]]; then
-            if [[ "$selected" -ge 1 && "$selected" -le "${#machine_arr[@]}" ]]; then
-                chosen="${machine_arr[$((selected - 1))]}"
-                MACHINE="$chosen"
-                break
-            fi
-            warn "Number out of range (1-${#machine_arr[@]}): $selected"
-            continue
-        fi
-        # Try as name
-        if echo "$machines" | grep -qx -- "$selected"; then
-            MACHINE="$selected"
-            break
-        fi
-        warn "Invalid machine: $selected"
-    done
-
-    # === Post-selection confirmation (same pattern as cmd_build) ===
-    echo ""
-    info "Machine '$MACHINE' selected."
-    echo ""
-    local ca_rc=0
-    confirm_action "init" "$MACHINE" || ca_rc=$?
-    if [[ "$ca_rc" -eq 2 ]]; then
-        warn "Init cancelled by user."
-        exit 2
-    elif [[ "$ca_rc" -ne 0 ]]; then
-        exit 1
-    fi
-    echo ""
-    info "Init confirmed for machine '$MACHINE'."
-    return 0
-}
 

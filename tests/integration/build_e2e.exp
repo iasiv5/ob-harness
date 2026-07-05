@@ -33,7 +33,7 @@ log_user 1
 
 spawn ./ob build
 expect {
-    -re "Select a machine to build" { send "$index\r" }
+    -re "Select a machine" { send "$index\r" }
     timeout { puts "FAIL build_e2e.exp: no machine selection prompt"; exit 1 }
 }
 expect {

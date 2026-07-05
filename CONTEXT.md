@@ -44,6 +44,10 @@ _Avoid_: invalid image, broken image, QEMU-ready artifact
 ob 对单个 machine 当前生命周期事实的组合判断，由 `machine snapshot`、`init-done marker` 和 firmware image artifact 共同决定。它回答 machine 是否 initialized、是否 partial、是否是 `firmware-image-ready machine`、是否存在 `orphan firmware image artifact` 等状态问题；不包含 `ob status` 表格排版、`remedy line`、`exit-code 契约` 或用户交互策略。
 _Avoid_: UI state, command policy, 把展示文本当 lifecycle state
 
+**machine selection**:
+`lib/machine_picker.sh` 中 `pick_machine` 封装的交互选择 module。它在调用者已保证 machine 集合非空且为交互终端的前提下，渲染纯序号+名字选择表，读取用户输入（数字或名字），将选中的 machine 设入 `$MACHINE`，或以 return 2 表示取消。它是 leaf-pure L3（绝不 exit，不决定 `exit-code 契约`，不打印 `remedy line`）；不判断集合是否为空、不判断终端交互性、不做 arg 合法性校验——这些是调用者（L1 `cmd_*`）的命令级前置。它只管"选哪个 machine"，与 `machine lifecycle state`（machine 处于什么状态）正交。
+_Avoid_: machine picker（口语化，术语用 selection）, 把 selection 当 lifecycle state, resolve_machine（init 旧函数，含 arg 快路径与 confirm，职责更宽）
+
 **state file format**:
 ob 在 `workspace/configs/` 下的状态文件按数据形状选格式：扁平标量字段用 kv 文本（`key=value` + `#` 注释，如 `source manifest`，用 `read_kv_field` 读）；嵌套/列表结构用 JSON（如 `machine snapshot` 的 `sub_repos` 数组，用 python json 读写）。依据是数据形状匹配表达力，不为统一而把扁平数据塞进 JSON。
 _Avoid_: 强制单一格式, 把扁平状态文件写成 JSON
