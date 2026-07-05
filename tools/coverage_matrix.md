@@ -48,7 +48,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | QEMU binary 路径/manifest | derive_qemu_paths;read_qemu_url_config;write_qemu_url_config;write_qemu_binary_manifest;write_qemu_pcbios_manifest | unit/qemu_manifest.sh | |
 | QEMU launch profile / QB 输入解析 | resolve_qemu_launch_profile | orchestration/qemu_launch_profile.sh;orchestration/resolve_qb_vars.sh;protocol/qemu_launch_profile_remedy.sh | exit 函数 |
 | 端口检查 | check_ports_available;get_port_occupants | unit/ports.sh | check_ports_available exit 函数 |
-| PID 校验 | validate_pid | unit/ports.sh | |
+| PID 校验 | qemu_instance_is_alive | unit/ports.sh | |
 | 失效 host key 检测 | check_ssh_hostkey_conflict;_clear_stale_hostkey_menu | unit/hostkey_conflict.sh | Track A 删除菜单(确证失效);Track B sshd 未就绪仅提示不删 |
 | 取消 → exit 2 | cmd_start_qemu | protocol/manual_matrix.exp | TTY |
 | kill-restart | cmd_start_qemu | protocol/manual_matrix_qemu.exp | integration |
@@ -57,7 +57,8 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | --force 同端口重启顺序(F1) | cmd_start_qemu | orchestration/start_qemu_force_restart.sh | F1 不变量:kill 先于 check_ports |
 | binary 下载链 | download_qemu_binary_core;ensure_qemu_binary_community | orchestration/qemu_binary_download.sh | flat-binary 路径;原 #1 盲区 |
 | binary 更新/URL 决策 | qemu_binary_update_decision;qemu_binary_resolve_url | unit/qemu_binary_decision.sh | 纯决策 |
-| 实例四行显示 | qemu_instance_describe | unit/qemu_instance_describe.sh | start↔stop 复用(status 不并入) |
+| 实例四行显示 | qemu_instance_summarize_full | unit/qemu_instance.sh | start↔stop 复用；status 走 summarize_brief |
+| instance module（list/load/summarize_brief/clean_stale） | qemu_instance_list;qemu_instance_load;qemu_instance_summarize_brief;qemu_instance_clean_stale | unit/qemu_instance.sh | start/stop/status 共用；caller 不碰 .pids 物理布局 |
 | binary 更新(flock+回滚) | download_and_replace_community_qemu | | 副作用残留(flock+backup+rollback) |
 | custom binary 配置 | ensure_qemu_binary_custom | | 交互残留(非 TTY exit 3 / TTY prompt) |
 
@@ -67,7 +68,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 |---|---|---|---|
 | 无实例 → exit 0 | cmd_stop_qemu | protocol/exit_codes.sh | exit 函数,radar 低估 |
 | 取消/正常停止 | cmd_stop_qemu | protocol/manual_matrix_qemu.exp | integration |
-| 统一 stop(kill+wait+SIGKILL+rm) | qemu_stop_instance | orchestration/qemu_stop_instance.sh | start 冲突 kill + cmd_stop_qemu 复用 |
+| 统一 stop(kill+wait+SIGKILL+rm) | qemu_instance_stop | orchestration/qemu_stop_instance.sh | start 冲突 kill + cmd_stop_qemu 复用 |
 
 ## 横切(通用)
 
