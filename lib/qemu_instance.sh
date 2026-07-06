@@ -9,7 +9,11 @@ _qemu_instance_pid_file() { echo "$WORKSPACE_DIR/qemu-bin/.pids/$1.pid"; }
 # shellcheck disable=SC2034  # PIDFILE_* 字段供 caller（lib/commands.sh）跨文件读取
 qemu_instance_load() {
     local machine="${1:-}"
-    [[ -n "$machine" ]] && QEMU_PID_FILE="$(_qemu_instance_pid_file "$machine")"
+    if [[ -n "$machine" ]]; then
+        QEMU_PID_FILE="$(_qemu_instance_pid_file "$machine")"
+    elif [[ -z "${QEMU_PID_FILE:-}" ]]; then
+        return 1   # 无参且调用者未设 QEMU_PID_FILE → 防御性 return 1（不靠 set -u 中止）
+    fi
     if [[ ! -f "$QEMU_PID_FILE" ]]; then
         return 1
     fi
@@ -111,7 +115,8 @@ qemu_instance_stop() {
         kill -9 "$pid" 2>/dev/null || true
         sleep 1
     fi
-    rm -f "$pid_file"
+    rm -f "$pid_file" 2>/dev/null || true
+    return 0
 }
 
 # qemu_instance_list — 枚举当前 workspace 所有 QEMU PID 文件对应的 machine 名（全集，

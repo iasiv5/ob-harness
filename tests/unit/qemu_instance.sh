@@ -26,6 +26,11 @@ QEMU_PID_FILE="$PIDS_DIR/witherspoon.pid"
 qemu_instance_load
 assert_eq "load no-arg keeps compatibility" "$PIDFILE_MACHINE" "witherspoon"
 
+# load 无参且未设 QEMU_PID_FILE → 防御性 return 1（不靠 set -u 中止）
+unset QEMU_PID_FILE
+qemu_instance_load
+assert_eq "load no-arg without QEMU_PID_FILE returns 1" "$?" "1"
+
 # 空目录
 rm -f "$PIDS_DIR"/*.pid
 out="$(qemu_instance_list)"
