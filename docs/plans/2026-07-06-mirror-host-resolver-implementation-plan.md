@@ -159,8 +159,8 @@ detect_runtime_git_host() {
 - Expected: 输出 `LEGACY_GONE`（`ensure_bootstrap_local_conf` 函数体内已无旧 inline glob/origin 段；注意 `github-gitlab-url.sh` 字符串仍存在于 `detect_runtime_git_host` 体内，这是预期，不能用它当判据）。
 - Run: `awk '/^ensure_bootstrap_local_conf\(\)/,/^}$/' lib/repo.sh | grep -q 'detect_runtime_git_host >/dev/null' && awk '/^ensure_bootstrap_local_conf\(\)/,/^}$/' lib/repo.sh | grep -q 'gitlab_ip="\${_RUNTIME_GIT_HOST:-}"' && echo WIRED`
 - Expected: 输出 `WIRED`。
-- Run: `grep -q 'url.git@${gitlab_ip}:.insteadOf' lib/repo.sh && echo INSTEADOF_KEPT`
-- Expected: 输出 `INSTEADOF_KEPT`（insteadOf 副作用段保留）。
+- Run: `awk '/^ensure_bootstrap_local_conf\(\)/,/^}$/' lib/repo.sh | grep -qF 'git config --global' && echo INSTEADOF_KEPT`
+- Expected: 输出 `INSTEADOF_KEPT`（insteadOf 副作用段保留）。注:用 `grep -F` 而非 `grep 'url.git@${gitlab_ip}:.insteadOf'`——后者在 BRE 下因 `$` 锚点歧义假阴(执行时实测发现)。
 - Run: `bash tests/protocol/bitbake_env_entry_contract.sh >/dev/null 2>&1; echo "rc=$?"`
 - Expected: `rc=0`（该测试 stub 掉 `ensure_bootstrap_local_conf`，但仍 source repo.sh，确保新函数不破坏 source）。
 
