@@ -165,26 +165,11 @@ ensure_bootstrap_local_conf() {
 
     require_path "$local_conf" "local.conf" "Run 'ob init' first." 3
 
-    # Detect GitLab IP for recipes that use ${GITLAB_IP} in SRC_URI.
-    # Priority: (1) github-gitlab-url.sh (2) git remote origin URL (3) empty (skip)
+    # Detect GitLab IP for recipes that use ${GITLAB_IP} in SRC_URI(via runtime Git mirror host).
+    # direct call:函数内全局缓存不穿透 $() subshell(clone_sub_repos 循环复用同一缓存)。
     local gitlab_ip=""
-    local _rt_script=""
-    local _remote_url=""
-    for _candidate in "$OPENBMC_DIR"/meta-*/git-mirror-url.sh \
-                      "$OPENBMC_DIR"/meta-*/github-gitlab-url.sh; do
-        if [[ -f "$_candidate" ]]; then _rt_script="$_candidate"; break; fi
-    done
-    if [[ -f "$_rt_script" ]]; then
-        gitlab_ip=$(grep -oP '^(GITLAB_IP|GIT_MIRROR_HOST)=["'"'"']?\K[^"'"'"'\s]+' "$_rt_script" 2>/dev/null | head -1 || true)
-    fi
-    if [[ -z "$gitlab_ip" && -f "$OPENBMC_DIR/.git/config" ]]; then
-        _remote_url=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
-        if [[ "$_remote_url" == git@* ]]; then
-            gitlab_ip=$(echo "$_remote_url" | sed -E 's/^git@([^:]+):.*/\1/')
-        elif [[ "$_remote_url" == http://* || "$_remote_url" == https://* ]]; then
-            gitlab_ip=$(echo "$_remote_url" | sed -E 's#^https?://([^/:]+).*#\1#')
-        fi
-    fi
+    detect_runtime_git_host >/dev/null
+    gitlab_ip="${_RUNTIME_GIT_HOST:-}"
 
     # If the remote uses SSH, but recipes reference the host via protocol=https,
     # configure git to rewrite HTTPS URLs to SSH automatically.
