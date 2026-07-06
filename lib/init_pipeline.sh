@@ -251,16 +251,8 @@ clone_sub_repos() {
         # These come from BitBake variables (e.g. ${GITLAB_IP}) that weren't
         # resolved during deps.json generation (e.g. variable not in config).
         if [[ "$clone_url" == *'${'* ]]; then
-            # Prefer the same runtime host source used by init_openbmc_repo.sh:
-            #   1) meta-*/git-mirror-url.sh (after GIT_MIRROR_HOST rewrite)
-            #   2) workspace/openbmc/.git/config origin URL
-            #   3) build/conf/local.conf as a manual fallback
-            local _runtime_script=""
-            for _candidate in "$WORKSPACE_DIR/openbmc"/meta-*/git-mirror-url.sh \
-                              "$WORKSPACE_DIR/openbmc"/meta-*/github-gitlab-url.sh; do
-                if [[ -f "$_candidate" ]]; then _runtime_script="$_candidate"; break; fi
-            done
-            local _openbmc_git_config="$WORKSPACE_DIR/openbmc/.git/config"
+            # runtime Git mirror host(GITLAB_IP/GIT_MIRROR_HOST)走 detect_runtime_git_host;
+            # 其他 ${VAR} 回退 build/conf/local.conf。
             local _local_conf="$BUILD_DIR/conf/local.conf"
             # Extract all ${VAR} names from clone_url
             local _var_names
@@ -270,18 +262,9 @@ clone_sub_repos() {
                 _vn="${_vn%\}}"
                 local _vv=""
 
-                if [[ "$_vn" == "GITLAB_IP" || "$_vn" == "GIT_MIRROR_HOST" ]] && [[ -f "$_runtime_script" ]]; then
-                    _vv=$(grep -oP '^(GITLAB_IP|GIT_MIRROR_HOST)=["'"'"']?\K[^"'"'"'\s]+' "$_runtime_script" 2>/dev/null | head -1 || true)
-                fi
-
-                if [[ -z "$_vv" ]] && { [[ "$_vn" == "GITLAB_IP" || "$_vn" == "GIT_MIRROR_HOST" ]] ; } && [[ -f "$_openbmc_git_config" ]]; then
-                    local _remote_url=""
-                    _remote_url=$(grep -E '^[[:space:]]*url = (git@|https?)' "$_openbmc_git_config" 2>/dev/null | head -1 | awk '{print $3}')
-                    if [[ "$_remote_url" == git@* ]]; then
-                        _vv=$(echo "$_remote_url" | sed -E 's/^git@([^:]+):.*/\1/')
-                    elif [[ "$_remote_url" == http://* || "$_remote_url" == https://* ]]; then
-                        _vv=$(echo "$_remote_url" | sed -E 's#^https?://([^/:]+).*#\1#')
-                    fi
+                if [[ "$_vn" == "GITLAB_IP" || "$_vn" == "GIT_MIRROR_HOST" ]]; then
+                    detect_runtime_git_host >/dev/null   # direct call:缓存不穿透 $() subshell
+                    _vv="${_RUNTIME_GIT_HOST:-}"
                 fi
 
                 if [[ -z "$_vv" && -f "$_local_conf" ]]; then

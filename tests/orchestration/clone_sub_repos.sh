@@ -52,4 +52,27 @@ echo "NEW=${#STATUS_MIRROR_NEW[@]}|FAILED=${#STATUS_FAILED[@]}|"
 assert_contains "clone fail FAILED" "$out" "FAILED=2|"
 
 rm -rf "$TMP" "$DB"
+
+# --- GITLAB_IP 展开分支(Task3 回归锁):clone_url 含 ${GITLAB_IP} → 展开成 vendor script host ---
+# 现有 fixture 是普通 GitHub URL,不覆盖变量展开分支;此处构造含 ${GITLAB_IP} 的临时 deps.json,
+# 设 OPENBMC_DIR 指向带 vendor script 的临时目录,stub git 记录 clone 收到的 URL,断言已展开。
+# src_uri 用具体 host(10.0.0.9),避免它经 derive_bitbake_git_mirror_path 污染 mirror path 的 ${GITLAB_IP}。
+TMP3="$(mktemp -d)"; OPENBMC3="$TMP3/openbmc"; mkdir -p "$OPENBMC3/meta-x"
+printf 'GITLAB_IP=10.0.0.9\n' > "$OPENBMC3/meta-x/git-mirror-url.sh"
+BUILD3="$TMP3/build"; mkdir -p "$BUILD3"
+cat > "$BUILD3/deps.json" <<'JSON'
+[{"name":"priv","clone_url":"https://${GITLAB_IP}/team/priv.git","src_uri":"git://10.0.0.9/team/priv.git;branch=main","srcrev":"abc","recipe":"r1"}]
+JSON
+DB3="$(mktemp -d)"; mkfake_bin "$DB3" git
+stub_script "$DB3" git 'case "$1" in config) exit 0;; clone) mkdir -p "$4"; exit 0;; esac; exit 0'
+with_stub "$DB3" -- bash -c 'OB_NO_MAIN=1 source "$1"
+WORKSPACE_DIR="'"$TMP3"'"; OPENBMC_DIR="'"$OPENBMC3"'"; BUILD_DIR="'"$BUILD3"'"; MACHINE="romulus"; DRY_RUN=0
+STATUS_MIRROR_NEW=(); STATUS_FAILED=()
+clone_sub_repos
+' _ "$OB" 2>/dev/null
+_calls="$(cat "$DB3/.git.calls" 2>/dev/null)"
+assert_contains "GITLAB_IP expanded in clone URL" "$_calls" "10.0.0.9"
+assert_false "no unresolved \${GITLAB_IP}" grep -qF '${GITLAB_IP}' "$DB3/.git.calls"
+rm -rf "$TMP3" "$DB3"
+
 assert_summary
