@@ -387,7 +387,7 @@ unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
 
 - [ ] Step 4: 运行并确认通过
 - Run: `bash tests/unit/url_extra.sh 2>&1 | tail -1`
-- Expected: `PASS=8 FAIL=0`（parse_hostkey_offending 2 + detect fallback 4 + cache 2）。
+- Expected: `PASS=12 FAIL=0`（detect: fallback 6 assert[case1×1 + case2×1 + case3×2 + case4×2] + cache 4 assert[case5×2 + case6×2] + parse_hostkey_offending 2）。注:此前写 PASS=8 计数偏低(漏算 case3/4 的多 assert),以实际为准。
 - Run: `grep -q 'detect_runtime_git_host' tools/coverage_matrix.md && echo MATRIX_UPDATED`
 - Expected: 输出 `MATRIX_UPDATED`。
 
