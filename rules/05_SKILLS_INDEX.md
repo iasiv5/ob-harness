@@ -28,6 +28,7 @@
 - [Bash strict mode 管道退出码陷阱](skills/bestpractice_07-bash_strict_mode_pipes.md) — 在 `set -euo pipefail` 下写 `cmd | grep/awk/head` 管道时，避免下游非零退出码被 pipefail 当硬错误中止脚本。
 - [质量门禁与 Eval 模式库](skills/bestpractice_08-eval_gate_patterns.md) — 给某个 action/流水线设计门禁时；归纳本仓库 exit_contract/ob_check/coverage_radar/四层测试成 4 种可复用门禁模式 + 缓存飞轮观测。
 - [非功能性改动的回归锁（调用次数 / 快路径断言）](skills/bestpractice_09-nonfunctional_regression_locks.md) — 做性能/去重/缓存这类不改输出的优化时，用调用次数或零调用断言把收益钉成可回归验证的硬约束。
+- [深模块抽取族（收敛散落逻辑 + leaf-pure 静态门禁）](skills/bestpractice_10-deep_module_extraction.md) — 在 ob/lib 把散落 helper/决策/选择/实例逻辑收敛到一个深 module 时；含 god-function 拆解的副作用次序不变量 + leaf-pure 纯度门禁。
 
 ---
 
