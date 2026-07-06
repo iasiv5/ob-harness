@@ -68,7 +68,7 @@ qemu_instance_is_alive() {
 }
 
 # qemu_instance_summarize_full — 读 PIDFILE_* 全局(qemu_instance_load 设置)echo 统一四行实例信息。
-# 供 cmd_start_qemu 冲突块与 cmd_stop_qemu 复用(去重;cmd_status 多实例单行呈现不同源,不并入)。
+# 供 cmd_start_qemu 冲突块与 cmd_stop_qemu 确认时复用(四行详情);cmd_status 走 summarize_brief(单行)。
 qemu_instance_summarize_full() {
     echo "  PID       : $PIDFILE_PID"
     echo "  Started   : $PIDFILE_STARTED_AT"
@@ -81,7 +81,10 @@ qemu_instance_summarize_full() {
 # 内部 load → is_alive，统一存活判断（消灭 cmd_status/cmd_stop_qemu 的简化版双轨）。
 qemu_instance_summarize_brief() {
     local machine="$1"
-    qemu_instance_load "$machine" || return 1
+    if ! qemu_instance_load "$machine"; then
+        echo "⚠️ stale"   # PID 文件消失（race）或不可读 → 视作 stale，避免 caller 显示空行
+        return 0
+    fi
     local status_mark
     if qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
         status_mark="✅ running"

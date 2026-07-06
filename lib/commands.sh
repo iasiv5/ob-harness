@@ -488,7 +488,7 @@ cmd_start_qemu() {
     derive_qemu_paths
     if qemu_instance_load "$MACHINE"; then
         local pid_status
-        qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$MACHINE"
+        qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"
         pid_status=$?
 
         if [[ $pid_status -eq 0 ]]; then

@@ -63,6 +63,11 @@ printf 'pid=%s\nbinary=qemu-system-arm\nmachine=recyc\nssh_port=2222\nredfish_po
 out="$(qemu_instance_summarize_brief recyc)"
 assert_contains "brief recycled marks stale" "$out" "⚠️ stale"
 
+# 路径 D: load 失败（PID 文件不存在/race）→ 视作 stale（不显示空行）
+rm -f "$PIDS_DIR/nonexist.pid"
+out="$(qemu_instance_summarize_brief nonexist)"
+assert_contains "brief load-fail marks stale" "$out" "⚠️ stale"
+
 # --- qemu_instance_clean_stale ---
 printf 'pid=99999999\nmachine=romulus\n' > "$PIDS_DIR/romulus.pid"
 [[ -f "$PIDS_DIR/romulus.pid" ]] || { echo "fixture missing"; exit 1; }
