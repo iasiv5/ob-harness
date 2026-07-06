@@ -4,7 +4,7 @@
 # 原理:对每个测试用 `BASH_XTRACEFD=3 bash -x` 显式开 xtrace,trace 写独立 fd3
 # (绕过测试内的 >/dev/null 重定向),PS4='@@${FUNCNAME[0]}@@ ' 让每行含函数名。
 #
-# 覆盖范围:"直接调用"的 ob 函数(validate_pid/normalize_repo_url/read_kv_field/
+# 覆盖范围:"直接调用"的 ob 函数(qemu_instance_is_alive/normalize_repo_url/read_kv_field/
 #   write_source_manifest/derive_*/interact 的 select/confirm/prompt 等)。
 # 已知低估:assert_rc 的 bash -c 子进程测试的 exit 函数(check_ports_available/
 #   parse_args/require_path/prompt_for_available_port)——bash -c 不继承父 -x,

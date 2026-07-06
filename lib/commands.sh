@@ -236,34 +236,15 @@ cmd_status() {
 
     status_section_tips "$repo_exists" "$has_initialized_machine" "$has_initialized_without_firmware_image"
 
-    # Section 5: QEMU instances (only shown when instances exist)
-    local _pids_dir="$WORKSPACE_DIR/qemu-bin/.pids"
+    # Section 5: QEMU instances（只读,含 stale 显示;不删 PID 文件——清理 owner = start-qemu/stop-qemu）
     local _has_qemu=0
     local -a _qemu_lines=()
-
-    for _pf in "$_pids_dir"/*.pid; do
-        [[ -f "$_pf" ]] || continue
-
-        local _qm="" _qp="" _qbin="" _qstart="" _qsport="" _qrport="" _qiport=""
-        _qm=$(basename "$_pf" .pid)
-
-        # Read PID file fields
-        _qp=$(read_kv_field "$_pf" pid) || _qp=""
-        _qbin=$(read_kv_field "$_pf" binary) || _qbin=""
-        _qstart=$(read_kv_field "$_pf" started_at) || _qstart=""
-        _qsport=$(read_kv_field "$_pf" ssh_port) || _qsport=""
-        _qrport=$(read_kv_field "$_pf" redfish_port) || _qrport=""
-        _qiport=$(read_kv_field "$_pf" ipmi_port) || _qiport=""
-
-        # Validate process is alive
-        if [[ -n "$_qp" ]] && [[ -d "/proc/$_qp" ]]; then
-            _has_qemu=1
-            _qemu_lines+=("  $_qm   PID $_qp   SSH($_qsport) Redfish($_qrport) IPMI($_qiport/UDP)   ✅ running")
-        else
-            # Stale PID file — clean up silently
-            rm -f "$_pf"
-        fi
-    done
+    local _m
+    while IFS= read -r _m; do
+        [[ -n "$_m" ]] || continue
+        _has_qemu=1
+        _qemu_lines+=("  $_m   $(qemu_instance_summarize_brief "$_m")")
+    done < <(qemu_instance_list)
 
     if [[ "$_has_qemu" -eq 1 ]]; then
         echo ""
@@ -505,20 +486,20 @@ cmd_start_qemu() {
     #     whose check_ports_available exits 3 on occupied ports; killing the old
     #     same-machine instance first avoids a spurious port-conflict exit) ──
     derive_qemu_paths
-    if read_pid_file; then
+    if qemu_instance_load "$MACHINE"; then
         local pid_status
-        validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$MACHINE"
+        qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"
         pid_status=$?
 
         if [[ $pid_status -eq 0 ]]; then
             # Instance is running and valid
             if [[ "$QEMU_FORCE" -eq 1 ]]; then
                 warn "Killing existing QEMU instance (PID $PIDFILE_PID)..."
-                qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
+                qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
             elif [[ -t 0 ]]; then
                 echo ""
                 warn "QEMU instance already running for '$MACHINE':"
-                qemu_instance_describe
+                qemu_instance_summarize_full
                 echo ""
                 print_confirm_banner "kill and restart QEMU for" "$MACHINE"
                 local answer
@@ -529,15 +510,15 @@ cmd_start_qemu() {
                     info "Aborted."
                     exit 2
                 fi
-                qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
+                qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
             else
                 error "QEMU instance already running for '$MACHINE' (PID $PIDFILE_PID)."
                 error "Use --force to kill and restart, or 'ob stop-qemu $MACHINE' first."
                 exit 1
             fi
         else
-            # Stale PID file — clean up
-            rm -f "$QEMU_PID_FILE"
+            # Stale PID file — clean up via module
+            qemu_instance_clean_stale "$MACHINE"
         fi
     fi
 
@@ -578,16 +559,6 @@ cmd_start_qemu() {
     qemu_execute_launch
 }
 
-# __stop_qemu_running_machines — 印当前 workspace 所有 QEMU 实例的 machine 名
-# （源自 qemu-bin/.pids/*.pid，每行一个）。作 pick_machine 的 list-source（module 级可见）。
-__stop_qemu_running_machines() {
-    local pid_file
-    for pid_file in "$WORKSPACE_DIR/qemu-bin/.pids/"*.pid; do
-        [[ -f "$pid_file" ]] || continue
-        basename "$pid_file" .pid
-    done
-}
-
 cmd_stop_qemu() {
     detect_harness_root
 
@@ -596,16 +567,13 @@ cmd_stop_qemu() {
 
     if [[ "$QEMU_STOP_ALL" -eq 1 ]]; then
         # --all: stop every instance
-        for pid_file in "$WORKSPACE_DIR/qemu-bin/.pids/"*.pid; do
-            [[ -f "$pid_file" ]] || continue
-            targets+=("$(basename "$pid_file" .pid)")
-        done
+        mapfile -t targets < <(qemu_instance_list)
     elif [[ -n "$MACHINE" ]]; then
         targets+=("$MACHINE")
     else
         # No machine specified: list running instances and let user choose
         local -a available=()
-        mapfile -t available < <(__stop_qemu_running_machines)
+        mapfile -t available < <(qemu_instance_list)
 
         if [[ ${#available[@]} -eq 0 ]]; then
             info "No QEMU instances found."
@@ -620,24 +588,14 @@ cmd_stop_qemu() {
 
         echo ""
         step_header "Running QEMU Instances"
-        # 渲染实例详情（PID/端口/状态，同 ob status 格式）帮用户决定停哪个；
+        # 渲染实例详情（PID/端口/状态，同 ob status 格式）经 qemu_instance_summarize_brief；
         # pick_machine 只渲染纯序号+名字（Q3），故 cmd_stop_qemu 自渲染带详情列表 + 复用 read_machine_choice
         local total=${#available[@]}
         local idx_width=${#total}
-        local i m _pf _pid _sport _rport _iport _detail
+        local i m
         for (( i=0; i<total; i++ )); do
             m="${available[$i]}"
-            _pf="$WORKSPACE_DIR/qemu-bin/.pids/$m.pid"
-            _pid=$(read_kv_field "$_pf" pid 2>/dev/null) || _pid=""
-            if [[ -n "$_pid" ]] && [[ -d "/proc/$_pid" ]]; then
-                _sport=$(read_kv_field "$_pf" ssh_port 2>/dev/null) || _sport=""
-                _rport=$(read_kv_field "$_pf" redfish_port 2>/dev/null) || _rport=""
-                _iport=$(read_kv_field "$_pf" ipmi_port 2>/dev/null) || _iport=""
-                _detail="PID $_pid   SSH($_sport) Redfish($_rport) IPMI($_iport/UDP)   ✅ running"
-            else
-                _detail="⚠️ stale"
-            fi
-            printf "  %${idx_width}d) %-20s %s\n" "$((i + 1))" "$m" "$_detail"
+            printf "  %${idx_width}d) %-20s %s\n" "$((i + 1))" "$m" "$(qemu_instance_summarize_brief "$m")"
         done
         local pm_rc=0
         read_machine_choice "$total" "Stop QEMU" available || pm_rc=$?
@@ -653,16 +611,15 @@ cmd_stop_qemu() {
     # ── Stop each target ──
     for target_machine in "${targets[@]}"; do
         MACHINE="$target_machine"
-        QEMU_PID_FILE="$WORKSPACE_DIR/qemu-bin/.pids/$MACHINE.pid"
 
         echo ""
-        if ! read_pid_file; then
+        if ! qemu_instance_load "$MACHINE"; then
             info "No PID file for '$MACHINE' — not running."
             continue
         fi
 
         local pid_status
-        validate_pid "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"
+        qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"
         pid_status=$?
 
         if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -676,19 +633,19 @@ cmd_stop_qemu() {
 
         if [[ $pid_status -eq 1 ]]; then
             info "QEMU process for '$MACHINE' (PID $PIDFILE_PID) has already exited."
-            rm -f "$QEMU_PID_FILE"
+            qemu_instance_clean_stale "$MACHINE"
             continue
         fi
 
         if [[ $pid_status -eq 2 ]]; then
             warn "PID $PIDFILE_PID no longer belongs to QEMU (recycled). Cleaning stale PID file."
-            rm -f "$QEMU_PID_FILE"
+            qemu_instance_clean_stale "$MACHINE"
             continue
         fi
 
         # Process is running — show info and confirm
         echo -e "Running QEMU instance for '${BOLD}$MACHINE${NC}':"
-        qemu_instance_describe
+        qemu_instance_summarize_full
         echo ""
         print_confirm_banner "stop QEMU for" "$MACHINE"
 
@@ -719,7 +676,7 @@ cmd_stop_qemu() {
         fi
 
         # Kill and wait
-        qemu_stop_instance "$PIDFILE_PID" "$QEMU_PID_FILE"
+        qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
         info "QEMU instance for '$MACHINE' stopped."
     done
 }

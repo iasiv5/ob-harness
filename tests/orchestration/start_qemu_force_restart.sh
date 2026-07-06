@@ -39,7 +39,7 @@ QB
 printf '#!/usr/bin/env bash\necho fake-qemu\n' > "$WS/qemu-bin/community/qemu-system-arm"  # binary fast path
 chmod +x "$WS/qemu-bin/community/qemu-system-arm"
 
-# ── 造"运行中"旧实例:活进程(cmdline 含 romulus + qemu-system-arm,过 validate_pid)+ PID 文件 ──
+# ── 造"运行中"旧实例:活进程(cmdline 含 romulus + qemu-system-arm,过 qemu_instance_is_alive)+ PID 文件 ──
 fake_qemu="$TMP/fake-qemu"
 printf '#!/usr/bin/env bash\nsleep 300\n' > "$fake_qemu"; chmod +x "$fake_qemu"
 "$fake_qemu" romulus qemu-system-arm >/dev/null 2>&1 &

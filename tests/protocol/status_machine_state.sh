@@ -54,6 +54,12 @@ orphan_dir="$OPENBMC_DIR/build/orphan/tmp/deploy/images/orphan"
 mkdir -p "$orphan_dir"
 touch "$orphan_dir/orphan.static.mtd"
 
+# 造两类 stale QEMU 实例：exited（pid 不存在）+ recycled（pid=$$ 测试进程,cmdline 不匹配 qemu）
+QEMU_PIDS_DIR="$WORKSPACE_DIR/qemu-bin/.pids"
+mkdir -p "$QEMU_PIDS_DIR"
+printf 'pid=99999999\nbinary=qemu-system-arm\nmachine=stalebox\nssh_port=2222\nredfish_port=2443\nipmi_port=2623\n' > "$QEMU_PIDS_DIR/stalebox.pid"
+printf 'pid=%s\nbinary=qemu-system-arm\nmachine=recycbox\nssh_port=2225\nredfish_port=2445\nipmi_port=2625\n' "$$" > "$QEMU_PIDS_DIR/recycbox.pid"
+
 status_records_calls_file="$TMP/status_records_calls"
 machine_state_records() {
   printf 'called\n' >> "$status_records_calls_file"
@@ -85,6 +91,14 @@ assert_false "status avoids invalid image wording" grep -Fq "invalid image" <<< 
 qemu_word="QEMU"
 image_word="image"
 assert_false "status avoids stale firmware wording" grep -Fq "$qemu_word $image_word" <<< "$output"
+
+# QEMU 实例（exited + recycled 都显示 ⚠️ stale；status 只读，文件保留）
+stalebox_line="$(grep -F "stalebox" <<< "$output" || true)"
+recycbox_line="$(grep -F "recycbox" <<< "$output" || true)"
+assert_contains "status shows exited instance stale" "$stalebox_line" "⚠️ stale"
+assert_contains "status shows recycled instance stale" "$recycbox_line" "⚠️ stale"
+assert_true "status keeps exited stale pid file" test -f "$QEMU_PIDS_DIR/stalebox.pid"
+assert_true "status keeps recycled stale pid file" test -f "$QEMU_PIDS_DIR/recycbox.pid"
 
 rm -f "$CONFIGS_DIR/markeronly.init-done" "$CONFIGS_DIR/failm.init-done"
 rm -rf "$OPENBMC_DIR/build/failm"

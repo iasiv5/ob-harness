@@ -12,7 +12,7 @@ parser 用 @@+(\\w+)@@ 容错。设计未决事项 2 已解决。
 采集局限与对策(2026-06-17 实测定论):"直接调用"的 ob 函数能被 xtrace 采集;但
 assert_rc 的 bash -c 子进程测试的 exit 函数(check_ports_available/parse_args/
 require_path/prompt_for_available_port)不采集——真因是嵌套 bash -c 不继承父的 -x
-(bash 限制,非 assert_rc 吞 stderr;实测 BASH_XTRACEFD=3 下 validate_pid 直接调命中、
+(bash 限制,非 assert_rc 吞 stderr;实测 BASH_XTRACEFD=3 下 qemu_instance_is_alive 直接调命中、
 check_ports_available bash -c 子进程仍 0)。对策:tools/trace_collect.sh 采集直接调用
 函数(COVERED 反映此);exit 函数靠 checklist(tools/coverage_matrix.md)补偿——两核心层
 交叉的设计本意。用法:tools/trace_collect.sh | python3 tools/coverage_radar.py -
