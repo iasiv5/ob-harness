@@ -139,66 +139,6 @@ print(value)
 PY
 }
 
-# Check whether a URL points to a private/internal host.
-# Mirrors parse_bitbake_deps.py _is_private_host() logic:
-#   1. BitBake variable reference  (${GIT_MIRROR_HOST}, etc.)
-#   2. RFC 1918 private IPs: 10.x.x.x, 172.16–31.x.x, 192.168.x.x
-#   3. Host derived from runtime init script (meta-*/git-mirror-url.sh)
-is_private_url() {
-    local url="$1"
-
-    # Extract host[:port] from common URL forms
-    local host_port
-    if [[ "$url" == git@* ]]; then
-        # git@host:path or git@host:path.git
-        host_port="${url#git@}"
-        host_port="${host_port%%:*}"
-    elif [[ "$url" == git://* ]]; then
-        host_port="${url#git://}"
-        host_port="${host_port%%/*}"
-    elif [[ "$url" == http://* || "$url" == https://* || "$url" == ssh://* ]]; then
-        host_port="${url#*://}"
-        host_port="${host_port%%/*}"
-        host_port="${host_port%%@*}"  # strip user@ prefix if any
-    else
-        return 1
-    fi
-
-    local host="${host_port%:*}"
-    [[ "$host" == "$host_port" ]] && host="$host_port"
-
-    # 1) BitBake variable reference (e.g. ${GIT_MIRROR_HOST})
-    if [[ "$host" == *'${'* ]]; then
-        return 0
-    fi
-
-    # 2) RFC 1918 private IP check (covers 10/8, 172.16-31/16, 192.168/16)
-    if [[ "$host" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        local o1 o2
-        IFS='.' read -r o1 o2 _ <<< "$host"
-        if (( o1 == 10 )) \
-            || (( o1 == 172 && o2 >= 16 && o2 <= 31 )) \
-            || (( o1 == 192 && o2 == 168 )); then
-            return 0
-        fi
-    fi
-
-    # 3) Runtime init-script host (meta-*/git-mirror-url.sh GIT_MIRROR_HOST)
-    local _rt_script=""
-    for _candidate in "$WORKSPACE_DIR/openbmc"/meta-*/git-mirror-url.sh \
-                      "$WORKSPACE_DIR/openbmc"/meta-*/github-gitlab-url.sh; do
-        if [[ -f "$_candidate" ]]; then _rt_script="$_candidate"; break; fi
-    done
-    if [[ -f "$_rt_script" ]]; then
-        local _rt_host
-        _rt_host=$(grep -oP '^(GITLAB_IP|GIT_MIRROR_HOST)=["'"'"']?\K[^"'"'"'\s]+' "$_rt_script" 2>/dev/null | head -1 || true)
-        if [[ -n "$_rt_host" && "$_rt_host" == "$host" ]]; then
-            return 0
-        fi
-    fi
-
-    return 1
-}
 
 resolve_effective_dl_dir() {
     local local_conf="$BUILD_DIR/conf/local.conf"
