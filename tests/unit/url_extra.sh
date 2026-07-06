@@ -22,12 +22,15 @@ rm -f "$TMP2/meta-x/git-mirror-url.sh"; printf 'GIT_MIRROR_HOST=mirror.local\n' 
 assert_eq "host from GIT_MIRROR_HOST script" "$(detect_runtime_git_host)" "mirror.local"
 unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
 
-# case 3: 无 vendor 脚本 → fallback origin(需真 git 仓)
+# case 3: 无 vendor 脚本 → fallback origin(需真 git 仓;setup 失败显式报因,不静默吞)
 rm -f "$TMP2/meta-x/git-mirror-url.sh"; rmdir "$TMP2/meta-x"
-git init -q "$TMP2/openbmc-repo" 2>/dev/null
+git init -q "$TMP2/openbmc-repo" 2>/dev/null || echo "case3 setup: git init failed (git unavailable?)" >&2
 git -C "$TMP2/openbmc-repo" remote add origin git@gitlab.example.com:team/repo.git 2>/dev/null
 OPENBMC_DIR="$TMP2/openbmc-repo"
 assert_eq "host from git@ origin" "$(detect_runtime_git_host)" "gitlab.example.com"
+git -C "$TMP2/openbmc-repo" remote set-url origin ssh://git@gitlab3.example.com:2222/team/repo.git 2>/dev/null
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
+assert_eq "host from ssh origin (drop user@ + port)" "$(detect_runtime_git_host)" "gitlab3.example.com"
 git -C "$TMP2/openbmc-repo" remote set-url origin https://gitlab2.example.com/team/repo.git 2>/dev/null
 unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
 assert_eq "host from https origin" "$(detect_runtime_git_host)" "gitlab2.example.com"

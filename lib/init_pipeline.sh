@@ -251,8 +251,8 @@ clone_sub_repos() {
         # These come from BitBake variables (e.g. ${GITLAB_IP}) that weren't
         # resolved during deps.json generation (e.g. variable not in config).
         if [[ "$clone_url" == *'${'* ]]; then
-            # runtime Git mirror host(GITLAB_IP/GIT_MIRROR_HOST)走 detect_runtime_git_host;
-            # 其他 ${VAR} 回退 build/conf/local.conf。
+            # GITLAB_IP/GIT_MIRROR_HOST 优先走 detect_runtime_git_host(拿空仍回退 local.conf);
+            # 其他 ${VAR} 直接回退 build/conf/local.conf。
             local _local_conf="$BUILD_DIR/conf/local.conf"
             # Extract all ${VAR} names from clone_url
             local _var_names

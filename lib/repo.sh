@@ -55,6 +55,9 @@ detect_runtime_git_host() {
         _remote_url=$(git -C "$openbmc_dir" remote get-url origin 2>/dev/null || true)
         if [[ "$_remote_url" == git@* ]]; then
             host=$(printf '%s\n' "$_remote_url" | sed -E 's/^git@([^:]+):.*/\1/')
+        elif [[ "$_remote_url" == ssh://* ]]; then
+            # ssh://[user@]host[:port]/path → host(去 user@、去 :port,与 https 行为一致)
+            host=$(printf '%s\n' "$_remote_url" | sed -E 's#^ssh://([^/@]+@)?([^/:]+).*#\2#')
         elif [[ "$_remote_url" == http://* || "$_remote_url" == https://* ]]; then
             host=$(printf '%s\n' "$_remote_url" | sed -E 's#^https?://([^/:]+).*#\1#')
         fi
