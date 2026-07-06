@@ -28,6 +28,10 @@ _Avoid_: lockfile, machine lock, state lock, 把 snapshot 当完成标记
 harness 绑定的 OpenBMC 主仓库 source 的归属记录与漂移校验基准。物理文件为 `workspace/configs/openbmc-source.manifest`（kv 文本），由 `ob init` 写入，记录 normalized_source / origin_url / source_label / created_at。它表达"一个 harness 只绑定一个主仓库 source"这条 invariant，`verify_source` 据其检测 origin 是否被手动漂移。它是归属记录而非互斥锁（项目里真正的文件锁是 qemu 的 `.update.lock`，用 flock）；也非 per-machine（区别于现行 `machine snapshot`，旧的 `<machine>.lock` 已废弃）。
 _Avoid_: source lock, source pin, source binding, 把它当文件互斥锁
 
+**runtime Git mirror host**:
+`init_openbmc_repo.sh` 改写后写入 vendor 脚本（`meta-*/git-mirror-url.sh`，legacy `github-gitlab-url.sh`）的 `GIT_MIRROR_HOST`（或 legacy `GITLAB_IP`）的值，表达这台 harness 绑定的 vendor Git mirror 的 host。ob 在 clone 子仓库、设 git insteadOf、生成依赖图时提取它（vendor 脚本优先，fallback 主仓 origin）。它是 vendor 子仓 mirror 归属，与 `source manifest`（主仓 source 归属）正交：source manifest 记主仓从哪来，runtime Git mirror host 记 vendor 子仓 mirror 在哪。
+_Avoid_: GIT_MIRROR_HOST（变量名非概念）, git mirror, mirror host（口语化）, 把它当 source manifest
+
 **init-done marker**:
 `workspace/configs/<machine>.init-done` 文件，由 `ob init` 在全部 8 步完成后原子写入，重跑时先删除再重新写入。`ob build` 用它判定哪些 machine 可以编译。
 _Avoid_: 完成标记, completion flag
