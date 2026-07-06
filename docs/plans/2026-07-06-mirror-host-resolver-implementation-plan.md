@@ -217,7 +217,7 @@ detect_runtime_git_host() {
 **可顺带清理**：删除上述段后，循环顶部的 `_runtime_script` 与 `_openbmc_git_config` 两个局部变量声明已无人引用，一并删除；`_local_conf` 仍被下方 local.conf fallback 引用，保留。**不要动**：下方的 `if [[ -z "$_vv" && -f "$_local_conf" ]]` local.conf fallback 段原样保留；`_url_rewrites` 数组与 URL rewrite 循环原样保留。
 
 - [ ] Step 4: 运行并确认通过
-- Run: `! grep -q 'GITLAB_IP|GIT_MIRROR_HOST' lib/init_pipeline.sh && echo INLINE_GONE`
+- Run: `! grep -qE '_runtime_script|_openbmc_git_config' lib/init_pipeline.sh && echo INLINE_GONE`
 - Expected: 输出 `INLINE_GONE`。
 - Run: `grep -q 'detect_runtime_git_host >/dev/null' lib/init_pipeline.sh && grep -q '_vv="\${_RUNTIME_GIT_HOST:-}"' lib/init_pipeline.sh && echo WIRED`
 - Expected: 输出 `WIRED`。
