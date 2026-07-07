@@ -179,6 +179,9 @@ ensure_bootstrap_local_conf() {
     # This handles GitLab servers where HTTPS is unavailable or requires auth
     # that isn't configured in recipes, while SSH key access works out of the box.
     # Only set when missing — user can override manually if needed.
+    # 注意:url.git@<host>:.insteadOf 是 scp-like 语法,默认 SSH 22 端口,不支持 :port;
+    # 非标准端口的 GitLab 需 ssh_config 配 Host alias,或独立改进 insteadOf 用 ssh:// URL(后者是
+    # ensure_bootstrap 的独立改进,git@ origin/vendor script 同样受此 scp-like 端口限制)。
     if [[ -n "$gitlab_ip" ]]; then
         local _existing_rewrite=""
         _existing_rewrite=$(git config --global --get "url.git@${gitlab_ip}:.insteadOf" 2>/dev/null || true)
