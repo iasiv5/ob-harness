@@ -65,6 +65,17 @@ else
     ok "machine selection legacy surface removed"
 fi
 
+# ── 1c-bis. detect_runtime_git_host 生产调用不得用 $()(缓存穿透 subshell) ──
+# direct call 契约:生产代码必须 detect_runtime_git_host >/dev/null;读 ${_RUNTIME_GIT_HOST:-};
+# $() 在 subshell 执行,函数内全局缓存回不到调用者,缓存静默失效。tests/ 允许 $()。
+_subshell_hits=$(grep -RnF "\$(detect_runtime_git_host)" lib/ ob 2>/dev/null || true)
+if [[ -n "$_subshell_hits" ]]; then
+    bad "detect_runtime_git_host subshell caller(缓存失效):"
+    printf '%s\n' "$_subshell_hits"
+else
+    ok "detect_runtime_git_host 生产调用全 direct call"
+fi
+
 # ── 1d. 交互 prompt 文案契约（.exp expect 依赖这些源码字符串；read -p 非 tty 不输出，故静态守）──
 _prompt_bad=""
 grep -q 'Select a machine for' lib/machine_picker.sh 2>/dev/null || _prompt_bad="${_prompt_bad} pick_machine('Select a machine for')"
