@@ -36,10 +36,27 @@ printf 'MACHINE ??= "t"\nPREMIRRORS = ""\n' > "$BUILD_DIR/conf/local.conf"
 inc=$(gen_inc)
 if [[ "$inc" == *"mirrors.tuna.tsinghua.edu.cn"* ]]; then _assert_bad "s3 空值应禁用(被当接管)"; else _assert_ok "s3 空值=禁用"; fi
 
-# 场景4: local.conf DL_DIR="" (空) → ob 不写默认(exit code 判定, 验证三变量统一)
+# 场景4: 已有 inc + DL_DIR="" → generate_build_config exit 3 + 无 inc 副作用(backup 前 preflight)
+# pre-create $INC 锁住"preflight 在 backup 前": 若 preflight 被挪回 backup 后, $INC 会被 backup/改写。
+# 子 shell 调用: generate_build_config 是 source 的函数, exit 3 会杀当前 shell。
+printf 'old-inc\n' > "$INC"
+rm -f "${INC}".bak.*
 printf 'MACHINE ??= "t"\nDL_DIR = ""\n' > "$BUILD_DIR/conf/local.conf"
-inc=$(gen_inc)
-if [[ "$inc" == *"$WORKSPACE_DIR/downloads"* ]]; then _assert_bad "s4 空DL_DIR应被尊重(不补默认)"; else _assert_ok "s4 空DL_DIR尊重"; fi
+s4_out=$(DRY_RUN=0 generate_build_config 2>&1); s4_rc=$?
+assert_eq "s4 existing inc + empty DL_DIR → exit 3" "$s4_rc" 3
+assert_match "s4 empty DL_DIR → remedy line" "$s4_out" "Set DL_DIR to a valid absolute path"
+assert_eq "s4 existing inc preserved" "$(cat "$INC")" "old-inc"
+if compgen -G "${INC}.bak.*" >/dev/null; then _assert_bad "s4 no backup created on failure"; else _assert_ok "s4 no backup created on failure"; fi
+
+# 场景5: SSTATE_DIR="" → generate_build_config exit 3 + SSTATE remedy + 无 inc 副作用
+printf 'old-inc\n' > "$INC"
+rm -f "${INC}".bak.*
+printf 'MACHINE ??= "t"\nSSTATE_DIR = ""\n' > "$BUILD_DIR/conf/local.conf"
+s5_out=$(DRY_RUN=0 generate_build_config 2>&1); s5_rc=$?
+assert_eq "s5 empty SSTATE_DIR → exit 3" "$s5_rc" 3
+assert_match "s5 empty SSTATE_DIR → remedy line" "$s5_out" "Set SSTATE_DIR to a valid absolute path"
+assert_eq "s5 existing inc preserved" "$(cat "$INC")" "old-inc"
+if compgen -G "${INC}.bak.*" >/dev/null; then _assert_bad "s5 no backup created on failure"; else _assert_ok "s5 no backup created on failure"; fi
 
 assert_summary
 rc=$?

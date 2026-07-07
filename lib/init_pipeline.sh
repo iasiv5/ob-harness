@@ -135,7 +135,18 @@ init_bitbake_env() {
     # when the .inc file (generated later in Step 7) references them.
     # Use resolve functions to respect overrides in local.conf (e.g. DL_DIR="/shared/downloads").
     if [[ -f "$BUILD_DIR/conf/externalsrc-$MACHINE.inc" ]]; then
-        mkdir -p "$(resolve_effective_dl_dir)" "$(resolve_effective_sstate_dir)"
+        local _dl_dir _sstate_dir
+        if ! _dl_dir=$(resolve_effective_dl_dir); then
+            error "DL_DIR is empty or unusable in local.conf."
+            echo "Set DL_DIR to a valid absolute path, or remove the assignment line." >&2
+            exit 3
+        fi
+        if ! _sstate_dir=$(resolve_effective_sstate_dir); then
+            error "SSTATE_DIR is empty or unusable in local.conf."
+            echo "Set SSTATE_DIR to a valid absolute path, or remove the assignment line." >&2
+            exit 3
+        fi
+        mkdir -p "$_dl_dir" "$_sstate_dir"
 
         # Fix legacy .inc files that use ${TOPDIR}/../../../.. relative paths.
         # Bitbake internally prepends '\/' to these resolved paths, causing mkdir
@@ -229,7 +240,11 @@ clone_sub_repos() {
     require_path "$deps_json" "deps.json" "Run 'ob init' first." 3
 
     local effective_dl_dir=""
-    effective_dl_dir=$(resolve_effective_dl_dir)
+    if ! effective_dl_dir=$(resolve_effective_dl_dir); then
+        error "DL_DIR is empty or unusable in local.conf."
+        echo "Set DL_DIR to a valid absolute path, or remove the assignment line." >&2
+        exit 3
+    fi
     MIRROR_BASE="$effective_dl_dir/git2"
     mkdir -p "$MIRROR_BASE"
     info "Mirror cache: $MIRROR_BASE"
@@ -383,6 +398,20 @@ generate_build_config() {
         return 0
     fi
 
+    # Preflight: resolver 路径校验在 backup/写 inc 之前, 配置无效时 exit 3 不产生 .inc 副作用。
+    # backup(下文)在 _user_*_set 检测之前, 故 preflight 必须比 backup 更早。
+    local _dl_dir _sstate_dir
+    if ! _dl_dir=$(resolve_effective_dl_dir); then
+        error "DL_DIR is empty or unusable in local.conf."
+        echo "Set DL_DIR to a valid absolute path, or remove the assignment line." >&2
+        exit 3
+    fi
+    if ! _sstate_dir=$(resolve_effective_sstate_dir); then
+        error "SSTATE_DIR is empty or unusable in local.conf."
+        echo "Set SSTATE_DIR to a valid absolute path, or remove the assignment line." >&2
+        exit 3
+    fi
+
     local timestamp
     timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
@@ -505,7 +534,7 @@ generate_build_config() {
         fi
     } > "$inc_file"
 
-    mkdir -p "$(resolve_effective_dl_dir)" "$(resolve_effective_sstate_dir)"
+    mkdir -p "$_dl_dir" "$_sstate_dir"
 
     info "Generated $inc_file"
 }
