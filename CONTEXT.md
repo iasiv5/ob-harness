@@ -113,5 +113,7 @@ _Avoid_: 返回码约定, exit status
 _Avoid_: 提示语, hint, 错误提示, 锁死为 ob 命令
 
 **ob-managed variable**:
-`ob init` 注入到 `externalsrc-<machine>.inc` 的变量（当前 DL_DIR、SSTATE_DIR、PREMIRRORS）。注入规则：仅当 local.conf 中**无该变量的赋值行**时才注入——判定用 `read_local_conf_var` 的 exit code（有赋值行=用户接管，含空值；无赋值行=ob 写默认），**不**用值是否非空（`-n`）。即用户一旦显式赋值即视为接管、ob 不覆盖；无赋值行时 ob 写入默认（workspace 共享缓存、清华 mirror 等）。空值的语义是"用户有意禁用/留空"，不是"配置缺失"——理由见 [ADR-0005](docs/adr/0005-local-conf-var-detection-exit-code.md)。
-_Avoid_: ob 配置变量, 自动配置变量, 把空值当"未配置", `-n` 判定（已统一为 exit code）
+`ob init` 注入到 `externalsrc-<machine>.inc` 的变量（当前 DL_DIR、SSTATE_DIR、PREMIRRORS）。注入规则：仅当 local.conf 中**无该变量的赋值行**时才注入——判定用 `read_local_conf_var` 的 exit code（有赋值行=用户接管，含空值；无赋值行=ob 写默认），**不**用值是否非空（`-n`）。即用户一旦显式赋值即视为接管、ob 不覆盖；无赋值行时 ob 写入默认（workspace 共享缓存、清华 mirror 等）。在 assignment-state 判定上，空值（有赋值行但值为空）仍表示用户接管、**不**表示 unset——理由见 [ADR-0005](docs/adr/0005-local-conf-var-detection-exit-code.md)。
+
+assignment-state 判定（"用户是否接管某 ob-managed variable"）的底层事实由 `read_local_conf_var` 的 exit code 承载（generic local.conf reader，不专属 ob-managed variable 集合）：`generate_build_config`（注入决策）与 `resolve_effective_dl_dir` / `resolve_effective_sstate_dir`（缓存目录 effective 路径解析 + mkdir）共用这一 exit code 判定，**不**用值判定（`-z` / `-n`）。本次只做 existing seam alignment，**未**把 `ob-managed variable` 落成完整领域 module。**effective-path 失败语义只适用路径类变量 DL_DIR / SSTATE_DIR**：有赋值行但值为空、或路径不可用（unwritable）→ `resolve_effective_*` 静默 `return 1`，调用点 `exit 3` + remedy（因 bitbake 会用空/无效路径破坏 fetch / sstate，且 ob 会把 bare mirror 填到 bitbake 不会用的位置）。`PREMIRRORS = ""` 仍是 ADR-0004 / ADR-0005 明确支持的合法禁用语义，不进路径 resolver、不触发 exit 3。
+_Avoid_: ob 配置变量, 自动配置变量, 把空值当"未配置", `-n` 判定（已统一为 exit code）, `-z` 判定（resolve_effective_* 已对齐 exit code）

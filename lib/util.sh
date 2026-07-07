@@ -145,25 +145,32 @@ resolve_effective_dl_dir() {
     local default_dl_dir="$WORKSPACE_DIR/downloads"
     local dl_dir=""
 
-    # 1. Try reading DL_DIR from local.conf
-    dl_dir=$(read_local_conf_var "$local_conf" "DL_DIR" 2>/dev/null || true)
-    dl_dir=$(trim_whitespace "$dl_dir")
-
-    # 2. Fall back to harness default if not configured
-    if [[ -z "$dl_dir" ]]; then
-        dl_dir="$default_dl_dir"
-    fi
-
-    # 3. Writability check — fallback to workspace/downloads/ if not writable
-    mkdir -p "$dl_dir" 2>/dev/null
-    if ! touch "$dl_dir/.ob-init-writable-test" 2>/dev/null; then
-        warn "DL_DIR not writable: $dl_dir — falling back to $default_dl_dir"
-        dl_dir="$default_dl_dir"
-        mkdir -p "$dl_dir"
+    # assignment-state via read_local_conf_var exit code (ADR-0005): 有赋值行=set(接管,含空),
+    # 无赋值行=unset(ob 写默认)。与 generate_build_config 共用同一判定,消除 -z 双轨。
+    if read_local_conf_var "$local_conf" "DL_DIR" >/dev/null 2>&1; then
+        dl_dir=$(read_local_conf_var "$local_conf" "DL_DIR" 2>/dev/null || true)
+        dl_dir=$(trim_whitespace "$dl_dir")
+        # set 但空 = 配置错误: 静默 return 1 (诊断 + remedy 由调用点出, 两段式)。
+        if [[ -z "$dl_dir" ]]; then
+            return 1
+        fi
     else
-        rm -f "$dl_dir/.ob-init-writable-test"
+        dl_dir="$default_dl_dir"
     fi
 
+    # 可用性检查 (set -e-safe): mkdir/touch 在受控条件内, 失败不提前中止。
+    # 任何不可用(set 非空路径不可写 / unset 默认不可写)都 return 1, 不 fallback 默认 ——
+    # 否则 bare mirror 会被填到 bitbake 不会用的位置 (white-fill)。
+    # 本函数被 $() 捕获喂给 MIRROR_BASE, 故失败静默 (无 warn 污染 stdout)。
+    if ! mkdir -p "$dl_dir" 2>/dev/null; then
+        return 1
+    fi
+    # 用 mktemp 唯一名探测可写, 避免固定名 touch+rm 删用户已有同名文件。
+    local probe
+    if ! probe=$(mktemp "$dl_dir/.ob-init-writable-test.XXXXXX" 2>/dev/null); then
+        return 1
+    fi
+    rm -f "$probe"
     echo "$dl_dir"
 }
 
@@ -172,15 +179,27 @@ resolve_effective_sstate_dir() {
     local default_sstate_dir="$WORKSPACE_DIR/sstate-cache"
     local sstate_dir=""
 
-    # 1. Try reading SSTATE_DIR from local.conf
-    sstate_dir=$(read_local_conf_var "$local_conf" "SSTATE_DIR" 2>/dev/null || true)
-    sstate_dir=$(trim_whitespace "$sstate_dir")
-
-    # 2. Fall back to harness default if not configured
-    if [[ -z "$sstate_dir" ]]; then
+    # assignment-state via read_local_conf_var exit code (ADR-0005), 与 dl_dir 对称。
+    if read_local_conf_var "$local_conf" "SSTATE_DIR" >/dev/null 2>&1; then
+        sstate_dir=$(read_local_conf_var "$local_conf" "SSTATE_DIR" 2>/dev/null || true)
+        sstate_dir=$(trim_whitespace "$sstate_dir")
+        if [[ -z "$sstate_dir" ]]; then
+            return 1
+        fi
+    else
         sstate_dir="$default_sstate_dir"
     fi
 
+    # 可用性检查 (与 dl_dir 对称): 不可用 → 静默 return 1, 不 fallback。
+    if ! mkdir -p "$sstate_dir" 2>/dev/null; then
+        return 1
+    fi
+    # 用 mktemp 唯一名探测可写, 避免固定名 touch+rm 删用户已有同名文件。
+    local probe
+    if ! probe=$(mktemp "$sstate_dir/.ob-init-writable-test.XXXXXX" 2>/dev/null); then
+        return 1
+    fi
+    rm -f "$probe"
     echo "$sstate_dir"
 }
 
