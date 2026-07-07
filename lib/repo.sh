@@ -20,6 +20,55 @@ is_valid_repo_url() {
     [[ "$repo_url" =~ ^https?:// ]] || [[ "$repo_url" =~ ^ssh:// ]] || [[ "$repo_url" =~ ^git:// ]] || [[ "$repo_url" =~ ^git@ ]]
 }
 
+# detect_runtime_git_host — 提取 runtime Git mirror host(术语见 CONTEXT.md)。
+# vendor 脚本(meta-*/git-mirror-url.sh, legacy github-gitlab-url.sh)的 GIT_MIRROR_HOST/GITLAB_IP 优先;
+# fallback 主仓 origin(git remote get-url)。带一次性全局缓存——clone_sub_repos 遍历 ~570 个 dep repo,
+# 每个 ${GITLAB_IP} clone_url 都会触发解析,不缓存会重算 N 次。leaf-pure:绝不 exit;
+# 拿到/拿不到 host 都 return 0,不报错(配置缺失由调用者决定 remedy)。
+# 调用约定:生产调用必须 direct call(detect_runtime_git_host >/dev/null; x=${_RUNTIME_GIT_HOST:-}),
+# 因 $() subshell 不穿透全局缓存;echo 仅供测试/一次性捕获。Returns: echo host 或空串,恒 return 0。
+detect_runtime_git_host() {
+    # 一次性缓存:哨兵变量区分"已求值(值为空)"与"未求值",不用 -n(host 可合法为空)
+    if [[ -n "${_RUNTIME_GIT_HOST_RESOLVED+x}" ]]; then
+        echo "${_RUNTIME_GIT_HOST:-}"
+        return 0
+    fi
+
+    # 本地化 OPENBMC_DIR(nounset 自洽):未设/未初始化时 graceful 返回空,不依赖调用者保证
+    local openbmc_dir="${OPENBMC_DIR:-}"
+    local host=""
+    local _rt_script=""
+    local _candidate
+    if [[ -n "$openbmc_dir" ]]; then
+        for _candidate in "$openbmc_dir"/meta-*/git-mirror-url.sh \
+                          "$openbmc_dir"/meta-*/github-gitlab-url.sh; do
+            [[ -f "$_candidate" ]] && { _rt_script="$_candidate"; break; }
+        done
+    fi
+    if [[ -f "$_rt_script" ]]; then
+        host=$(grep -oP '^(GITLAB_IP|GIT_MIRROR_HOST)=["'"'"']?\K[^"'"'"'\s]+' "$_rt_script" 2>/dev/null | head -1 || true)
+    fi
+
+    # fallback: 主仓 origin(git 官方 API,比手解 .git/config 文件更稳健)
+    if [[ -z "$host" && -n "$openbmc_dir" ]]; then
+        local _remote_url=""
+        _remote_url=$(git -C "$openbmc_dir" remote get-url origin 2>/dev/null || true)
+        if [[ "$_remote_url" == git@* ]]; then
+            host=$(printf '%s\n' "$_remote_url" | sed -E 's/^git@([^:]+):.*/\1/')
+        elif [[ "$_remote_url" == ssh://* ]]; then
+            # ssh://[user@]host[:port]/path → host(去 user@、去 :port,与 https 行为一致)
+            host=$(printf '%s\n' "$_remote_url" | sed -E 's#^ssh://([^/@]+@)?([^/:]+).*#\2#')
+        elif [[ "$_remote_url" == http://* || "$_remote_url" == https://* ]]; then
+            host=$(printf '%s\n' "$_remote_url" | sed -E 's#^https?://([^/:]+).*#\1#')
+        fi
+    fi
+
+    _RUNTIME_GIT_HOST="$host"
+    _RUNTIME_GIT_HOST_RESOLVED=1
+    echo "$host"
+    return 0
+}
+
 normalize_repo_url() {
     local repo_url="$1"
     local normalized="$repo_url"
@@ -119,32 +168,20 @@ ensure_bootstrap_local_conf() {
 
     require_path "$local_conf" "local.conf" "Run 'ob init' first." 3
 
-    # Detect GitLab IP for recipes that use ${GITLAB_IP} in SRC_URI.
-    # Priority: (1) github-gitlab-url.sh (2) git remote origin URL (3) empty (skip)
+    # Detect GitLab IP for recipes that use ${GITLAB_IP} in SRC_URI(via runtime Git mirror host).
+    # direct call:函数内全局缓存不穿透 $() subshell(clone_sub_repos 循环复用同一缓存)。
     local gitlab_ip=""
-    local _rt_script=""
-    local _remote_url=""
-    for _candidate in "$OPENBMC_DIR"/meta-*/git-mirror-url.sh \
-                      "$OPENBMC_DIR"/meta-*/github-gitlab-url.sh; do
-        if [[ -f "$_candidate" ]]; then _rt_script="$_candidate"; break; fi
-    done
-    if [[ -f "$_rt_script" ]]; then
-        gitlab_ip=$(grep -oP '^(GITLAB_IP|GIT_MIRROR_HOST)=["'"'"']?\K[^"'"'"'\s]+' "$_rt_script" 2>/dev/null | head -1 || true)
-    fi
-    if [[ -z "$gitlab_ip" && -f "$OPENBMC_DIR/.git/config" ]]; then
-        _remote_url=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
-        if [[ "$_remote_url" == git@* ]]; then
-            gitlab_ip=$(echo "$_remote_url" | sed -E 's/^git@([^:]+):.*/\1/')
-        elif [[ "$_remote_url" == http://* || "$_remote_url" == https://* ]]; then
-            gitlab_ip=$(echo "$_remote_url" | sed -E 's#^https?://([^/:]+).*#\1#')
-        fi
-    fi
+    detect_runtime_git_host >/dev/null
+    gitlab_ip="${_RUNTIME_GIT_HOST:-}"
 
     # If the remote uses SSH, but recipes reference the host via protocol=https,
     # configure git to rewrite HTTPS URLs to SSH automatically.
     # This handles GitLab servers where HTTPS is unavailable or requires auth
     # that isn't configured in recipes, while SSH key access works out of the box.
     # Only set when missing — user can override manually if needed.
+    # 注意:url.git@<host>:.insteadOf 是 scp-like 语法,默认 SSH 22 端口,不支持 :port;
+    # 非标准端口的 GitLab 需 ssh_config 配 Host alias,或独立改进 insteadOf 用 ssh:// URL(后者是
+    # ensure_bootstrap 的独立改进,git@ origin/vendor script 同样受此 scp-like 端口限制)。
     if [[ -n "$gitlab_ip" ]]; then
         local _existing_rewrite=""
         _existing_rewrite=$(git config --global --get "url.git@${gitlab_ip}:.insteadOf" 2>/dev/null || true)
