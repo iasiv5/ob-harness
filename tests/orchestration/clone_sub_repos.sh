@@ -27,7 +27,9 @@ esac
 if [[ "$1" == "clone" || "${3:-}" == "clone" ]]; then
   _dest="${@: -1}"
   _url="${@: -2:1}"
-  if [[ -n "$CLONE_FAIL" ]] || [[ "$_url" == */fail.git ]]; then exit 128; fi
+  # 失败分支也先 mkdir partial destination,再 exit 128:让 production 的 rm -rf cleanup 有真目录
+  # 可删,从而证明 cleanup 有效(否则 dir 从未创建,断言"目录消失"是假绿)。
+  if [[ -n "$CLONE_FAIL" ]] || [[ "$_url" == */fail.git ]]; then mkdir -p "$_dest"; exit 128; fi
   mkdir -p "$_dest"
   exit 0
 fi
@@ -146,5 +148,53 @@ clone_sub_repos
 rc6=$?
 assert_eq "corrupt deps.json rc=1" "$rc6" 1
 rm -rf "$TMP6"
+
+# ============ case 7: 合法 JSON 但缺必填字段 name/clone_url → planner KeyError → rc=1 ============
+# 旧实现用 json[...] 索引(必填),planner 必须对齐:缺字段是 schema 损坏,属整批 planning failure。
+TMP7="$(mktemp -d)"; BUILD7="$TMP7/openbmc/build/romulus"; mkdir -p "$BUILD7"
+printf '[{}]\n' > "$BUILD7/deps.json"
+bash -c 'OB_NO_MAIN=1 source "$1"
+WORKSPACE_DIR="'"$TMP7"'"; BUILD_DIR="'"$BUILD7"'"; MACHINE="romulus"; DRY_RUN=0
+clone_sub_repos
+' _ "$OB" 2>/dev/null
+rc7=$?
+assert_eq "missing required fields rc=1" "$rc7" 1
+rm -rf "$TMP7"
+
+# ============ case 8: clone fail + partial 残留 + cleanup(rm)失败 → rc=1(缓存污染 fatal) ============
+# fake git 失败分支先 mkdir partial;fake rm 总失败 → partial 无法清理 → bare_mirror_provision
+# 必须整批 return 1(否则残留 partial 下次被 [[ -d ]] 误判为 existing)。
+TMP8="$(mktemp -d)"; BUILD8="$TMP8/openbmc/build/romulus"; mkdir -p "$BUILD8/conf"
+printf '# comment-only local.conf\n' > "$BUILD8/conf/local.conf"
+printf '[{"name":"r1","clone_url":"https://example.com/fail.git","src_uri":"git://example.com/fail.git;branch=main"}]\n' > "$BUILD8/deps.json"
+DB8="$(mktemp -d)"; mkfake_bin "$DB8" git rm
+stub_script "$DB8" git 'case "$1" in config) exit 0 ;; esac
+if [[ "$1" == "clone" || "${3:-}" == "clone" ]]; then
+  _url="${@: -2:1}"
+  if [[ "$_url" == */fail.git ]]; then mkdir -p "${@: -1}"; exit 128; fi
+  mkdir -p "${@: -1}"; exit 0
+fi
+exit 0'
+stub_exit "$DB8" rm 1   # rm 总失败 → partial cleanup 失败 → fatal
+with_stub "$DB8" -- bash -c 'OB_NO_MAIN=1 source "$1"
+WORKSPACE_DIR="'"$TMP8"'"; BUILD_DIR="'"$BUILD8"'"; MACHINE="romulus"; DRY_RUN=0
+clone_sub_repos
+' _ "$OB" 2>/dev/null
+rc8=$?
+assert_eq "cleanup failure rc=1" "$rc8" 1
+rm -rf "$TMP8" "$DB8"
+
+# ============ case 9: mirror_base 被普通文件占位 → mkdir 失败 → rc=1(Finding 1 实测一)============
+# effective DL_DIR 可写,但 DL_DIR/git2 已是普通文件:mkdir -p 失败不得被 `if !` 上下文吞成成功。
+TMP9="$(mktemp -d)"; BUILD9="$TMP9/openbmc/build/romulus"; mkdir -p "$BUILD9"
+printf '[{"name":"r1","clone_url":"https://example.com/r1.git","src_uri":"git://example.com/r1.git;branch=main"}]\n' > "$BUILD9/deps.json"
+mkdir -p "$TMP9/downloads"; : > "$TMP9/downloads/git2"   # git2 被普通文件占位
+bash -c 'OB_NO_MAIN=1 source "$1"
+WORKSPACE_DIR="'"$TMP9"'"; BUILD_DIR="'"$BUILD9"'"; MACHINE="romulus"; DRY_RUN=0
+clone_sub_repos
+' _ "$OB" 2>/dev/null
+rc9=$?
+assert_eq "mirror-base mkdir failure rc=1" "$rc9" 1
+rm -rf "$TMP9"
 
 assert_summary

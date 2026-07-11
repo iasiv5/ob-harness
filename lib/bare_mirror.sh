@@ -34,8 +34,10 @@ def emit(text):
 
 emit(len(items))
 for item in items:
-    name = item.get('name', '')
-    clone_url = item.get('clone_url', '')
+    # name / clone_url 必填:缺字段 → KeyError → planner exit 1(schema 损坏 fatal,对齐旧实现
+    # 用 json[...] 索引的必填语义)。src_uri optional:空/malformed → 空 mirror_path → skipped。
+    name = item['name']
+    clone_url = item['clone_url']
     src_uri = item.get('src_uri', '')
     mirror_path = ''
     su = src_uri.split(';', 1)[0].strip()
@@ -75,7 +77,12 @@ bare_mirror_provision() {
 
     _bare_mirror_reset
     _BARE_MIRROR_BASE="$mirror_base"
-    mkdir -p "$mirror_base"
+    # leaf-pure module 不依赖 caller errexit(adapter 用 `if !` 调用,函数体 errexit 关闭),
+    # 故必须成功的文件系统操作要显式检查返回码:mirror_base 建不出来(e.g. 同名普通文件占位)是 fatal。
+    if ! mkdir -p "$mirror_base"; then
+        error "Failed to create bare mirror cache directory: $mirror_base"
+        return 1
+    fi
     info "Mirror cache: $mirror_base"
 
     local name clone_url src_uri mirror_path
@@ -107,12 +114,16 @@ bare_mirror_provision() {
         return 1
     fi
 
-    while
-        IFS= read -r -d '' name <&"$plan_fd" &&
-        IFS= read -r -d '' clone_url <&"$plan_fd" &&
-        IFS= read -r -d '' src_uri <&"$plan_fd" &&
-        IFS= read -r -d '' mirror_path <&"$plan_fd"
-    do
+    while [[ "$processed" -lt "$total" ]]; do
+        # 精确读 total 组四字段记录:任一字段读取失败(字段截断/提前 EOF)→ protocol failure。
+        if ! IFS= read -r -d '' name <&"$plan_fd" ||
+           ! IFS= read -r -d '' clone_url <&"$plan_fd" ||
+           ! IFS= read -r -d '' src_uri <&"$plan_fd" ||
+           ! IFS= read -r -d '' mirror_path <&"$plan_fd"; then
+            exec {plan_fd}<&- 2>/dev/null || true
+            error "Failed to plan bare mirrors from $deps_json."
+            return 1
+        fi
         processed=$((processed + 1))
         info "[$processed/$total] Processing: $name"
         verbose "  src_uri=$src_uri"
@@ -189,11 +200,20 @@ bare_mirror_provision() {
         else
             # Mirror missing — create full bare clone from remote
             verbose "Creating bare mirror: $clone_url -> $mirror_path"
-            mkdir -p "$(dirname "$mirror_path")"
+            if ! mkdir -p "$(dirname "$mirror_path")"; then
+                error "Failed to create parent directory for bare mirror: $mirror_path"
+                return 1
+            fi
             if git -c http.postBuffer=536870912 clone --bare "$clone_url" "$mirror_path" 2>>"$_clone_err"; then
                 _BARE_MIRROR_NEW+=("$name")
             else
-                rm -rf "$mirror_path" 2>/dev/null
+                # clone 失败必须清理 partial mirror:残留会被下次 [[ -d "$mirror_path" ]] 误判为
+                # existing(缓存污染)。cleanup 失败 = fatal(不能让脏 mirror 进入 BitBake 视野),
+                # 整批 return 1 并保持 initialized=0。
+                if ! rm -rf "$mirror_path"; then
+                    error "Failed to clean up partial bare mirror for $name: $mirror_path"
+                    return 1
+                fi
                 warn "Failed to create bare mirror for $name (BitBake will fetch from remote during build)"
                 _BARE_MIRROR_FAILED+=("$name (bare mirror clone failed)")
                 failed=$((failed + 1))
@@ -201,13 +221,16 @@ bare_mirror_provision() {
             fi
         fi
     done
-    exec {plan_fd}<&-
-
-    # record count 校验:完整 plan 来自成功写完并关闭的临时文件,caller 不会观察 producer 半写状态。
-    if [[ "$processed" -ne "$total" ]]; then
+    # 读完 total 条完整记录后,FD 必须干净 EOF:无残余完整字段(read 返回 0 = 又读到一个 NUL 终止字段)、
+    # 无残片字节(read 失败但 _trailing 非空)。否则 planner 输出与 total 不符(protocol corruption),
+    # 整批 planning failure。caller 永远不会观察 producer 的半写尾部。
+    local _trailing=""
+    if IFS= read -r -d '' _trailing <&"$plan_fd" 2>/dev/null || [[ -n "$_trailing" ]]; then
+        exec {plan_fd}<&- 2>/dev/null || true
         error "Failed to plan bare mirrors from $deps_json."
         return 1
     fi
+    exec {plan_fd}<&- 2>/dev/null || true
 
     info "Mirrors: ${#_BARE_MIRROR_NEW[@]} new, ${#_BARE_MIRROR_EXISTING[@]} existing in $mirror_base"
     if [[ "$failed" -gt 0 ]]; then

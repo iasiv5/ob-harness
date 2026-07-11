@@ -71,6 +71,7 @@ run_cost_case() {
 WORKSPACE_DIR="'"$root"'"; BUILD_DIR="'"$build"'"; MACHINE="romulus"; DRY_RUN=0
 clone_sub_repos
 ' _ "$OB" 2>/dev/null
+    CASE_RC=$?
     CASE_TOTAL=$(wc -l < "$PYTHON_CALLS_LOG" | tr -d ' ')
     CASE_PLANNER=$(wc -l < "$PLANNER_CALLS_LOG" | tr -d ' ')
     CASE_CLONE=$(grep -cE '(^|[[:space:]])clone[[:space:]]' "$dbg/.git.calls" 2>/dev/null); CASE_CLONE=${CASE_CLONE:-0}
@@ -79,14 +80,18 @@ clone_sub_repos
     rm -rf "$root" "$dbg"
 }
 
-run_cost_case 0;  total_0=$CASE_TOTAL;  planner_0=$CASE_PLANNER;  clone_0=$CASE_CLONE;  gconf_0=$CASE_GLOBAL_CONFIG;  scoped_0=$CASE_SCOPED_CLONE
-run_cost_case 2;  total_2=$CASE_TOTAL;  planner_2=$CASE_PLANNER;  clone_2=$CASE_CLONE;  gconf_2=$CASE_GLOBAL_CONFIG;  scoped_2=$CASE_SCOPED_CLONE
-run_cost_case 20; total_20=$CASE_TOTAL; planner_20=$CASE_PLANNER; clone_20=$CASE_CLONE; gconf_20=$CASE_GLOBAL_CONFIG; scoped_20=$CASE_SCOPED_CLONE
+run_cost_case 0;  rc_0=$CASE_RC;  total_0=$CASE_TOTAL;  planner_0=$CASE_PLANNER;  clone_0=$CASE_CLONE;  gconf_0=$CASE_GLOBAL_CONFIG;  scoped_0=$CASE_SCOPED_CLONE
+run_cost_case 2;  rc_2=$CASE_RC;  total_2=$CASE_TOTAL;  planner_2=$CASE_PLANNER;  clone_2=$CASE_CLONE;  gconf_2=$CASE_GLOBAL_CONFIG;  scoped_2=$CASE_SCOPED_CLONE
+run_cost_case 20; rc_20=$CASE_RC; total_20=$CASE_TOTAL; planner_20=$CASE_PLANNER; clone_20=$CASE_CLONE; gconf_20=$CASE_GLOBAL_CONFIG; scoped_20=$CASE_SCOPED_CLONE
 
 echo "diag: python total N=0/2/20 = $total_0/$total_2/$total_20; planner = $planner_0/$planner_2/$planner_20"
 echo "diag: git global-config N=0/2/20 = $gconf_0/$gconf_2/$gconf_20; clone = $clone_0/$clone_2/$clone_20; scoped = $scoped_0/$scoped_2/$scoped_20"
 
 # ---- Task 2: Python 预算锁(total 与 N 无关 + planner 恰好 1;Git 调用面锁见 Task3)----
+# 先锁返回码:测试加载器关 errexit,若 provisioning 在预期调用后返回非零,次数断言仍可能假绿。
+assert_eq "provision rc N=0 == 0"  "$rc_0" 0
+assert_eq "provision rc N=2 == 0"  "$rc_2" 0
+assert_eq "provision rc N=20 == 0" "$rc_20" 0
 assert_eq "python total N=0 == N=2"  "$total_0" "$total_2"
 assert_eq "python total N=2 == N=20" "$total_2" "$total_20"
 assert_eq "planner count N=0"  "$planner_0" 1
