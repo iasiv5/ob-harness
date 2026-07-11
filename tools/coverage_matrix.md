@@ -22,7 +22,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | source manifest 读写 | read_source_label;write_source_manifest;normalize_repo_url;derive_source_label | unit/source_manifest.sh;unit/url.sh | |
 | 前置检查 | prerequisites_check | orchestration/prerequisites_check.sh | exit 函数 |
 | BitBake 环境初始化 | init_bitbake_env;build_env_enter | orchestration/build_env_enter.sh;protocol/build_env_enter_structure.sh | local.conf 产物检查仍在 init_bitbake_env |
-| 子仓库克隆 | clone_sub_repos;bare_mirror_provision;bare_mirror_base;bare_mirror_print_status;detect_runtime_git_host | orchestration/clone_sub_repos.sh;orchestration/bare_mirror_cost.sh;unit/url_extra.sh | detect_runtime_git_host 也服务 ensure_bootstrap_local_conf |
+| 子仓库克隆 | clone_sub_repos;bare_mirror_provision;bare_mirror_base;bare_mirror_print_status;detect_runtime_git_host | orchestration/clone_sub_repos.sh;orchestration/bare_mirror_cost.sh;unit/bare_mirror.sh;unit/url_extra.sh | unit/bare_mirror.sh 顶层调用补偿 xtrace 子 shell 低估 |
 | machine snapshot 生成 | generate_machine_snapshot;machine_state_write_snapshot | orchestration/generate_config.sh;unit/machine_state.sh | |
 | build config 生成 | generate_build_config | orchestration/generate_config.sh | |
 
