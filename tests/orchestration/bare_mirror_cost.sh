@@ -94,4 +94,13 @@ assert_eq "planner count N=2"  "$planner_2" 1
 assert_eq "planner count N=20" "$planner_20" 1
 assert_eq "N=0 no clone"       "$clone_0" 0
 
+# ---- Task 3: Git 调用面锁(全局写入 0 + clone==N + command-scoped==N)----
+assert_eq "global config N=0 == 0"  "$gconf_0" 0
+assert_eq "global config N=2 == 0"  "$gconf_2" 0
+assert_eq "global config N=20 == 0" "$gconf_20" 0
+assert_eq "clone count N=2 == 2"    "$clone_2" 2
+assert_eq "clone count N=20 == 20"  "$clone_20" 20
+assert_eq "scoped clone N=2 == 2"   "$scoped_2" 2
+assert_eq "scoped clone N=20 == 20" "$scoped_20" 20
+
 assert_summary

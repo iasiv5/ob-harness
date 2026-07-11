@@ -393,10 +393,9 @@ clone_sub_repos() {
         # ----------------------------------------
 
         local _clone_err="$BUILD_DIR/clone-errors.log"
-        # Increase http.postBuffer for large repos (default 1MB causes curl 18
-        # "transfer closed with outstanding read data remaining" on big packs
-        # like glibc). 512MB is safe for any single-pack transfer.
-        git config --global http.postBuffer 536870912
+        # http.postBuffer 提到 512MiB 只作用于本次 clone(大仓单包;默认 1MB 会触发 curl 18
+        # "transfer closed with outstanding read data remaining")。用 `git -c` 而非
+        # `git config --global`,避免写用户全局 Git 配置(见下方 clone 命令)。
 
         # --- Phase A: Ensure bare mirror exists in DL_DIR/git2/ ---
         # mirror_path 来自 plan(已含 gitsrcname 算法);空 = malformed/empty src_uri(BitBake 自行 fetch)。
@@ -411,7 +410,7 @@ clone_sub_repos() {
             # Mirror missing — create full bare clone from remote
             verbose "Creating bare mirror: $clone_url -> $mirror_path"
             mkdir -p "$(dirname "$mirror_path")"
-            if git clone --bare "$clone_url" "$mirror_path" 2>>"$_clone_err"; then
+            if git -c http.postBuffer=536870912 clone --bare "$clone_url" "$mirror_path" 2>>"$_clone_err"; then
                 STATUS_MIRROR_NEW+=("$name")
             else
                 rm -rf "$mirror_path" 2>/dev/null
