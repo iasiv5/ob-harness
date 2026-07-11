@@ -103,4 +103,39 @@ assert_eq "clone count N=20 == 20"  "$clone_20" 20
 assert_eq "scoped clone N=2 == 2"   "$scoped_2" 2
 assert_eq "scoped clone N=20 == 20" "$scoped_20" 20
 
+# ---- Task 4: public-interface 断言(bare_mirror_base / bare_mirror_print_status 跨 public iface)----
+# N=0 成功后:base 输出 effective mirror base;status 输出 `Mirrors populated: 0 new, 0 existing`。
+_proot="$(mktemp -d)"; _pbuild="$_proot/openbmc/build/romulus"; mkdir -p "$_pbuild/conf"
+printf '# comment-only local.conf\n' > "$_pbuild/conf/local.conf"
+write_deps_fixture "$_pbuild/deps.json" 0
+_pmbase="$_proot/downloads/git2"
+_pdbg="$(mktemp -d)"; make_fake_git "$_pdbg"; make_fake_python "$_pdbg"
+export PLANNER_DEPS_JSON="$_pbuild/deps.json" PLANNER_MIRROR_BASE="$_pmbase"
+export PYTHON_CALLS_LOG="$(mktemp)" PLANNER_CALLS_LOG="$(mktemp)"
+_piface="$(with_stub "$_pdbg" -- bash -c 'OB_NO_MAIN=1 source "$1"
+WORKSPACE_DIR="'"$_proot"'"; BUILD_DIR="'"$_pbuild"'"; MACHINE="romulus"; DRY_RUN=0
+clone_sub_repos >/dev/null
+echo "=BASE="; bare_mirror_base; echo "=STATUS="; bare_mirror_print_status romulus
+' _ "$OB" 2>/dev/null)"
+assert_eq     "N=0 public base"     "$(sed -n '/=BASE=/{n;p}' <<<"$_piface")" "$_pmbase"
+assert_contains "N=0 public status" "$_piface" "Mirrors populated: 0 new, 0 existing"
+rm -rf "$_proot" "$_pdbg"
+
+# 损坏 JSON:bare_mirror_provision return 1 后 initialized 保持 0,base 与 status 都空。
+_broot="$(mktemp -d)"; _bbuild="$_broot/openbmc/build/romulus"; mkdir -p "$_bbuild/conf"
+printf '# comment-only local.conf\n' > "$_bbuild/conf/local.conf"
+printf '{bad json' > "$_bbuild/deps.json"
+_bmbase="$_broot/downloads/git2"
+_bdbg="$(mktemp -d)"; make_fake_git "$_bdbg"; make_fake_python "$_bdbg"
+export PLANNER_DEPS_JSON="$_bbuild/deps.json" PLANNER_MIRROR_BASE="$_bmbase"
+export PYTHON_CALLS_LOG="$(mktemp)" PLANNER_CALLS_LOG="$(mktemp)"
+_bout="$(with_stub "$_bdbg" -- bash -c 'OB_NO_MAIN=1 source "$1"; set +e
+bare_mirror_provision "'"$_bbuild"'/deps.json" "'"$_bmbase"'" "'"$_bbuild"'"; echo "rc=$?"
+echo "=BASE=[$(bare_mirror_base)]=END="; bare_mirror_print_status romulus; echo "=STATUSEND="
+' _ "$OB" 2>/dev/null)"
+assert_eq    "bad JSON provision rc=1"            "$(grep -oP 'rc=\K[0-9]+' <<<"$_bout")" 1
+assert_true  "bad JSON base empty after failure"  grep -qF '=BASE=[]=END=' <<<"$_bout"
+assert_false "bad JSON status empty after failure" grep -q 'Mirrors populated' <<<"$_bout"
+rm -rf "$_broot" "$_bdbg"
+
 assert_summary
