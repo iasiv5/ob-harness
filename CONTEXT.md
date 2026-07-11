@@ -12,6 +12,10 @@ _Avoid_: 外部源码, external source
 存放在 `DL_DIR/git2/` 中的 `--bare` git 仓库，按 BitBake 命名规则（`gitsrcname`）组织。ob-harness 用于跨 machine 源码去重。
 _Avoid_: mirror cache, git mirror
 
+**bare mirror provisioning**:
+`ob init` Step 5 的 bare mirror 填充流程，由 leaf-pure `lib/bare_mirror.sh` 拥有。消费 `deps.json`，在 effective `DL_DIR/git2`（`bare mirror` 目录）下，一次性 NUL-framed planner 展开 clone URL / 应用 URL rewrite / 算 gitsrcname mirror path / command-scoped `git clone --bare` / 记录 new/existing/failed disposition 与 report state。individual clone failure 非致命（记录后让 BitBake 后续 fetch）；损坏 `deps.json` 或 planner protocol failure 由 `clone_sub_repos` adapter 收口为 exit 1。public interface：`bare_mirror_provision` / `bare_mirror_base` / `bare_mirror_print_status`；provisioning 状态是 module 私有，不再经 `ob` 全局变量泄漏。与 `source manifest`、`machine snapshot` 正交。
+_Avoid_: 把 provisioning 状态读成 ob 全局变量, 在 clone_sub_repos 内维护 URL rewrite 表
+
 **working tree**:
 `workspace/src/<machine>/<repo>/` 中的完整 git 仓库，开发者直接在其中编辑源码。externalsrc 将 recipe 指向这些目录。
 _Avoid_: 源码目录, source directory
