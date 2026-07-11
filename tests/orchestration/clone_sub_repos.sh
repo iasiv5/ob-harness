@@ -72,7 +72,7 @@ assert_contains "clone fail entry"  "$out" "Failed to create bare mirror for rep
 rm -rf "$TMP" "$DB"
 
 # ============ case 4: ${GITLAB_IP} 展开 → clone URL 含展开 host、不含字面 ${GITLAB_IP} ============
-# src_uri 用具体 host(10.0.0.9),避免它经 derive_bitbake_git_mirror_path 污染 mirror path 的 ${GITLAB_IP}。
+# src_uri 用具体 host(10.0.0.9),避免 mirror path 推导把 ${GITLAB_IP} 写进 mirror path。
 TMP3="$(mktemp -d)"; OPENBMC3="$TMP3/openbmc"; mkdir -p "$OPENBMC3/meta-x"
 printf 'GITLAB_IP=10.0.0.9\n' > "$OPENBMC3/meta-x/git-mirror-url.sh"
 BUILD3="$TMP3/build"; mkdir -p "$BUILD3"

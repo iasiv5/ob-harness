@@ -224,6 +224,56 @@ generate_dep_graph() {
     info "Found $dep_count git-based sub-repositories."
 }
 
+# 一次性 NUL-framed bare mirror planner:单次 Python 读 deps.json,输出 total\0 + 每条
+# name\0clone_url\0src_uri\0mirror_path\0。mirror_path 含 BitBake gitsrcname 算法(本仓唯一实现)。
+# malformed/empty src_uri 输出空 mirror_path,仍占四个字段位。
+# 失败(损坏 JSON 等)由 python 非零退出传播;caller 必须用可检查返回码的直接调用承载,禁止 $() / <()。
+_bare_mirror_emit_plan() {
+    local deps_json="$1"
+    local mirror_base="$2"
+    python3 - "$deps_json" "$mirror_base" <<'PY'
+import json
+import pathlib
+import sys
+from urllib.parse import urlparse
+
+items = json.load(open(sys.argv[1]))
+
+
+def emit(text):
+    sys.stdout.buffer.write(str(text).encode('utf-8', 'surrogateescape') + b'\x00')
+
+
+emit(len(items))
+for item in items:
+    name = item.get('name', '')
+    clone_url = item.get('clone_url', '')
+    src_uri = item.get('src_uri', '')
+    mirror_path = ''
+    su = src_uri.split(';', 1)[0].strip()
+    if su:
+        try:
+            parsed = urlparse(su)
+            host = parsed.netloc or parsed.path.split('/')[0]
+            path = parsed.path if parsed.netloc else parsed.path[len(host):]
+            if host and path:
+                gitsrcname = '{host}{path}'.format(
+                    host=host.replace(':', '.'),
+                    path=path.replace('/', '.').replace('*', '.')
+                             .replace(' ', '_').replace('(', '_').replace(')', '_'),
+                )
+                if gitsrcname.startswith('.'):
+                    gitsrcname = gitsrcname[1:]
+                mirror_path = str(pathlib.Path(sys.argv[2]) / gitsrcname)
+        except Exception:
+            mirror_path = ''
+    emit(name)
+    emit(clone_url)
+    emit(src_uri)
+    emit(mirror_path)
+PY
+}
+
 clone_sub_repos() {
     # SAFETY: This function is incremental.
     #   - If a bare mirror already exists, it is skipped.
@@ -249,18 +299,43 @@ clone_sub_repos() {
     mkdir -p "$MIRROR_BASE"
     info "Mirror cache: $MIRROR_BASE"
 
-    # Read each repo from deps.json
-    local total failed=0
-    total=$(python3 -c "import json; print(len(json.load(open('$deps_json'))))")
-    local current=0
+    # 一次性 NUL-framed planning:整批 dependency 的字段 + mirror path 在一个 Python 进程内算完,
+    # 消除循环内逐字段 JSON 解析与逐条 mirror-path Python($2+4N -> 1 planner)。NUL framing 是 module
+    # implementation:plan 文件只建在 ${TMPDIR:-/tmp},planner 成功后 open FD 并立即 unlink,通过 FD 读取。
+    local name clone_url src_uri mirror_path
+    local total processed=0 failed=0
+    local plan_file plan_fd
+    plan_file=$(mktemp "${TMPDIR:-/tmp}/ob-bare-mirror-plan.XXXXXX") || {
+        error "Failed to create temporary bare mirror plan."
+        exit 1
+    }
+    if ! _bare_mirror_emit_plan "$deps_json" "$MIRROR_BASE" > "$plan_file"; then
+        rm -f "$plan_file"
+        error "Failed to plan bare mirrors from $deps_json."
+        exit 1
+    fi
+    if ! exec {plan_fd}<"$plan_file"; then
+        rm -f "$plan_file"
+        error "Failed to open bare mirror plan."
+        exit 1
+    fi
+    rm -f "$plan_file"   # open 成功后立即 unlink,后续通过 FD 读取
 
-    while IFS= read -r entry; do
-        current=$((current + 1))
-        local name clone_url src_uri
-        name=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
-        clone_url=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['clone_url'])")
-        src_uri=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin).get('src_uri',''))")
-        info "[$current/$total] Processing: $name"
+    if ! IFS= read -r -d '' total <&"$plan_fd" || ! [[ "$total" =~ ^[0-9]+$ ]]; then
+        exec {plan_fd}<&- 2>/dev/null || true
+        error "Failed to plan bare mirrors from $deps_json."
+        exit 1
+    fi
+
+    while
+        IFS= read -r -d '' name <&"$plan_fd" &&
+        IFS= read -r -d '' clone_url <&"$plan_fd" &&
+        IFS= read -r -d '' src_uri <&"$plan_fd" &&
+        IFS= read -r -d '' mirror_path <&"$plan_fd"
+    do
+        processed=$((processed + 1))
+        info "[$processed/$total] Processing: $name"
+        verbose "  src_uri=$src_uri"
 
         # Expand any remaining ${VAR} references in clone_url.
         # These come from BitBake variables (e.g. ${GITLAB_IP}) that weren't
@@ -324,9 +399,7 @@ clone_sub_repos() {
         git config --global http.postBuffer 536870912
 
         # --- Phase A: Ensure bare mirror exists in DL_DIR/git2/ ---
-        local mirror_path=""
-        mirror_path=$(derive_bitbake_git_mirror_path "$MIRROR_BASE" "$src_uri" 2>/dev/null || true)
-
+        # mirror_path 来自 plan(已含 gitsrcname 算法);空 = malformed/empty src_uri(BitBake 自行 fetch)。
         if [[ -z "$mirror_path" ]]; then
             # Cannot derive mirror path (malformed SRC_URI) — skip, BitBake will fetch from remote.
             verbose "Cannot derive mirror path for $name, skipping (BitBake will fetch from remote)"
@@ -348,12 +421,14 @@ clone_sub_repos() {
                 continue
             fi
         fi
-    done < <(python3 -c "
-import json, sys
-for item in json.load(open('$deps_json')):
-    json.dump(item, sys.stdout)
-    print()
-")
+    done
+    exec {plan_fd}<&-
+
+    # record count 校验:完整 plan 来自成功写完并关闭的临时文件,caller 不会观察 producer 半写状态。
+    if [[ "$processed" -ne "$total" ]]; then
+        error "Failed to plan bare mirrors from $deps_json."
+        exit 1
+    fi
 
     info "Mirrors: ${#STATUS_MIRROR_NEW[@]} new, ${#STATUS_MIRROR_EXISTING[@]} existing in $MIRROR_BASE"
     if [[ "$failed" -gt 0 ]]; then
