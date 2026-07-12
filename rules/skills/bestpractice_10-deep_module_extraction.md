@@ -23,6 +23,7 @@
 4. **coverage 基线已校准**：抽取后是否实测 `coverage_radar.py` 并把新基线写进 CI `--fail-if-uncovered`（基线随模块化下降是正常，盲区透明化，不要制造覆盖率虚高）？
 5. **副作用次序未破坏**：若拆 god-function，有副作用前置状态的决策块（检测+kill 等）是否整块留在调用者、置于依赖其前置状态的下游之前（见已知陷阱 F1）？是否配次序回归锁？
 6. **规则面已同步**：`rules/03_WORKSPACE.md` 的 lib 路由表是否登记了新 module（角色 + leaf-pure 标注）？
+7. **depth 证明形态对齐**：若待抽模块**已经是** function module（不是散落逻辑、不是 god-function），depth 不能靠"搬函数进新文件"证明——必须靠 (a) interface-shrink 断言（旧状态 token 在全部 production Bash 清零，caller 失去状态形状知识）+ (b) 非功能成本锁（进程数/调用面）先红后绿。此时顺序变体为 **pin → optimize → deepen**（optimizable 收益先行并锁住，再收 module），是 extract → pin → deepen 的特化。canonical 实例：2026-07-12 `lib/bare_mirror.sh`（旧 `clone_sub_repos` 已是 function module，用 NUL 批量 planning 把 $2+4N 次 Python 压成 1 次 + command-scoped `git -c` 取代 `git config --global`，两收益锁住后才收 module，并用旧 STATUS_*/MIRROR_BASE token 全 production 清零证 interface 收缩）。
 
 ## 可用资源与边界
 

@@ -94,6 +94,24 @@ exec {plan_fd}<&- || true
 
 判定要点:`exec` 单独出现(后跟重定向、无命令词)= 持久重定向当前 shell;`exec cmd ...`(有命令词)= cmd 原地替换当前 shell 进程(PID 不变,不创建子进程),这些重定向成为 replacement program 的 fd 状态,成功后不存在返回原 shell 继续执行的路径。两者只差一个命令词,语义完全不同。本仓库 `lib/bare_mirror.sh` 的 plan_fd 关闭踩过此坑(round-1 用 `exec {plan_fd}<&- 2>/dev/null` 吞掉后续 `error()`,导致 fs-fatal 分支 rc=1 却无 error 输出,round-2 才定位)。
 
+## 相邻陷阱:errexit 禁用上下文吞失败
+
+另一个 strict mode 下"失败被静默"的高发陷阱:`set -e`(errexit)在条件、`&&`/`||`、命令替换 `$()`、进程替换 `< <()` 等上下文中**不触发**——这些位置命令失败只设返回码、不中止脚本。所以当一个函数被 caller 以 `if ! func` / `func && ...` / `$(func)` 调用时,函数体内没有显式检查的 mkdir/rm/cp 等 fs 操作失败会被静默吞掉。
+
+典型危害(本仓库 `lib/bare_mirror.sh` 踩过,2026-07-12 round-2 评审挖出):partial cleanup 的 `rm -rf "$partial_dir"` 失败被吞 → 残留目录下次被 `[[ -d ]]` 误判为 existing → 缓存污染致后续 fatal。表现为整批 rc=1 但定位不到哪个 fs 操作先失败。
+
+```bash
+# 错:adapter 以 `if ! func` 调用,func 体内 mkdir/rm 失败处于 errexit 禁用上下文,被静默。
+if ! bare_mirror_provision "$deps"; then error "..."; exit 1; fi
+#   (bare_mirror_provision 内部 `mkdir "$dir"` 失败时,set -e 不触发,静默继续)
+
+# 对:leaf-pure module 不依赖 caller 的 errexit,显式检查每个 fs 操作返回码。
+mkdir "$dir" || return 1
+rm -rf "$partial" || return 1
+```
+
+判定要点:`set -e` 只在命令返回码被"直接观察"的最外层生效;一旦命令出现在 `if`/`while`/`&&`/`||`/`$()`/`< <()` 的条件位,它就退出 errexit 保护、失败只成返回码。约定:leaf-pure module(见 [bestpractice_10](bestpractice_10-deep_module_extraction.md))恒不假设 caller 开 errexit,所有 fs/外部命令失败必须显式 `|| return`;caller 的 `if ! func` 只兜 module 整体返回码,不兜 module 内部。与上面 exec 持久重定向同属"strict mode 静默吞诊断"族——一个吞 stderr 一个吞返回码,解药都是显式而非隐式。
+
 ## 与现有 skill 的关系
 
 - `workflow_01-obmc_env_init.md` 记录的「BitBake `??=` 优先级陷阱」是 strict mode 之外的另一类"看起来赋值了实际没生效"的 shell 相邻陷阱，可互为补充。
