@@ -39,6 +39,8 @@ for item in items:
     name = item['name']
     clone_url = item['clone_url']
     src_uri = item.get('src_uri', '')
+    if not isinstance(src_uri, str):
+        src_uri = ''   # null/数字/数组等非字符串 src_uri → 视为 malformed → 空 mirror_path → skipped
     mirror_path = ''
     su = src_uri.split(';', 1)[0].strip()
     if su:
@@ -106,10 +108,15 @@ bare_mirror_provision() {
         error "Failed to open bare mirror plan."
         return 1
     fi
-    rm -f "$plan_file"   # open 成功后立即 unlink,后续通过 FD 读取
+    # open FD 成功后立即 unlink(plan 不是持久化状态文件,见 CONTEXT.md);unlink 失败 = fatal。
+    if ! rm -f "$plan_file"; then
+        exec {plan_fd}<&- || true
+        error "Failed to clean up temporary bare mirror plan."
+        return 1
+    fi
 
     if ! IFS= read -r -d '' total <&"$plan_fd" || ! [[ "$total" =~ ^[0-9]+$ ]]; then
-        exec {plan_fd}<&- 2>/dev/null || true
+        exec {plan_fd}<&- || true
         error "Failed to plan bare mirrors from $deps_json."
         return 1
     fi
@@ -120,7 +127,7 @@ bare_mirror_provision() {
            ! IFS= read -r -d '' clone_url <&"$plan_fd" ||
            ! IFS= read -r -d '' src_uri <&"$plan_fd" ||
            ! IFS= read -r -d '' mirror_path <&"$plan_fd"; then
-            exec {plan_fd}<&- 2>/dev/null || true
+            exec {plan_fd}<&- || true
             error "Failed to plan bare mirrors from $deps_json."
             return 1
         fi
@@ -201,6 +208,7 @@ bare_mirror_provision() {
             # Mirror missing — create full bare clone from remote
             verbose "Creating bare mirror: $clone_url -> $mirror_path"
             if ! mkdir -p "$(dirname "$mirror_path")"; then
+                exec {plan_fd}<&- || true
                 error "Failed to create parent directory for bare mirror: $mirror_path"
                 return 1
             fi
@@ -211,6 +219,7 @@ bare_mirror_provision() {
                 # existing(缓存污染)。cleanup 失败 = fatal(不能让脏 mirror 进入 BitBake 视野),
                 # 整批 return 1 并保持 initialized=0。
                 if ! rm -rf "$mirror_path"; then
+                    exec {plan_fd}<&- || true
                     error "Failed to clean up partial bare mirror for $name: $mirror_path"
                     return 1
                 fi
@@ -226,11 +235,11 @@ bare_mirror_provision() {
     # 整批 planning failure。caller 永远不会观察 producer 的半写尾部。
     local _trailing=""
     if IFS= read -r -d '' _trailing <&"$plan_fd" 2>/dev/null || [[ -n "$_trailing" ]]; then
-        exec {plan_fd}<&- 2>/dev/null || true
+        exec {plan_fd}<&- || true
         error "Failed to plan bare mirrors from $deps_json."
         return 1
     fi
-    exec {plan_fd}<&- 2>/dev/null || true
+    exec {plan_fd}<&- || true
 
     info "Mirrors: ${#_BARE_MIRROR_NEW[@]} new, ${#_BARE_MIRROR_EXISTING[@]} existing in $mirror_base"
     if [[ "$failed" -gt 0 ]]; then

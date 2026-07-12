@@ -149,21 +149,23 @@ rc6=$?
 assert_eq "corrupt deps.json rc=1" "$rc6" 1
 rm -rf "$TMP6"
 
-# ============ case 7: 合法 JSON 但缺必填字段 name/clone_url → planner KeyError → rc=1 ============
-# 旧实现用 json[...] 索引(必填),planner 必须对齐:缺字段是 schema 损坏,属整批 planning failure。
-TMP7="$(mktemp -d)"; BUILD7="$TMP7/openbmc/build/romulus"; mkdir -p "$BUILD7"
-printf '[{}]\n' > "$BUILD7/deps.json"
-bash -c 'OB_NO_MAIN=1 source "$1"
+# ============ case 7: 合法 JSON 缺必填字段 name / clone_url → planner KeyError → rc=1 ============
+# 分别锁缺 name([{}])和缺 clone_url([{"name":"r1"}]):防止未来只把其一改回 optional。
+for _bad_fixture in '[{}]' '[{"name":"r1"}]'; do
+    TMP7="$(mktemp -d)"; BUILD7="$TMP7/openbmc/build/romulus"; mkdir -p "$BUILD7"
+    printf '%s\n' "$_bad_fixture" > "$BUILD7/deps.json"
+    bash -c 'OB_NO_MAIN=1 source "$1"
 WORKSPACE_DIR="'"$TMP7"'"; BUILD_DIR="'"$BUILD7"'"; MACHINE="romulus"; DRY_RUN=0
 clone_sub_repos
 ' _ "$OB" 2>/dev/null
-rc7=$?
-assert_eq "missing required fields rc=1" "$rc7" 1
-rm -rf "$TMP7"
+    rc7=$?
+    assert_eq "missing required fields ($_bad_fixture) rc=1" "$rc7" 1
+    rm -rf "$TMP7"
+done
 
-# ============ case 8: clone fail + partial 残留 + cleanup(rm)失败 → rc=1(缓存污染 fatal) ============
-# fake git 失败分支先 mkdir partial;fake rm 总失败 → partial 无法清理 → bare_mirror_provision
-# 必须整批 return 1(否则残留 partial 下次被 [[ -d ]] 误判为 existing)。
+# ============ case 8: clone fail + partial cleanup(rm)失败 → rc=1 + partial 残留 + base/status 空 ============
+# fake rm 只让 partial mirror cleanup(目标含 fail.git)失败,plan unlink 走成功(否则 unlink fatal
+# 会先触发,到不了 clone cleanup,形成假绿)。直接调 bare_mirror_provision 验 public state + plan 生命周期。
 TMP8="$(mktemp -d)"; BUILD8="$TMP8/openbmc/build/romulus"; mkdir -p "$BUILD8/conf"
 printf '# comment-only local.conf\n' > "$BUILD8/conf/local.conf"
 printf '[{"name":"r1","clone_url":"https://example.com/fail.git","src_uri":"git://example.com/fail.git;branch=main"}]\n' > "$BUILD8/deps.json"
@@ -175,14 +177,25 @@ if [[ "$1" == "clone" || "${3:-}" == "clone" ]]; then
   mkdir -p "${@: -1}"; exit 0
 fi
 exit 0'
-stub_exit "$DB8" rm 1   # rm 总失败 → partial cleanup 失败 → fatal
-with_stub "$DB8" -- bash -c 'OB_NO_MAIN=1 source "$1"
-WORKSPACE_DIR="'"$TMP8"'"; BUILD_DIR="'"$BUILD8"'"; MACHINE="romulus"; DRY_RUN=0
-clone_sub_repos
-' _ "$OB" 2>/dev/null
-rc8=$?
-assert_eq "cleanup failure rc=1" "$rc8" 1
-rm -rf "$TMP8" "$DB8"
+REAL_RM="$(command -v rm)"; export REAL_RM
+stub_script "$DB8" rm '# partial mirror cleanup(目标含 fail.git)失败;其他 rm(plan unlink 等)exec 真 rm 真删
+for _a in "$@"; do [[ "$_a" == *fail.git* ]] && exit 1; done
+exec "$REAL_RM" "$@"'
+PLAN_TMP8="$(mktemp -d)"   # 专用 TMPDIR 捕获 plan 残留
+out8="$(TMPDIR="$PLAN_TMP8" with_stub "$DB8" -- bash -c 'OB_NO_MAIN=1 source "$1"; set +e
+bare_mirror_provision "'"${BUILD8}"'/deps.json" "'"${TMP8}"'/downloads/git2" "'"${BUILD8}"'"
+echo "rc=$?"
+echo "=BASE=[$(bare_mirror_base)]=END="
+bare_mirror_print_status romulus
+' _ "$OB" 2>&1)"
+assert_eq    "cleanup rc=1"             "$(grep -oP 'rc=\K[0-9]+' <<<"$out8")" 1
+assert_true  "cleanup failure message"  grep -q 'Failed to clean up partial bare mirror' <<<"$out8"
+assert_true  "partial mirror remains"   test -d "$TMP8/downloads/git2/example.com.fail.git"
+assert_true  "base empty after failure" grep -qF '=BASE=[]=END=' <<<"$out8"
+assert_false "no status after failure"  grep -q 'Mirrors populated' <<<"$out8"
+_leaked8="$(find "$PLAN_TMP8" -name 'ob-bare-mirror-plan.*' 2>/dev/null | wc -l)"
+assert_eq    "no leaked plan files"     "$_leaked8" 0
+rm -rf "$TMP8" "$DB8" "$PLAN_TMP8"
 
 # ============ case 9: mirror_base 被普通文件占位 → mkdir 失败 → rc=1(Finding 1 实测一)============
 # effective DL_DIR 可写,但 DL_DIR/git2 已是普通文件:mkdir -p 失败不得被 `if !` 上下文吞成成功。
@@ -196,5 +209,21 @@ clone_sub_repos
 rc9=$?
 assert_eq "mirror-base mkdir failure rc=1" "$rc9" 1
 rm -rf "$TMP9"
+
+# ============ case 10: 非字符串 src_uri(null)→ 视为 malformed → skipped(rc=0, 无 clone, counts 不增)============
+# 契约:malformed/empty src_uri 输出空 mirror_path,不 clone,不进 new/existing/failed。
+TMP10="$(mktemp -d)"; BUILD10="$TMP10/openbmc/build/romulus"; mkdir -p "$BUILD10/conf"
+printf '# comment-only local.conf\n' > "$BUILD10/conf/local.conf"
+printf '[{"name":"r1","clone_url":"https://example.com/r1.git","src_uri":null}]\n' > "$BUILD10/deps.json"
+DB10="$(mktemp -d)"; make_fake_git "$DB10"
+out10="$(with_stub "$DB10" -- bash -c 'OB_NO_MAIN=1 source "$1"
+WORKSPACE_DIR="'"$TMP10"'"; BUILD_DIR="'"$BUILD10"'"; MACHINE="romulus"; DRY_RUN=0; VERBOSE=1
+clone_sub_repos
+' _ "$OB" 2>/dev/null)"; rc10=$?
+assert_eq       "null src_uri rc=0"         "$rc10" 0
+assert_contains "null src_uri skip verbose" "$out10" "Cannot derive mirror path for r1, skipping"
+assert_false    "null src_uri no clone"     grep -qE 'clone[[:space:]]' "$DB10/.git.calls"
+assert_contains "null src_uri zero counts"  "$out10" "Mirrors: 0 new, 0 existing"
+rm -rf "$TMP10" "$DB10"
 
 assert_summary

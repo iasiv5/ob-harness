@@ -43,9 +43,10 @@ REAL_PYTHON="$(command -v python3)"; export REAL_PYTHON
 make_bad_planner() {
     stub_script "$1" python3 'if [[ $# -eq 3 && "$1" == "-" && "$(basename "$2")" == "deps.json" ]]; then
   case "${PLAN_MODE:-}" in
-    trunc)      printf "1\0n\0u\0s\0" ;;                       # 字段截断:第1条缺 mirror_path(仅 3 字段)
-    extra_full) printf "1\0n\0u\0s\0p\0n2\0u2\0s2\0p2\0" ;;     # total=1 + 2 条完整记录
-    extra_frag) printf "1\0n\0u\0s\0p\0trailing\0" ;;          # total=1 + 1 完整记录 + 1 残片字段
+    # 第1条 record 的 mirror_path 留空(第4字段),避免 body 进 clone 分支调真 git 删调用者文件。
+    trunc)      printf "1\0n\0u\0s\0" ;;                       # 字段截断:第1条仅 3 字段(缺 mirror_path)
+    extra_full) printf "1\0n\0u\0s\0\0n2\0u2\0s2\0p2\0" ;;     # total=1 + 第1条(空 mirror_path) + 第2条完整
+    extra_frag) printf "1\0n\0u\0s\0\0trailing" ;;            # total=1 + 第1条 + 未终止残片(无 NUL)
     *) exec "$REAL_PYTHON" "$@" ;;
   esac
   exit 0
@@ -56,10 +57,15 @@ for mode in trunc extra_full extra_frag; do
     _bp_root="$(mktemp -d)"; _bp_build="$_bp_root/openbmc/build/romulus"; mkdir -p "$_bp_build/conf"
     printf '# comment-only local.conf\n' > "$_bp_build/conf/local.conf"
     printf '[{"name":"x","clone_url":"https://e.com/x.git","src_uri":"git://e.com/x.git;branch=main"}]\n' > "$_bp_build/deps.json"
-    _bp_db="$(mktemp -d)"; mkfake_bin "$_bp_db" python3; make_bad_planner "$_bp_db"
+    _bp_db="$(mktemp -d)"; mkfake_bin "$_bp_db" python3 git
+    stub_script "$_bp_db" git 'case "$1" in config) exit 0 ;; esac
+if [[ "$1" == "clone" || "${3:-}" == "clone" ]]; then mkdir -p "${@: -1}"; exit 0; fi
+exit 0'
+    make_bad_planner "$_bp_db"
     WORKSPACE_DIR="$_bp_root"; BUILD_DIR="$_bp_build"; MACHINE="romulus"; DRY_RUN=0; VERBOSE=0
     PLAN_MODE="$mode" with_stub "$_bp_db" -- bare_mirror_provision "$_bp_build/deps.json" "$_bp_root/downloads/git2" "$_bp_build" >/dev/null 2>&1
-    assert_eq "protocol $mode rc=1" "$?" 1
+    assert_eq    "protocol $mode rc=1" "$?" 1
+    assert_false "protocol $mode no git call" test -f "$_bp_db/.git.calls"
     rm -rf "$_bp_root" "$_bp_db"
 done
 
