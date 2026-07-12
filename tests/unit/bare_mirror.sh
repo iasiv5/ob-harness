@@ -69,4 +69,25 @@ exit 0'
     rm -rf "$_bp_root" "$_bp_db"
 done
 
+# --- unlink-fatal: plan unlink 失败 → rc=1 + error + public state 空(plan 生命周期回归锁)---
+# 退化(忽略 unlink 失败)时此 case 必红:锁住"plan 不是持久化状态文件,unlink 失败 fatal"契约。
+# N=0 合法 plan,不涉及 Git;fake rm 仅对 ob-bare-mirror-plan.* 返回 1,其他 rm exec 真 rm。
+REAL_RM="$(command -v rm)"; export REAL_RM
+UL_DB="$(mktemp -d)"; mkfake_bin "$UL_DB" rm
+stub_script "$UL_DB" rm 'for _a in "$@"; do [[ "$_a" == *ob-bare-mirror-plan.* ]] && exit 1; done
+exec "$REAL_RM" "$@"'
+UL_ROOT="$(mktemp -d)"; UL_BUILD="$UL_ROOT/openbmc/build/romulus"; mkdir -p "$UL_BUILD/conf"
+printf '# comment-only local.conf\n' > "$UL_BUILD/conf/local.conf"
+printf '[]\n' > "$UL_BUILD/deps.json"   # N=0 合法 plan
+UL_PLAN_TMP="$(mktemp -d)"; UL_ERR="$(mktemp)"   # 专用 TMPDIR 捕获 plan 残留;UL_ERR 捕获 stderr
+WORKSPACE_DIR="$UL_ROOT"; BUILD_DIR="$UL_BUILD"; MACHINE="romulus"; DRY_RUN=0; VERBOSE=0
+TMPDIR="$UL_PLAN_TMP" with_stub "$UL_DB" -- bare_mirror_provision "$UL_BUILD/deps.json" "$UL_ROOT/downloads/git2" "$UL_BUILD" 2>"$UL_ERR" >/dev/null
+assert_eq    "unlink-fatal rc=1"        "$?" 1
+assert_true  "unlink-fatal error"       grep -q 'Failed to clean up temporary bare mirror plan' "$UL_ERR"
+assert_eq    "unlink-fatal base empty"  "$(bare_mirror_base)" ""
+assert_eq    "unlink-fatal no status"   "$(bare_mirror_print_status romulus)" ""
+_ul_leaked="$(find "$UL_PLAN_TMP" -name 'ob-bare-mirror-plan.*' 2>/dev/null | wc -l)"
+assert_eq    "unlink-fatal plan leaked" "$_ul_leaked" 1
+rm -rf "$UL_ROOT" "$UL_DB" "$UL_PLAN_TMP" "$UL_ERR"
+
 assert_summary

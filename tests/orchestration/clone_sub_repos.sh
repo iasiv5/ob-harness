@@ -222,7 +222,7 @@ clone_sub_repos
 ' _ "$OB" 2>/dev/null)"; rc10=$?
 assert_eq       "null src_uri rc=0"         "$rc10" 0
 assert_contains "null src_uri skip verbose" "$out10" "Cannot derive mirror path for r1, skipping"
-assert_false    "null src_uri no clone"     grep -qE 'clone[[:space:]]' "$DB10/.git.calls"
+assert_false    "null src_uri no clone"     test -f "$DB10/.git.calls"
 assert_contains "null src_uri zero counts"  "$out10" "Mirrors: 0 new, 0 existing"
 rm -rf "$TMP10" "$DB10"
 

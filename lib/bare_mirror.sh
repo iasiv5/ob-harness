@@ -99,12 +99,12 @@ bare_mirror_provision() {
         return 1
     }
     if ! _bare_mirror_emit_plan "$deps_json" "$mirror_base" > "$plan_file"; then
-        rm -f "$plan_file"
+        rm -f "$plan_file" 2>/dev/null || warn "Failed to remove temporary bare mirror plan after planner failure."
         error "Failed to plan bare mirrors from $deps_json."
         return 1
     fi
     if ! exec {plan_fd}<"$plan_file"; then
-        rm -f "$plan_file"
+        rm -f "$plan_file" 2>/dev/null || warn "Failed to remove temporary bare mirror plan after open failure."
         error "Failed to open bare mirror plan."
         return 1
     fi
