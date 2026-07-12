@@ -202,7 +202,7 @@ rm -rf workspace/downloads/git2/<gitsrcname-of-failed-repo>
 #### 2. URL 不可达（特定域名）
 
 **症状**：`could not determine hash algorithm` 或连接超时（如 infradead.org）
-**处理**：`ob` 内置 URL 重写表（当前仅 `infradead.org → github.com/sigma-star`）。新域名需在 `clone_sub_repos()` 的 `_url_rewrites` 数组中添加条目。
+**处理**：`ob` 内置 URL 重写表（当前仅 `infradead.org → github.com/sigma-star`）。新域名需在 `lib/bare_mirror.sh:bare_mirror_provision` 拥有的 URL rewrite table 添加条目。
 
 #### 3. BitBake 变量未展开
 

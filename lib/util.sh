@@ -161,7 +161,7 @@ resolve_effective_dl_dir() {
     # 可用性检查 (set -e-safe): mkdir/touch 在受控条件内, 失败不提前中止。
     # 任何不可用(set 非空路径不可写 / unset 默认不可写)都 return 1, 不 fallback 默认 ——
     # 否则 bare mirror 会被填到 bitbake 不会用的位置 (white-fill)。
-    # 本函数被 $() 捕获喂给 MIRROR_BASE, 故失败静默 (无 warn 污染 stdout)。
+    # stdout 被 caller 捕获为 effective DL_DIR;失败保持静默,避免污染 stdout。
     if ! mkdir -p "$dl_dir" 2>/dev/null; then
         return 1
     fi
@@ -201,36 +201,6 @@ resolve_effective_sstate_dir() {
     fi
     rm -f "$probe"
     echo "$sstate_dir"
-}
-
-derive_bitbake_git_mirror_path() {
-    local reference_root="$1"
-    local src_uri="$2"
-
-    python3 - "$reference_root" "$src_uri" <<'PY'
-import pathlib
-import sys
-from urllib.parse import urlparse
-
-reference_root = pathlib.Path(sys.argv[1])
-src_uri = sys.argv[2].split(';', 1)[0].strip()
-
-if not src_uri:
-    sys.exit(1)
-
-parsed = urlparse(src_uri)
-host = parsed.netloc or parsed.path.split('/')[0]
-path = parsed.path if parsed.netloc else parsed.path[len(host):]
-
-if not host or not path:
-    sys.exit(1)
-
-gitsrcname = f"{host.replace(':', '.')}{path.replace('/', '.').replace('*', '.').replace(' ', '_').replace('(', '_').replace(')', '_')}"
-if gitsrcname.startswith('.'):
-    gitsrcname = gitsrcname[1:]
-
-print(reference_root / gitsrcname)
-PY
 }
 
 # 用 OB_ENTRY_DIR(由 ob 入口在 source lib 前算好)定位 HARNESS_ROOT。

@@ -245,119 +245,13 @@ clone_sub_repos() {
         echo "Set DL_DIR to a valid absolute path, or remove the assignment line." >&2
         exit 3
     fi
-    MIRROR_BASE="$effective_dl_dir/git2"
-    mkdir -p "$MIRROR_BASE"
-    info "Mirror cache: $MIRROR_BASE"
 
-    # Read each repo from deps.json
-    local total failed=0
-    total=$(python3 -c "import json; print(len(json.load(open('$deps_json'))))")
-    local current=0
-
-    while IFS= read -r entry; do
-        current=$((current + 1))
-        local name clone_url src_uri
-        name=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['name'])")
-        clone_url=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin)['clone_url'])")
-        src_uri=$(echo "$entry" | python3 -c "import sys,json; print(json.load(sys.stdin).get('src_uri',''))")
-        info "[$current/$total] Processing: $name"
-
-        # Expand any remaining ${VAR} references in clone_url.
-        # These come from BitBake variables (e.g. ${GITLAB_IP}) that weren't
-        # resolved during deps.json generation (e.g. variable not in config).
-        if [[ "$clone_url" == *'${'* ]]; then
-            # GITLAB_IP/GIT_MIRROR_HOST 优先走 detect_runtime_git_host(拿空仍回退 local.conf);
-            # 其他 ${VAR} 直接回退 build/conf/local.conf。
-            local _local_conf="$BUILD_DIR/conf/local.conf"
-            # Extract all ${VAR} names from clone_url
-            local _var_names
-            _var_names=$(echo "$clone_url" | grep -oP '\$\{[A-Za-z_][A-Za-z0-9_]*\}' | sort -u || true)
-            for _vk in $_var_names; do
-                local _vn="${_vk#\$\{}"
-                _vn="${_vn%\}}"
-                local _vv=""
-
-                if [[ "$_vn" == "GITLAB_IP" || "$_vn" == "GIT_MIRROR_HOST" ]]; then
-                    detect_runtime_git_host >/dev/null   # direct call:缓存不穿透 $() subshell
-                    _vv="${_RUNTIME_GIT_HOST:-}"
-                fi
-
-                if [[ -z "$_vv" && -f "$_local_conf" ]]; then
-                    _vv=$(grep -oP "^$_vn\s*[:?]?=\s*[\"']?\\K[^\"'\s#]+" "$_local_conf" 2>/dev/null | head -1 || true)
-                fi
-
-                if [[ -n "$_vv" ]]; then
-                    clone_url="${clone_url//$_vk/$_vv}"
-                    verbose "Expanded $_vk -> $_vv in clone_url"
-                fi
-            done
-            # If still unexpanded, warn and skip
-            if [[ "$clone_url" == *'${'* ]]; then
-                warn "Unresolved BitBake variable in clone_url for $name: $clone_url"
-                STATUS_FAILED+=("$name (unresolved variable in clone URL)")
-                failed=$((failed + 1))
-                continue
-            fi
-        fi
-
-        # ---------- URL rewrite table ----------
-        # Rewrite unreachable git:// URLs to accessible HTTPS mirrors.
-        # Each entry: original_url  rewritten_url
-        # Add new entries here as needed.
-        local _url_rewrites=(
-            "git://git.infradead.org/mtd-utils.git"
-            "https://github.com/sigma-star/mtd-utils.git"
-        )
-        for (( _i=0; _i<${#_url_rewrites[@]}; _i+=2 )); do
-            if [[ "$clone_url" == "${_url_rewrites[_i]}" ]]; then
-                verbose "URL rewrite: $clone_url -> ${_url_rewrites[_i+1]}"
-                clone_url="${_url_rewrites[_i+1]}"
-                break
-            fi
-        done
-        # ----------------------------------------
-
-        local _clone_err="$BUILD_DIR/clone-errors.log"
-        # Increase http.postBuffer for large repos (default 1MB causes curl 18
-        # "transfer closed with outstanding read data remaining" on big packs
-        # like glibc). 512MB is safe for any single-pack transfer.
-        git config --global http.postBuffer 536870912
-
-        # --- Phase A: Ensure bare mirror exists in DL_DIR/git2/ ---
-        local mirror_path=""
-        mirror_path=$(derive_bitbake_git_mirror_path "$MIRROR_BASE" "$src_uri" 2>/dev/null || true)
-
-        if [[ -z "$mirror_path" ]]; then
-            # Cannot derive mirror path (malformed SRC_URI) — skip, BitBake will fetch from remote.
-            verbose "Cannot derive mirror path for $name, skipping (BitBake will fetch from remote)"
-        elif [[ -d "$mirror_path" ]]; then
-            # Mirror exists — skip; BitBake maintains DL_DIR/git2/ during builds.
-            verbose "Mirror already exists: $mirror_path"
-            STATUS_MIRROR_EXISTING+=("$name")
-        else
-            # Mirror missing — create full bare clone from remote
-            verbose "Creating bare mirror: $clone_url -> $mirror_path"
-            mkdir -p "$(dirname "$mirror_path")"
-            if git clone --bare "$clone_url" "$mirror_path" 2>>"$_clone_err"; then
-                STATUS_MIRROR_NEW+=("$name")
-            else
-                rm -rf "$mirror_path" 2>/dev/null
-                warn "Failed to create bare mirror for $name (BitBake will fetch from remote during build)"
-                STATUS_FAILED+=("$name (bare mirror clone failed)")
-                failed=$((failed + 1))
-                continue
-            fi
-        fi
-    done < <(python3 -c "
-import json, sys
-for item in json.load(open('$deps_json')):
-    json.dump(item, sys.stdout)
-    print()
-")
-
-    info "Mirrors: ${#STATUS_MIRROR_NEW[@]} new, ${#STATUS_MIRROR_EXISTING[@]} existing in $MIRROR_BASE"
-    if [[ "$failed" -gt 0 ]]; then
-        warn "$failed mirrors failed. See $BUILD_DIR/clone-errors.log"
+    # bare mirror provisioning(URL 展开/rewrite/command-scoped clone/disposition/report state)收在
+    # leaf-pure lib/bare_mirror.sh;adapter 只保留 Step 5 命令级前置、dry-run 与 module 调用,
+    # 不再持有 provisioning 状态(由 module 私有管理)。
+    if ! bare_mirror_provision "$deps_json" "$effective_dl_dir/git2" "$BUILD_DIR"; then
+        error "Failed to provision bare mirrors from $deps_json."
+        exit 1
     fi
 }
 
@@ -550,31 +444,13 @@ print_report() {
         echo "Machine:     $MACHINE"
         echo "Main repo:   $OPENBMC_DIR"
         echo "Build dir:   $BUILD_DIR"
-        echo "Mirror dir:  $MIRROR_BASE"
+        echo "Mirror dir:  $(bare_mirror_base)"
         echo "Snapshot:    $CONFIGS_DIR/$MACHINE.snapshot"
         echo "Build conf:  $BUILD_DIR/conf/externalsrc-$MACHINE.inc"
         echo ""
 
-        # --- Mirror stats ---
-        if [[ -n "$MIRROR_BASE" ]]; then
-            echo "Mirrors populated: ${#STATUS_MIRROR_NEW[@]} new, ${#STATUS_MIRROR_EXISTING[@]} existing"
-            echo "  Mirror cache: $MIRROR_BASE"
-            echo ""
-        fi
-
-        # --- Failed mirrors ---
-        if [[ ${#STATUS_FAILED[@]} -gt 0 ]]; then
-            echo "Failed mirrors: ${#STATUS_FAILED[@]}"
-            for entry in "${STATUS_FAILED[@]}"; do
-                echo "  [FAIL] $entry"
-            done
-            echo ""
-            echo "[WARN] Troubleshooting guide:"
-            echo "  A) Network flakiness      -> retry: ob init $MACHINE"
-            echo "  B) Server network block   -> specific domains (e.g. infradead.org) may be unreachable"
-            echo "  C) BitBake will fetch from remote during build if mirror is missing"
-            echo ""
-        fi
+        # --- Mirror stats / failed mirrors(由 leaf-pure bare mirror module 渲染)---
+        bare_mirror_print_status "$MACHINE"
 
         # --- Elapsed time ---
         local elapsed_seconds=$SECONDS

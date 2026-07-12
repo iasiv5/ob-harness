@@ -23,9 +23,9 @@ jobs:
           # 行号因上方插行而平移 / 告警减少都判 CLEAN/REGEN 通过; 仅"同类型+1"或全新类型才失败)。
           # SKIP_TESTS 跳过 run_all(本 job 上一步已跑); READONLY 避免重生成 baseline 架空门禁。
           OB_CHECK_SKIP_TESTS=1 OB_CHECK_READONLY=1 bash tools/ob_check.sh
-      - name: coverage radar 阻断(ob+lib 口径;退化即 fail;新增 ob/lib 函数需加测试或显式调基线 N5=12)
+      - name: coverage radar 阻断(ob+lib 口径;退化即 fail;新增 ob/lib 函数需加测试或显式调基线 N5=10)
         run: |
-          tools/trace_collect.sh | python3 tools/coverage_radar.py - --fail-if-uncovered 12
+          tools/trace_collect.sh | python3 tools/coverage_radar.py - --fail-if-uncovered 10
 
   slow:
     name: protocol .exp 交互矩阵(--full)

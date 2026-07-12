@@ -57,6 +57,7 @@ LEAF_EXIT_EXCEPTIONS_BY_BASENAME = {
     'machine_state.sh': set(),
     'machine_picker.sh': set(),
     'qemu_instance.sh': set(),
+    'bare_mirror.sh': set(),
 }
 
 # Z 的「向前看 vs 回溯诊断」软告警启发（尽力而为、非权威，供人工审核）。

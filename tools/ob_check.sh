@@ -76,6 +76,19 @@ else
     ok "detect_runtime_git_host 生产调用全 direct call"
 fi
 
+# ── 1c-ter. bare mirror legacy state surface 清零门禁 ──
+# 旧 provisioning 状态 token (STATUS_MIRROR_NEW / STATUS_MIRROR_EXISTING / STATUS_FAILED /
+# MIRROR_BASE) 不得回流到任何 production Bash(含 owner bare_mirror.sh)。
+# 精确 token 正则,不误报 _BARE_MIRROR_* 私有名;比仅靠 review 拒绝 owner 回退更强。
+bare_mirror_legacy_re='(^|[^[:alnum:]_])(STATUS_MIRROR_NEW|STATUS_MIRROR_EXISTING|STATUS_FAILED|MIRROR_BASE)($|[^[:alnum:]_])'
+bare_mirror_legacy_hits=$(grep -RInE "$bare_mirror_legacy_re" ob lib/*.sh 2>/dev/null || true)
+if [[ -n "$bare_mirror_legacy_hits" ]]; then
+    bad "bare mirror legacy state surface still in use"
+    printf '%s\n' "$bare_mirror_legacy_hits"
+else
+    ok "bare mirror state owned by module"
+fi
+
 # ── 1d. 交互 prompt 文案契约（.exp expect 依赖这些源码字符串；read -p 非 tty 不输出，故静态守）──
 _prompt_bad=""
 grep -q 'Select a machine for' lib/machine_picker.sh 2>/dev/null || _prompt_bad="${_prompt_bad} pick_machine('Select a machine for')"

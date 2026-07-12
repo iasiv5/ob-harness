@@ -1,21 +1,11 @@
 #!/usr/bin/env bash
 # tests/unit/paths.sh — 路径/推导类纯函数单测(unit 层)。
-# 覆盖 derive_bitbake_git_mirror_path / derive_qemu_url_config_path /
-#       detect_harness_root / detect_wsl / calc_parallelism。
+# 覆盖 derive_qemu_url_config_path / detect_harness_root / detect_wsl / calc_parallelism。
+# (SRC_URI → bare mirror path 推导已并入 bare mirror 批量 planner,行为金标在
+#  orchestration/clone_sub_repos.sh 与 orchestration/bare_mirror_cost.sh 覆盖。)
 source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
 assert_reset
-
-# --- derive_bitbake_git_mirror_path: SRC_URI → bare mirror gitsrcname 路径 ---
-ref="$(mktemp -d)"
-out="$(derive_bitbake_git_mirror_path "$ref" 'https://github.com/openbmc/openbmc.git')"
-assert_contains "gitsrcname https" "$out" "$ref/github.com.openbmc.openbmc.git"
-# 带分号(;branch=main 等参数应被截断)
-out="$(derive_bitbake_git_mirror_path "$ref" 'https://github.com/openbmc/openbmc.git;branch=main')"
-assert_contains "gitsrcname strip params" "$out" "$ref/github.com.openbmc.openbmc.git"
-# 空 src_uri → 非 0(python3 sys.exit 1)
-derive_bitbake_git_mirror_path "$ref" '' >/dev/null 2>&1; assert_eq "empty src_uri rc" "$?" 1
-rm -rf "$ref"
 
 # --- derive_qemu_url_config_path: 设全局 QEMU_URL_CONFIG_FILE(用临时 WORKSPACE_DIR) ---
 WORKSPACE_DIR="/tmp/ob-unit-paths-$$"
