@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+# tests/unit/devtool_modify.sh — _devtool_env_exec + devtool_modify_run 单测(unit 层)。
+# 覆盖: tempfile 协议(stage/stdout/stderr) / 输出隔离 / 同一 subshell / postcondition / devtool_modify_run 三段。
+source "$(dirname "$0")/../lib/ob_loader.sh"
+source "$(dirname "$0")/../lib/assert.sh"
+assert_reset
+
+TMP="$(mktemp -d)"
+export TMP   # mock devtool 子进程需读到(建 srctree 目录)
+trap 'rm -rf "$TMP"' EXIT
+
+# === mock build env ===
+OPENBMC_DIR="$TMP/openbmc"
+BUILD_DIR="$TMP/build"
+export OPENBMC_DIR BUILD_DIR
+MOCK_DEVTOOL_STATE="$TMP/devtool_state"
+export MOCK_DEVTOOL_STATE
+mkdir -p "$OPENBMC_DIR" "$BUILD_DIR/conf" "$TMP/bin" "$TMP/workspace/sources"
+: > "$MOCK_DEVTOOL_STATE"
+
+# mock setup 脚本(source 时 export SETUP_DONE + 向 stdout 打噪声,测输出隔离)
+cat > "$OPENBMC_DIR/setup" <<'EOF'
+#!/usr/bin/env bash
+export SETUP_DONE=1
+echo "MOCK_SETUP_NOISE_TO_STDOUT"
+EOF
+chmod +x "$OPENBMC_DIR/setup"
+
+# mock devtool: status 输出 state; modify 追加 state + 建源码目录
+cat > "$TMP/bin/devtool" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  status)
+    [[ -f "$MOCK_DEVTOOL_STATE" ]] && cat "$MOCK_DEVTOOL_STATE"
+    ;;
+  modify)
+    recipe="$2"
+    srctree="$TMP/workspace/sources/$recipe"
+    echo "$recipe: $srctree" >> "$MOCK_DEVTOOL_STATE"
+    mkdir -p "$srctree"
+    ;;
+esac
+EOF
+chmod +x "$TMP/bin/devtool"
+
+# mock bitbake-layers(postcondition 校验可执行性)
+printf '#!/usr/bin/env bash\necho mock-bitbake-layers\n' > "$TMP/bin/bitbake-layers"
+chmod +x "$TMP/bin/bitbake-layers"
+export PATH="$TMP/bin:$PATH"
+
+MACHINE="testm"
+touch "$BUILD_DIR/conf/local.conf" "$BUILD_DIR/conf/bblayers.conf"
+
+# === _devtool_env_exec: tempfile 协议 + 输出隔离 ===
+s="$TMP/s1"; o="$TMP/o1"; e="$TMP/e1"; : >"$s"; : >"$o"; : >"$e"
+rc=0
+_devtool_env_exec "$MACHINE" "$BUILD_DIR" "$s" "$o" "$e" -- echo HELLO || rc=$?
+assert_eq     "_devtool_env_exec echo rc=0"        "$rc" 0
+assert_contains "_devtool_env_exec stdout 含 HELLO"   "$(cat "$o")" "HELLO"
+assert_false  "_devtool_env_exec stdout 不含 setup 噪声" grep -q "MOCK_SETUP_NOISE" "$o"
+assert_contains "_devtool_env_exec stage=command"     "$(cat "$s")" "command"
+
+# === _devtool_env_exec: 同一 subshell(setup 注入的 SETUP_DONE 在 cmd 可见) ===
+s="$TMP/s2"; o="$TMP/o2"; e="$TMP/e2"; : >"$s"; : >"$o"; : >"$e"
+_devtool_env_exec "$MACHINE" "$BUILD_DIR" "$s" "$o" "$e" -- sh -c 'echo "SETUP=$SETUP_DONE"' || true
+assert_contains "_devtool_env_exec 同一 subshell(SETUP 可见)" "$(cat "$o")" "SETUP=1"
+
+# === _devtool_env_exec: postcondition 失败(删 local.conf) ===
+rm -f "$BUILD_DIR/conf/local.conf"
+s="$TMP/s3"; o="$TMP/o3"; e="$TMP/e3"; : >"$s"; : >"$o"; : >"$e"; rc=0
+_devtool_env_exec "$MACHINE" "$BUILD_DIR" "$s" "$o" "$e" -- echo HELLO || rc=$?
+assert_false  "_devtool_env_exec postcondition 失败 rc!=0" test "$rc" -eq 0
+assert_contains "_devtool_env_exec stage=postcondition" "$(cat "$s")" "postcondition"
+touch "$BUILD_DIR/conf/local.conf"   # 恢复
+
+# === devtool_modify_run: 三段(初始未 modify → modify → 再次 status 解析 srctree) ===
+: > "$MOCK_DEVTOOL_STATE"   # target 未 modify
+RECIPE="phosphor-ipmi-host"
+srctree_var=""; stage_var=""; stderr_var=""
+devtool_modify_run "$MACHINE" "$BUILD_DIR" "$RECIPE" srctree_var stage_var stderr_var || true
+assert_contains "devtool_modify_run srctree 非空(含 recipe)" "$srctree_var" "$RECIPE"
+assert_eq       "devtool_modify_run stage=command"        "$stage_var" "command"
+assert_true     "devtool_modify_run stderr_file 存在"      test -f "$stderr_var"
+assert_contains "devtool_modify_run modify 被调(state 含 target)" "$(cat "$MOCK_DEVTOOL_STATE")" "$RECIPE"
+
+# === devtool_modify_run: 已 modify 不重复 modify ===
+lines_before=$(wc -l < "$MOCK_DEVTOOL_STATE")
+devtool_modify_run "$MACHINE" "$BUILD_DIR" "$RECIPE" srctree_var stage_var stderr_var || true
+lines_after=$(wc -l < "$MOCK_DEVTOOL_STATE")
+assert_eq "devtool_modify_run 已 modify 不重复 modify(行数不变)" "$lines_after" "$lines_before"
+
+assert_summary
