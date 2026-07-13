@@ -14,6 +14,7 @@ _devtool_env_exec() {
         echo cd >"$stage_file"
         cd "$OPENBMC_DIR" &&
         echo setup >"$stage_file" &&
+        set +u &&   # setup 脚本可能用未绑定变量(如 ZSH_NAME),关 nounset(仿 build_env_enter);子 shell 内不影响父
         source setup "$machine" "$build_dir" >>"$stderr_file" 2>&1 &&
         echo postcondition >"$stage_file" &&
         [[ -f "$build_dir/conf/local.conf" ]] &&

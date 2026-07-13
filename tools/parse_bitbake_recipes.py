@@ -52,10 +52,10 @@ def main():
             tinfoil.prepare(config_only=False)
 
             # layer 权威映射: BBFILE_COLLECTIONS + BBFILE_PATTERN_<coll>
-            collections = (tinfoil.config.getVar("BBFILE_COLLECTIONS") or "").split()
+            collections = (tinfoil.config_data.getVar("BBFILE_COLLECTIONS") or "").split()
             layer_rx = {}
             for coll in collections:
-                pat = tinfoil.config.getVar(f"BBFILE_PATTERN_{coll}")
+                pat = tinfoil.config_data.getVar(f"BBFILE_PATTERN_{coll}")
                 if not pat:
                     continue
                 try:
@@ -70,18 +70,22 @@ def main():
                         return coll
                 return None
 
-            for fn in tinfoil.all_recipes(mc=""):
+            _skip_suffix = ("-native", "-cross", "-crosssdk")
+            _skip_prefix = ("nativesdk-", "cross-")
+            for recipe in tinfoil.all_recipes():
+                pn = recipe.pn
+                if pn.endswith(_skip_suffix) or pn.startswith(_skip_prefix):
+                    continue
                 try:
-                    d = tinfoil.parse_recipe(fn)
+                    d = tinfoil.parse_recipe(pn)
                 except Exception as e:
-                    print(f"WARN: parse_recipe failed for {fn}: {e}", file=sys.stderr)
+                    print(f"WARN: parse_recipe failed for {pn}: {e}", file=sys.stderr)
                     skipped += 1
                     continue
-                pn = d.getVar("PN")
-                if not pn:
+                if d is None:
                     skipped += 1
                     continue
-                recipe_file = d.getVar("FILE") or fn
+                recipe_file = d.getVar("FILE") or ""
                 layer = get_layer(recipe_file)
                 if not layer:
                     print(f"WARN: layer not found for {pn} ({recipe_file}), skipped (不糊 basename)",
