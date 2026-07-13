@@ -42,4 +42,32 @@ else
     [[ -n "$only_usage" ]] && _assert_bad "--help 有但 dispatch 缺: $(echo "$only_usage" | tr '\n' ' ')"
 fi
 
+# === ob dev 专属: DEV_ARGS 交接/重置 + OB_NO_MAIN 真实 dispatch + porcelain(show_logo 跳过) ===
+OB_NO_MAIN=1 source "$OBF" >/dev/null 2>&1
+set +e
+detect_harness_root() { return 0; }   # 避免测试环境副作用
+
+# DEV_ARGS 交接 + 重置
+parse_args build romulus
+assert_eq "DEV_ARGS build 后为空(build 不设)" "${#DEV_ARGS[@]}" "0"
+parse_args dev --machine m list
+assert_eq "DEV_ARGS[0]=--machine" "${DEV_ARGS[0]}" "--machine"
+assert_eq "DEV_ARGS[1]=m" "${DEV_ARGS[1]}" "m"
+assert_eq "DEV_ARGS[2]=list" "${DEV_ARGS[2]}" "list"
+assert_eq "DEV_ARGS 恰好 3 元素(不含 dev)" "${#DEV_ARGS[@]}" "3"
+
+# OB_NO_MAIN 真实 dispatch + 参数: main dev --machine m list → cmd_dev 收到恰好 --machine m list
+cmd_dev() { printf 'GOT:%s\n' "$@"; return 0; }
+main_out=$(main dev --machine m list 2>/dev/null)
+assert_contains "main dev 调 cmd_dev(含 --machine)" "$main_out" "GOT:--machine"
+assert_contains "main dev 调 cmd_dev(含 list)" "$main_out" "GOT:list"
+assert_false "main dev 不把 dev 字面传给 cmd_dev" grep -q "GOT:dev" <<<"$main_out"
+
+# porcelain: ob dev dispatch 在 show_logo 前 → 不调 show_logo
+_logo_called=0
+show_logo() { _logo_called=1; }
+cmd_dev() { return 0; }
+main dev --machine m list >/dev/null 2>&1
+assert_eq "ob dev 跳过 show_logo(porcelain)" "$_logo_called" "0"
+
 assert_summary
