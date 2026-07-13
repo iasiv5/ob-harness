@@ -817,6 +817,122 @@ cmd_init() {
     fi
 }
 
+cmd_dev() {
+    # 解析 --machine + 二级子命令(来自 main 的 DEV_ARGS)。porcelain: 诊断走 stderr, stdout 只输出 list JSONL / modify srctree。
+    local dev_machine="" dev_subcmd="" dev_pattern="" dev_recipe=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --machine)
+                [[ $# -ge 2 ]] || { error "Missing value for --machine" >&2; exit 1; }
+                dev_machine="$2"; shift 2 ;;
+            --machine=*) dev_machine="${1#--machine=}"; shift ;;
+            list)    dev_subcmd="list";    shift; [[ $# -ge 1 ]] && dev_pattern="$1"; break ;;
+            modify)  dev_subcmd="modify";  shift; [[ $# -ge 1 ]] && dev_recipe="$1";  break ;;
+            refresh) dev_subcmd="refresh"; shift; break ;;
+            build|deploy|finish|reset) dev_subcmd="$1"; shift; break ;;
+            *) error "ob dev: unknown argument '$1'" >&2; exit 1 ;;
+        esac
+    done
+
+    # machine 前置: --machine 给定则用它; 否则枚举 initialized + 判 TTY + pick
+    if [[ -z "$dev_machine" ]]; then
+        local -a _machines=()
+        local _line
+        while IFS= read -r _line; do
+            [[ -n "$_line" ]] && _machines+=("$_line")
+        done < <(machine_state_initialized_machines)
+        if [[ ${#_machines[@]} -eq 0 ]]; then
+            error "No initialized machines found." >&2
+            error "Run 'ob init <machine>' first." >&2
+            exit 3
+        fi
+        if [[ ! -t 0 ]]; then
+            error "No --machine specified and no interactive terminal." >&2
+            error "Specify a machine: ob dev --machine <machine> ${dev_subcmd:-list}" >&2
+            exit 3
+        fi
+        local _pm_rc=0
+        pick_machine machine_state_initialized_machines "Develop" >&2 || _pm_rc=$?
+        if [[ "$_pm_rc" -ne 0 ]]; then exit 2; fi
+        dev_machine="$MACHINE"
+    fi
+
+    # init-done 前置(所有子命令)
+    if ! machine_state_is_initialized "$dev_machine"; then
+        error "Machine '$dev_machine' is not initialized." >&2
+        error "Run 'ob init $dev_machine' first." >&2
+        exit 3
+    fi
+    local dev_build_dir="$OPENBMC_DIR/build/$dev_machine"
+
+    case "$dev_subcmd" in
+        list)
+            local _state=""
+            devtool_search_cache_state "$dev_machine" "$dev_build_dir" _state
+            case "$_state" in
+                missing)
+                    local _rstage="" _rstderr="" _rrc=0
+                    devtool_search_refresh "$dev_machine" "$dev_build_dir" _rstage _rstderr || _rrc=$?
+                    cat "$_rstderr" >&2 2>/dev/null || true
+                    if [[ "$_rrc" -ne 0 ]]; then
+                        error "ob dev list: failed to generate recipe cache (stage=$_rstage)." >&2
+                        exit 1
+                    fi
+                    ;;
+                stale)
+                    error "Recipe cache is stale (bblayers/commit changed)." >&2
+                    error "Run 'ob dev --machine $dev_machine refresh' first." >&2
+                    exit 3
+                    ;;
+                fresh) ;;
+            esac
+            devtool_search_list "$dev_machine" "$dev_pattern"
+            exit 0
+            ;;
+        modify)
+            if [[ -z "$dev_recipe" ]]; then
+                error "ob dev modify: no recipe specified." >&2
+                error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
+                exit 3
+            fi
+            local _srctree="" _stage="" _stderr_file="" _mrc=0
+            devtool_modify_run "$dev_machine" "$dev_build_dir" "$dev_recipe" _srctree _stage _stderr_file || _mrc=$?
+            cat "$_stderr_file" >&2 2>/dev/null || true
+            case "$_stage" in
+                cd|setup|postcondition)
+                    error "ob dev modify: build env not ready (stage=$_stage)." >&2
+                    exit 1
+                    ;;
+            esac
+            if [[ "$_mrc" -ne 0 ]]; then
+                error "ob dev modify: devtool failed (rc=$_mrc, stage=$_stage)." >&2
+                exit 1
+            fi
+            printf '%s\n' "$_srctree"
+            exit 0
+            ;;
+        refresh)
+            local _rstage="" _rstderr="" _rrc=0
+            devtool_search_refresh "$dev_machine" "$dev_build_dir" _rstage _rstderr || _rrc=$?
+            cat "$_rstderr" >&2 2>/dev/null || true
+            if [[ "$_rrc" -ne 0 ]]; then
+                error "ob dev refresh: failed (stage=$_rstage)." >&2
+                exit 1
+            fi
+            exit 0
+            ;;
+        "")
+            error "ob dev: no subcommand." >&2
+            error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
+            exit 3
+            ;;
+        *)
+            error "ob dev $dev_subcmd: reserved, not implemented yet." >&2
+            exit 1
+            ;;
+    esac
+}
+
 cmd_menu() {
     # Non-interactive terminal guard
     if [[ ! -t 0 ]]; then

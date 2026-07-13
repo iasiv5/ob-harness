@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# tests/orchestration/cmd_dev.sh — cmd_dev 编排单测(mock devtool_search/devtool_modify_run/machine_state)。
+# 覆盖: machine 前置(非TTY/无候选)、list 三态(missing 懒生成/stale/fresh)、modify(无recipe/已modify/setup失败/command失败)、
+#       refresh、无子命令、porcelain(stdout 纯)。
+source "$(dirname "$0")/../lib/ob_loader.sh"
+source "$(dirname "$0")/../lib/assert.sh"
+assert_reset
+
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+OPENBMC_DIR="$TMP/openbmc"; BUILD_DIR="$TMP/build"; CONFIGS_DIR="$TMP/configs"
+export OPENBMC_DIR BUILD_DIR CONFIGS_DIR
+mkdir -p "$OPENBMC_DIR/build/testm" "$CONFIGS_DIR"
+
+# === mock 控制 + mock 函数 ===
+MOCK_STATE="fresh"; MOCK_SRCTREE=""; MOCK_STAGE="command"; MOCK_MODRC=0; MOCK_REFRC=0
+MOCK_INIT_MACHINES="testm"
+
+machine_state_initialized_machines() { printf '%s\n' "$MOCK_INIT_MACHINES"; }
+machine_state_is_initialized() { [[ "$1" == "testm" ]]; }
+devtool_search_cache_state() { local so="$3"; printf -v "$so" '%s' "$MOCK_STATE"; }
+devtool_search_list() {
+    printf '{"recipe":"phosphor-ipmi-host","layer":"meta-phosphor","summary":"IPMI host"}\n'
+}
+devtool_search_refresh() {
+    local so="$3" se="$4"
+    touch "$TMP/refresh_called" 2>/dev/null || true   # 文件标记(跨子 shell 可见,变量不回传)
+    printf -v "$so" '%s' "command"
+    printf -v "$se" '%s' "/dev/null"
+    return "$MOCK_REFRC"
+}
+devtool_modify_run() {
+    local s="$4" st="$5" se="$6"
+    printf -v "$s" '%s' "$MOCK_SRCTREE"
+    printf -v "$st" '%s' "$MOCK_STAGE"
+    printf -v "$se" '%s' "/dev/null"
+    return "$MOCK_MODRC"
+}
+
+# run_dev <args...>: 跑 cmd_dev(子 shell 捕获 exit), 设 RUN_RC/RUN_OUT/RUN_ERR
+run_dev() {
+    local err
+    err="$(mktemp)"
+    local rc=0
+    RUN_OUT="$( { cmd_dev "$@"; } 2>"$err" )" && rc=0 || rc=$?
+    RUN_RC=$rc; RUN_ERR="$(cat "$err")"; rm -f "$err"
+}
+
+# === list fresh ===
+MOCK_STATE="fresh"; run_dev --machine testm list
+assert_eq "list fresh exit 0" "$RUN_RC" 0
+assert_contains "list fresh stdout JSONL(含 recipe)" "$RUN_OUT" "phosphor-ipmi-host"
+assert_false "list fresh stdout 纯(无 [ERROR])" grep -q "\[ERROR\]" <<<"$RUN_OUT"
+
+# === list stale → exit 3 + refresh remedy ===
+MOCK_STATE="stale"; run_dev --machine testm list
+assert_eq "list stale exit 3" "$RUN_RC" 3
+assert_contains "list stale remedy(refresh)" "$RUN_ERR" "ob dev --machine testm refresh"
+
+# === list missing → 懒生成(调 refresh) + list ===
+MOCK_STATE="missing"; MOCK_REFRC=0; rm -f "$TMP/refresh_called"; run_dev --machine testm list
+assert_eq "list missing exit 0(懒生成)" "$RUN_RC" 0
+assert_true "list missing 调了 refresh" test -f "$TMP/refresh_called"
+assert_contains "list missing stdout JSONL" "$RUN_OUT" "phosphor-ipmi-host"
+
+# === list missing + refresh 失败 → exit 1 ===
+MOCK_STATE="missing"; MOCK_REFRC=1; run_dev --machine testm list
+assert_false "list missing refresh 失败 exit 1" test "$RUN_RC" -eq 0
+
+# === modify 无 recipe → exit 3 + list remedy ===
+run_dev --machine testm modify
+assert_eq "modify 无 recipe exit 3" "$RUN_RC" 3
+assert_contains "modify 无 recipe remedy(list)" "$RUN_ERR" "ob dev --machine testm list"
+
+# === modify 已 modify(stage=command, rc=0) → stdout srctree ===
+MOCK_SRCTREE="$TMP/sources/phosphor-ipmi-host"; MOCK_STAGE="command"; MOCK_MODRC=0
+run_dev --machine testm modify phosphor-ipmi-host
+assert_eq "modify 已 modify exit 0" "$RUN_RC" 0
+assert_contains "modify stdout srctree(恰好一行)" "$RUN_OUT" "phosphor-ipmi-host"
+assert_eq "modify stdout 恰好一行" "$(grep -c . <<<"$RUN_OUT")" "1"
+
+# === modify setup 失败(stage=postcondition) → exit 1 ===
+MOCK_STAGE="postcondition"; MOCK_MODRC=1
+run_dev --machine testm modify phosphor-ipmi-host
+assert_eq "modify setup 失败 exit 1" "$RUN_RC" 1
+assert_contains "modify setup 失败诊断(build env)" "$RUN_ERR" "build env"
+
+# === modify command 失败(stage=command, rc!=0) → exit 1 ===
+MOCK_STAGE="command"; MOCK_MODRC=1
+run_dev --machine testm modify phosphor-ipmi-host
+assert_eq "modify command 失败 exit 1" "$RUN_RC" 1
+assert_contains "modify command 失败诊断(devtool)" "$RUN_ERR" "devtool"
+
+# === refresh 成功 → exit 0 ===
+MOCK_REFRC=0; run_dev --machine testm refresh
+assert_eq "refresh exit 0" "$RUN_RC" 0
+
+# === 无子命令 → exit 3 + list remedy ===
+run_dev --machine testm
+assert_eq "无子命令 exit 3" "$RUN_RC" 3
+assert_contains "无子命令 remedy(list)" "$RUN_ERR" "ob dev --machine testm list"
+
+# === 无 --machine + 非 TTY(test 环境)→ exit 3 Specify machine ===
+MOCK_INIT_MACHINES="testm"; run_dev list
+assert_eq "无 --machine 非 TTY exit 3" "$RUN_RC" 3
+assert_contains "无 --machine remedy(Specify machine)" "$RUN_ERR" "Specify a machine"
+
+# === 无 --machine + 无候选 → exit 3 ob init remedy ===
+MOCK_INIT_MACHINES=""; run_dev list
+assert_eq "无候选 exit 3" "$RUN_RC" 3
+assert_contains "无候选 remedy(ob init)" "$RUN_ERR" "ob init"
+
+assert_summary
