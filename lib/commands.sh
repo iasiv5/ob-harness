@@ -744,6 +744,8 @@ cmd_init() {
         error "Failed to clear machine state for '$MACHINE'."
         exit 1
     fi
+    # 清理 recipes cache/meta(init 重跑后旧索引必然过期)
+    devtool_recipes_clear_cache "$MACHINE"
 
     # --- Detect fresh run vs incremental re-run ---
     local is_rerun=0
