@@ -31,6 +31,7 @@ devtool_search_refresh() {
 }
 devtool_modify_run() {
     local s="$4" st="$5" se="$6"
+    touch "$TMP/modify_called" 2>/dev/null || true
     printf -v "$s" '%s' "$MOCK_SRCTREE"
     printf -v "$st" '%s' "$MOCK_STAGE"
     printf -v "$se" '%s' "/dev/null"
@@ -109,5 +110,18 @@ assert_contains "无 --machine remedy(Specify machine)" "$RUN_ERR" "Specify a ma
 MOCK_INIT_MACHINES=""; run_dev list
 assert_eq "无候选 exit 3" "$RUN_RC" 3
 assert_contains "无候选 remedy(ob init)" "$RUN_ERR" "ob init"
+
+# === dry-run: 不调 devtool/_devtool_env_exec, exit 0(评审 🔴3) ===
+rm -f "$TMP/modify_called" "$TMP/refresh_called"
+DRY_RUN=1 run_dev --machine testm modify somerecipe
+assert_eq "dry-run modify exit 0" "$RUN_RC" 0
+assert_false "dry-run modify 不调 devtool_modify_run" test -f "$TMP/modify_called"
+assert_contains "dry-run modify 预览(srctree preview)" "$RUN_ERR" "DRY-RUN"
+DRY_RUN=1 run_dev --machine testm refresh
+assert_eq "dry-run refresh exit 0" "$RUN_RC" 0
+assert_false "dry-run refresh 不调 devtool_search_refresh" test -f "$TMP/refresh_called"
+DRY_RUN=1 run_dev --machine testm list
+assert_eq "dry-run list exit 0" "$RUN_RC" 0
+unset DRY_RUN
 
 assert_summary

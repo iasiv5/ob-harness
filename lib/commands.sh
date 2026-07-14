@@ -828,6 +828,7 @@ cmd_dev() {
                 [[ $# -ge 2 ]] || { error "Missing value for --machine" >&2; exit 1; }
                 dev_machine="$2"; shift 2 ;;
             --machine=*) dev_machine="${1#--machine=}"; shift ;;
+            -d|-D|--dry-run) DRY_RUN=1; shift ;;
             list)    dev_subcmd="list";    shift; [[ $# -ge 1 ]] && dev_pattern="$1"; break ;;
             modify)  dev_subcmd="modify";  shift; [[ $# -ge 1 ]] && dev_recipe="$1";  break ;;
             refresh) dev_subcmd="refresh"; shift; break ;;
@@ -855,7 +856,8 @@ cmd_dev() {
         fi
         local _pm_rc=0
         pick_machine machine_state_initialized_machines "Develop" >&2 || _pm_rc=$?
-        if [[ "$_pm_rc" -ne 0 ]]; then exit 2; fi
+        if [[ "$_pm_rc" -eq 2 ]]; then exit 2; fi       # cancel
+        if [[ "$_pm_rc" -ne 0 ]]; then exit 1; fi       # read failure(1) 或其他错误(原所有非零当 cancel)
         dev_machine="$MACHINE"
     fi
 
@@ -869,6 +871,10 @@ cmd_dev() {
 
     case "$dev_subcmd" in
         list)
+            if [[ "${DRY_RUN:-0}" == "1" ]]; then
+                error "[DRY-RUN] ob dev list: would read recipe cache + output JSONL (pattern='$dev_pattern')." >&2
+                exit 0
+            fi
             local _state=""
             devtool_search_cache_state "$dev_machine" "$dev_build_dir" _state
             case "$_state" in
@@ -876,6 +882,7 @@ cmd_dev() {
                     local _rstage="" _rstderr="" _rrc=0
                     devtool_search_refresh "$dev_machine" "$dev_build_dir" _rstage _rstderr || _rrc=$?
                     cat "$_rstderr" >&2 2>/dev/null || true
+                    rm -f "$_rstderr" 2>/dev/null
                     if [[ "$_rrc" -ne 0 ]]; then
                         error "ob dev list: failed to generate recipe cache (stage=$_rstage)." >&2
                         exit 1
@@ -897,9 +904,14 @@ cmd_dev() {
                 error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
                 exit 3
             fi
+            if [[ "${DRY_RUN:-0}" == "1" ]]; then
+                error "[DRY-RUN] ob dev modify $dev_recipe: would devtool modify (srctree preview: $dev_build_dir/workspace/sources/$dev_recipe)." >&2
+                exit 0
+            fi
             local _srctree="" _stage="" _stderr_file="" _mrc=0
             devtool_modify_run "$dev_machine" "$dev_build_dir" "$dev_recipe" _srctree _stage _stderr_file || _mrc=$?
             cat "$_stderr_file" >&2 2>/dev/null || true
+            rm -f "$_stderr_file" 2>/dev/null
             case "$_stage" in
                 cd|setup|postcondition)
                     error "ob dev modify: build env not ready (stage=$_stage)." >&2
@@ -914,9 +926,14 @@ cmd_dev() {
             exit 0
             ;;
         refresh)
+            if [[ "${DRY_RUN:-0}" == "1" ]]; then
+                error "[DRY-RUN] ob dev refresh: would regenerate recipe cache via tinfoil." >&2
+                exit 0
+            fi
             local _rstage="" _rstderr="" _rrc=0
             devtool_search_refresh "$dev_machine" "$dev_build_dir" _rstage _rstderr || _rrc=$?
             cat "$_rstderr" >&2 2>/dev/null || true
+            rm -f "$_rstderr" 2>/dev/null
             if [[ "$_rrc" -ne 0 ]]; then
                 error "ob dev refresh: failed (stage=$_rstage)." >&2
                 exit 1
