@@ -85,7 +85,7 @@ def main():
                 if _recipe_classes(recipe) & _skip_classes:
                     continue
                 # PN variant 附加防御(cross/canadian recipe 若无对应 class)
-                if any(s in pn for s in ("-cross", "-crosssdk", "-cross-canadian", "nativesdk-", "canadian-", "-native")):
+                if any(s in pn for s in ("-cross", "-crosssdk", "-cross-canadian", "nativesdk-", "canadian-", "-native", "packagegroup-")):
                     continue
                 try:
                     d = tinfoil.parse_recipe(pn)
