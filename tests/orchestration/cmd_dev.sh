@@ -43,7 +43,7 @@ run_dev() {
     local err
     err="$(mktemp)"
     local rc=0
-    RUN_OUT="$( { cmd_dev "$@"; } 2>"$err" )" && rc=0 || rc=$?
+    RUN_OUT="$( { cmd_dev "$@"; } 2>"$err" </dev/null )" && rc=0 || rc=$?   # </dev/null 强制非 TTY(评审 🟡6,避免 TTY 跑卡 pick_machine)
     RUN_RC=$rc; RUN_ERR="$(cat "$err")"; rm -f "$err"
 }
 
@@ -123,5 +123,10 @@ assert_false "dry-run refresh 不调 devtool_search_refresh" test -f "$TMP/refre
 DRY_RUN=1 run_dev --machine testm list
 assert_eq "dry-run list exit 0" "$RUN_RC" 0
 unset DRY_RUN
+
+# === invalid recipe → modify 失败 → exit 1(评审 🟡6) ===
+MOCK_STAGE="command"; MOCK_MODRC=1
+run_dev --machine testm modify nonexistent-recipe
+assert_eq "invalid recipe(modify 失败) exit 1" "$RUN_RC" 1
 
 assert_summary

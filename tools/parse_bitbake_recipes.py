@@ -70,11 +70,12 @@ def main():
                         return coll
                 return None
 
-            _skip_suffix = ("-native", "-cross", "-crosssdk")
-            _skip_prefix = ("nativesdk-", "cross-")
+            # 排除 native/sdk/cross/canadian 变体(用 substring 覆盖 -cross-/-cross-canadian-/canadian- 等,
+            # 比 suffix/prefix 更全;评审指出 binutils-cross-arm/gcc-cross-canadian-arm 漏过滤)
+            _skip_substrings = ("-native", "-cross", "-crosssdk-", "-cross-canadian-", "nativesdk-", "canadian-")
             for recipe in tinfoil.all_recipes():
                 pn = recipe.pn
-                if pn.endswith(_skip_suffix) or pn.startswith(_skip_prefix):
+                if any(s in pn for s in _skip_substrings):
                     continue
                 try:
                     d = tinfoil.parse_recipe(pn)
