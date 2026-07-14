@@ -142,5 +142,8 @@ run_dev --machine testm refresh --dry-run
 assert_eq "refresh 后 -d exit 0(dry-run)" "$RUN_RC" 0
 run_dev --machine testm modify recipe1 recipe2
 assert_false "多余 positional(modify 2 recipe) 拒绝" test "$RUN_RC" -eq 0
+run_dev --machine=-d list
+assert_eq "--machine=-d 拒绝" "$RUN_RC" 1
+assert_contains "--machine=-d 诊断" "$RUN_ERR" "invalid --machine value"
 
 assert_summary

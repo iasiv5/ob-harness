@@ -18,6 +18,29 @@ for arg in "$@"; do
 done
 LAYERS=(protocol unit orchestration); [[ "$INTEGRATION" == 1 ]] && LAYERS+=(integration)
 FAILED=()
+run_sh() { # <file>
+    local file base output rc tmp_root
+    file="$1"
+    base="$(basename "$file")"
+    tmp_root="${TMPDIR:-/tmp}"
+    output="$(mktemp "$tmp_root/ob-run-sh.XXXXXX")" || { echo "FAIL $base (mktemp failed)"; FAILED+=("$file"); return; }
+    bash "$file" >"$output" 2>&1
+    rc=$?
+    if [[ "$rc" -eq 0 ]]; then
+        if grep -q '^skip ' "$output"; then
+            grep '^skip ' "$output"
+        else
+            cat "$output"
+            echo "ok   $base"
+        fi
+        rm -f "$output"
+        return
+    fi
+    echo "FAIL $base (rc=$rc)"
+    sed 's/^/  | /' "$output"
+    FAILED+=("$file")
+    rm -f "$output"
+}
 run_exp() { # <file>
     local file base output rc tmp_root
     file="$1"
@@ -48,7 +71,7 @@ for layer in "${LAYERS[@]}"; do
     echo "=== $layer ==="
     shopt -s nullglob
     for f in "tests/$layer"/*.sh; do
-        if bash "$f"; then echo "ok   $(basename "$f")"; else echo "FAIL $(basename "$f")"; FAILED+=("$f"); fi
+        run_sh "$f"
     done
     # .exp 慢(manual_matrix 的 start-qemu cancel 需 bitbake -e):默认跳过
     if [[ "$FULL" == 1 ]] || { [[ "$INTEGRATION" == 1 ]] && [[ "$layer" == "integration" ]]; }; then

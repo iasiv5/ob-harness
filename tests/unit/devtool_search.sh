@@ -27,6 +27,28 @@ export PATH="$TMP/bin:$PATH"
 MACHINE="testm"
 CACHE="$CONFIGS_DIR/$MACHINE.recipes.jsonl"
 META="$CONFIGS_DIR/$MACHINE.recipes.meta.json"
+export TEST_CACHE="$CACHE" TEST_META="$META" TEST_CONFIGS_DIR="$CONFIGS_DIR" TEST_MACHINE="$MACHINE"
+
+# Fault-injection wrappers for the publication transaction. Disabled unless the
+# corresponding exported flag is set by a test below.
+cat > "$TMP/bin/cp" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${FAKE_CP_FAIL_BACKUP:-0}" == "1" && "$1" == "$TEST_CACHE" ]]; then
+    exit 1
+fi
+PATH=/usr/bin:/bin exec cp "$@"
+EOF
+cat > "$TMP/bin/mv" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${FAKE_MV_FAIL_CACHE_PUBLISH:-0}" == "1" && "$1" == "$TEST_CACHE".* && "$2" == "$TEST_CACHE" ]]; then
+    exit 1
+fi
+if [[ "${FAKE_MV_FAIL_META_RESTORE:-0}" == "1" && "$1" == "$TEST_CONFIGS_DIR/.${TEST_MACHINE}.recipes.meta.backup."* && "$2" == "$TEST_META" ]]; then
+    exit 1
+fi
+PATH=/usr/bin:/bin exec mv "$@"
+EOF
+chmod +x "$TMP/bin/cp" "$TMP/bin/mv"
 
 write_cache() { printf '%s\n' "$1" > "$CACHE"; }
 write_meta() {
@@ -42,6 +64,7 @@ cur_mtime() { stat -c %Y "$BUILD_DIR/conf/bblayers.conf"; }
 JSONL_FIXTURE='{"recipe":"phosphor-ipmi-host","layer":"meta-phosphor","summary":"IPMI host interface"}
 {"recipe":"bmcweb","layer":"meta-phosphor","summary":"BMC web server"}
 {"recipe":"phosphor-state-manager","layer":"meta-phosphor","summary":"State manager"}'
+REFRESH_JSONL="$JSONL_FIXTURE"
 
 # === list + pattern ===
 write_cache "$JSONL_FIXTURE"
@@ -92,7 +115,7 @@ assert_eq "cache_state stale(无 meta)" "$st" "stale"
 _devtool_env_exec() {
     local stage_file="$3" stdout_file="$4"
     echo command >"$stage_file"
-    printf '%s\n' "$JSONL_FIXTURE" >"$stdout_file"
+    printf '%s\n' "$REFRESH_JSONL" >"$stdout_file"
     return 0
 }
 rm -f "$CACHE" "$META"
@@ -115,6 +138,55 @@ rc=0
 devtool_search_refresh "$MACHINE" "$BUILD_DIR" rstage rstderr || rc=$?
 assert_false "refresh 失败 rc!=0" test "$rc" -eq 0
 assert_contains "refresh 失败保留旧 cache" "$(cat "$CACHE" 2>/dev/null)" "phosphor-ipmi-host"
+
+# === refresh publication failures retain a recoverable old pair ===
+_devtool_env_exec() {
+    local stage_file="$3" stdout_file="$4"
+    echo command >"$stage_file"
+    printf '%s\n' "$REFRESH_JSONL" >"$stdout_file"
+    return 0
+}
+REFRESH_JSONL='{"recipe":"new-recipe","layer":"meta-test","summary":"new"}'
+
+# A failed backup must stop before either new artifact is published.
+write_cache "$JSONL_FIXTURE"
+write_meta "$(cur_hash)" "$(cur_mtime)" "mockcommit123" "$(cache_sha)" "$(cache_count)"
+old_cache="$(cat "$CACHE")"; old_meta="$(cat "$META")"
+export FAKE_CP_FAIL_BACKUP=1 FAKE_MV_FAIL_CACHE_PUBLISH=1
+rc=0
+devtool_search_refresh "$MACHINE" "$BUILD_DIR" rstage rstderr || rc=$?
+unset FAKE_CP_FAIL_BACKUP FAKE_MV_FAIL_CACHE_PUBLISH
+assert_false "backup failure makes refresh fail" test "$rc" -eq 0
+assert_eq "backup failure preserves cache" "$(cat "$CACHE")" "$old_cache"
+assert_eq "backup failure preserves metadata" "$(cat "$META")" "$old_meta"
+
+# A cache publish failure restores both old artifacts and consumes successful backups.
+write_cache "$JSONL_FIXTURE"
+write_meta "$(cur_hash)" "$(cur_mtime)" "mockcommit123" "$(cache_sha)" "$(cache_count)"
+old_cache="$(cat "$CACHE")"; old_meta="$(cat "$META")"
+export FAKE_MV_FAIL_CACHE_PUBLISH=1
+rc=0
+devtool_search_refresh "$MACHINE" "$BUILD_DIR" rstage rstderr || rc=$?
+unset FAKE_MV_FAIL_CACHE_PUBLISH
+assert_false "cache publish failure makes refresh fail" test "$rc" -eq 0
+assert_eq "cache publish failure restores cache" "$(cat "$CACHE")" "$old_cache"
+assert_eq "cache publish failure restores metadata" "$(cat "$META")" "$old_meta"
+assert_eq "successful rollback leaks no backup" \
+    "$(find "$CONFIGS_DIR" -maxdepth 1 -name ".${MACHINE}.recipes.*.backup.*" -print -quit)" ""
+
+# A restore failure must retain the old metadata backup and identify its path.
+write_cache "$JSONL_FIXTURE"
+write_meta "$(cur_hash)" "$(cur_mtime)" "mockcommit123" "$(cache_sha)" "$(cache_count)"
+export FAKE_MV_FAIL_CACHE_PUBLISH=1 FAKE_MV_FAIL_META_RESTORE=1
+rc=0
+devtool_search_refresh "$MACHINE" "$BUILD_DIR" rstage rstderr || rc=$?
+unset FAKE_MV_FAIL_CACHE_PUBLISH FAKE_MV_FAIL_META_RESTORE
+meta_backup="$(find "$CONFIGS_DIR" -maxdepth 1 -name ".${MACHINE}.recipes.meta.backup.*" -print -quit)"
+assert_false "restore failure makes refresh fail" test "$rc" -eq 0
+assert_true "restore failure retains metadata backup" test -n "$meta_backup"
+assert_contains "restore failure reports retained backup path" "$(cat "$rstderr")" "$meta_backup"
+st=""; devtool_search_cache_state "$MACHINE" "$BUILD_DIR" st
+assert_eq "restore failure leaves cache stale" "$st" "stale"
 
 # === clear ===
 write_cache "$JSONL_FIXTURE"; write_meta "$(cur_hash)" "$(cur_mtime)" "mockcommit123"

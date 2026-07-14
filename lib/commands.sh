@@ -826,11 +826,11 @@ cmd_dev() {
         case "$1" in
             --machine)
                 [[ $# -ge 2 ]] || { error "Missing value for --machine" >&2; exit 1; }
-                [[ -z "$2" || "$2" == -* ]] && { error "ob dev: invalid --machine value '$2'" >&2; exit 1; }
-                dev_machine="$2"; shift 2 ;;
+                dev_machine="$2"; shift 2
+                [[ -z "$dev_machine" || "$dev_machine" == -* ]] && { error "ob dev: invalid --machine value '$dev_machine'" >&2; exit 1; } ;;
             --machine=*)
                 dev_machine="${1#--machine=}"; shift
-                [[ -z "$dev_machine" ]] && { error "ob dev: empty --machine value" >&2; exit 1; } ;;
+                [[ -z "$dev_machine" || "$dev_machine" == -* ]] && { error "ob dev: invalid --machine value '$dev_machine'" >&2; exit 1; } ;;
             -d|-D|--dry-run) DRY_RUN=1; shift ;;
             list|modify|refresh|build|deploy|finish|reset)
                 if [[ -z "$dev_subcmd" ]]; then
@@ -1071,4 +1071,3 @@ cmd_menu() {
         first_run=0
     done
 }
-
