@@ -821,7 +821,7 @@ cmd_init() {
 
 cmd_dev() {
     # 解析 --machine + 二级子命令(来自 main 的 DEV_ARGS)。porcelain: 诊断走 stderr, stdout 只输出 list JSONL / modify srctree。
-    local dev_machine="" dev_subcmd="" dev_pattern="" dev_recipe=""
+    local dev_machine="" dev_subcmd="" dev_pattern="" dev_recipe="" _positional_count=0
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --machine)
@@ -829,11 +829,18 @@ cmd_dev() {
                 dev_machine="$2"; shift 2 ;;
             --machine=*) dev_machine="${1#--machine=}"; shift ;;
             -d|-D|--dry-run) DRY_RUN=1; shift ;;
-            list)    dev_subcmd="list";    shift; [[ $# -ge 1 ]] && dev_pattern="$1"; break ;;
-            modify)  dev_subcmd="modify";  shift; [[ $# -ge 1 ]] && dev_recipe="$1";  break ;;
-            refresh) dev_subcmd="refresh"; shift; break ;;
-            build|deploy|finish|reset) dev_subcmd="$1"; shift; break ;;
-            *) error "ob dev: unknown argument '$1'" >&2; exit 1 ;;
+            list|modify|refresh|build|deploy|finish|reset)
+                [[ -z "$dev_subcmd" ]] || { error "ob dev: duplicate subcommand '$1'" >&2; exit 1; }
+                dev_subcmd="$1"; shift ;;
+            --*) error "ob dev: unknown option '$1'" >&2; exit 1 ;;
+            *)
+                _positional_count=$((_positional_count + 1))
+                case "$dev_subcmd" in
+                    list)   [[ -z "$dev_pattern" ]] || { error "ob dev list: too many patterns" >&2; exit 1; }; dev_pattern="$1" ;;
+                    modify) [[ -z "$dev_recipe" ]]  || { error "ob dev modify: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
+                    *)      error "ob dev: unexpected positional '$1' (need subcommand first)" >&2; exit 1 ;;
+                esac
+                shift ;;
         esac
     done
 

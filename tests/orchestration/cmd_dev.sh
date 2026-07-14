@@ -129,4 +129,17 @@ MOCK_STAGE="command"; MOCK_MODRC=1
 run_dev --machine testm modify nonexistent-recipe
 assert_eq "invalid recipe(modify 失败) exit 1" "$RUN_RC" 1
 
+# === 🔴1 完整 argv parser: 尾随/recipe后 -d + 多余 positional 拒绝 ===
+MOCK_STAGE="command"; MOCK_MODRC=0
+rm -f "$TMP/modify_called"
+run_dev --machine testm modify somerecipe --dry-run
+assert_eq "尾随 -d modify exit 0(dry-run)" "$RUN_RC" 0
+assert_false "尾随 -d 不调 devtool_modify_run" test -f "$TMP/modify_called"
+run_dev --machine testm modify somerecipe -d
+assert_false "recipe 后 -d 不调 devtool_modify_run" test -f "$TMP/modify_called"
+run_dev --machine testm refresh --dry-run
+assert_eq "refresh 后 -d exit 0(dry-run)" "$RUN_RC" 0
+run_dev --machine testm modify recipe1 recipe2
+assert_false "多余 positional(modify 2 recipe) 拒绝" test "$RUN_RC" -eq 0
+
 assert_summary
