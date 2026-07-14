@@ -13,14 +13,17 @@ export OPENBMC_DIR BUILD_DIR CONFIGS_DIR
 mkdir -p "$OPENBMC_DIR/build/testm" "$CONFIGS_DIR"
 
 # === mock 控制 + mock 函数 ===
-MOCK_STATE="fresh"; MOCK_SRCTREE=""; MOCK_STAGE="command"; MOCK_MODRC=0; MOCK_REFRC=0
+MOCK_STATE="fresh"; MOCK_SRCTREE=""; MOCK_STAGE="command"; MOCK_MODRC=0; MOCK_REFRC=0; MOCK_READ_RC=0
 MOCK_INIT_MACHINES="testm"
 
 machine_state_initialized_machines() { printf '%s\n' "$MOCK_INIT_MACHINES"; }
 machine_state_is_initialized() { [[ "$1" == "testm" ]]; }
-devtool_search_cache_state() { local so="$3"; printf -v "$so" '%s' "$MOCK_STATE"; }
-devtool_search_list() {
-    printf '{"recipe":"phosphor-ipmi-host","layer":"meta-phosphor","summary":"IPMI host"}\n'
+devtool_search_read() {
+    local so="$4"
+    printf -v "$so" '%s' "$MOCK_STATE"
+    [[ "$MOCK_READ_RC" -eq 0 && "$MOCK_STATE" == "fresh" ]] &&
+        printf '{"recipe":"phosphor-ipmi-host","layer":"meta-phosphor","summary":"IPMI host"}\n'
+    return "$MOCK_READ_RC"
 }
 devtool_search_refresh() {
     local so="$3" se="$4"
@@ -53,6 +56,12 @@ MOCK_STATE="fresh"; run_dev --machine testm list
 assert_eq "list fresh exit 0" "$RUN_RC" 0
 assert_contains "list fresh stdout JSONL(含 recipe)" "$RUN_OUT" "phosphor-ipmi-host"
 assert_false "list fresh stdout 纯(无 [ERROR])" grep -q "\[ERROR\]" <<<"$RUN_OUT"
+
+# === shared-lock read failure → exit 1，不输出 cache ===
+MOCK_STATE="fresh"; MOCK_READ_RC=1; run_dev --machine testm list
+assert_eq "list shared-lock read failure exit 1" "$RUN_RC" 1
+assert_contains "list shared-lock read failure diagnostic" "$RUN_ERR" "failed to read recipe cache safely"
+MOCK_READ_RC=0
 
 # === list stale → exit 3 + refresh remedy ===
 MOCK_STATE="stale"; run_dev --machine testm list

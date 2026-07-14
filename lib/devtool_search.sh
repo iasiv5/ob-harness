@@ -59,74 +59,235 @@ _devtool_recipes_discard_backup() {
     return 0
 }
 
+# Strict fingerprint helpers. Unknown metadata is stale, never equal-by-accident.
+_devtool_recipes_is_sha256() { [[ "$1" =~ ^[[:xdigit:]]{64}$ ]]; }
+_devtool_recipes_is_git_revision() { [[ "$1" =~ ^([[:xdigit:]]{40}|[[:xdigit:]]{64})$ ]]; }
+_devtool_recipes_is_nonnegative_integer() { [[ "$1" =~ ^[0-9]+$ ]]; }
+_devtool_recipes_is_positive_integer() { [[ "$1" =~ ^[1-9][0-9]*$ ]]; }
+
+# _devtool_recipes_read_sha256 <path> <outvar>
+_devtool_recipes_read_sha256() {
+    local path="$1" outvar="$2" output="" digest=""
+    [[ -f "$path" ]] || return 1
+    output="$(sha256sum "$path" 2>/dev/null)" || return 1
+    digest="${output%%[[:space:]]*}"
+    _devtool_recipes_is_sha256 "$digest" || return 1
+    printf -v "$outvar" '%s' "$digest"
+    return 0
+}
+
+# _devtool_recipes_read_mtime <path> <outvar>
+_devtool_recipes_read_mtime() {
+    local path="$1" outvar="$2" observed_mtime=""
+    [[ -f "$path" ]] || return 1
+    observed_mtime="$(stat -c %Y "$path" 2>/dev/null)" || return 1
+    _devtool_recipes_is_nonnegative_integer "$observed_mtime" || return 1
+    printf -v "$outvar" '%s' "$observed_mtime"
+    return 0
+}
+
+# _devtool_recipes_read_commit <outvar>
+_devtool_recipes_read_commit() {
+    local outvar="$1" observed_commit=""
+    observed_commit="$(git -C "${OPENBMC_DIR}" rev-parse --verify HEAD 2>/dev/null)" || return 1
+    _devtool_recipes_is_git_revision "$observed_commit" || return 1
+    printf -v "$outvar" '%s' "$observed_commit"
+    return 0
+}
+
+# _devtool_recipes_read_record_count <path> <outvar>
+_devtool_recipes_read_record_count() {
+    local path="$1" outvar="$2" observed_count=""
+    [[ -f "$path" ]] || return 1
+    observed_count="$(wc -l <"$path")" || return 1
+    observed_count="${observed_count//[[:space:]]/}"
+    _devtool_recipes_is_positive_integer "$observed_count" || return 1
+    printf -v "$outvar" '%s' "$observed_count"
+    return 0
+}
+
+# _devtool_recipes_collect_source_fingerprint <build_dir> <hash_outvar> <mtime_outvar> <commit_outvar>
+_devtool_recipes_collect_source_fingerprint() {
+    local build_dir="$1" hash_outvar="$2" mtime_outvar="$3" commit_outvar="$4"
+    local bblayers="${build_dir}/conf/bblayers.conf" hash="" mtime="" commit=""
+    _devtool_recipes_read_sha256 "$bblayers" hash || return 1
+    _devtool_recipes_read_mtime "$bblayers" mtime || return 1
+    _devtool_recipes_read_commit commit || return 1
+    printf -v "$hash_outvar" '%s' "$hash"
+    printf -v "$mtime_outvar" '%s' "$mtime"
+    printf -v "$commit_outvar" '%s' "$commit"
+    return 0
+}
+
+# _devtool_recipes_collect_cache_integrity <cache> <sha_outvar> <count_outvar>
+_devtool_recipes_collect_cache_integrity() {
+    local cache="$1" sha_outvar="$2" count_outvar="$3" computed_digest="" computed_records=""
+    _devtool_recipes_read_sha256 "$cache" computed_digest || return 1
+    _devtool_recipes_read_record_count "$cache" computed_records || return 1
+    printf -v "$sha_outvar" '%s' "$computed_digest"
+    printf -v "$count_outvar" '%s' "$computed_records"
+    return 0
+}
+
+# _devtool_recipes_read_meta_values <meta> <schema_out> <hash_out> <mtime_out> <commit_out> <cache_sha_out> <count_out>
+_devtool_recipes_read_meta_values() {
+    local meta="$1" schema_outvar="$2" hash_outvar="$3" mtime_outvar="$4"
+    local commit_outvar="$5" cache_sha_outvar="$6" count_outvar="$7" values=""
+    local -a fields=()
+    values="$(python3 - "$meta" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as meta_file:
+        data = json.load(meta_file)
+except (OSError, ValueError):
+    raise SystemExit(1)
+
+keys = ("schema_version", "bblayers_hash", "bblayers_mtime", "openbmc_commit", "cache_sha256", "count")
+try:
+    schema, layer_hash, mtime, commit, cache_hash, count = (data[key] for key in keys)
+except (KeyError, TypeError):
+    raise SystemExit(1)
+
+if not all(isinstance(value, str) for value in (schema, layer_hash, commit, cache_hash)):
+    raise SystemExit(1)
+if any(isinstance(value, bool) or not isinstance(value, int) for value in (mtime, count)):
+    raise SystemExit(1)
+
+for value in (schema, layer_hash, mtime, commit, cache_hash, count):
+    print(value)
+PY
+)" || return 1
+    mapfile -t fields <<<"$values"
+    [[ "${#fields[@]}" -eq 6 ]] || return 1
+    printf -v "$schema_outvar" '%s' "${fields[0]}"
+    printf -v "$hash_outvar" '%s' "${fields[1]}"
+    printf -v "$mtime_outvar" '%s' "${fields[2]}"
+    printf -v "$commit_outvar" '%s' "${fields[3]}"
+    printf -v "$cache_sha_outvar" '%s' "${fields[4]}"
+    printf -v "$count_outvar" '%s' "${fields[5]}"
+    return 0
+}
+
 # 路径函数
 devtool_recipes_cache_path() { echo "${CONFIGS_DIR:?}/$1.recipes.jsonl"; }
 devtool_recipes_meta_path()  { echo "${CONFIGS_DIR:?}/$1.recipes.meta.json"; }
+devtool_recipes_lock_path()  { echo "${CONFIGS_DIR:?}/.$1.recipes.lock"; }
 
-# devtool_search_cache_state <machine> <build_dir> <state_outvar>
-# fresh: cache 存在 + meta schema_version 匹配 + bblayers/commit + cache_sha256/count 一致。missing/stale 否则。不 exit。
-devtool_search_cache_state() {
+# _devtool_search_cache_state_unlocked <machine> <build_dir> <state_outvar>
+_devtool_search_cache_state_unlocked() {
     local machine="$1" build_dir="$2" state_outvar="$3"
     local cache meta state="missing"
+    local m_schema="" m_hash="" m_mtime="" m_commit="" m_cache_sha="" m_count=""
+    local cur_hash="" cur_mtime="" cur_commit="" cur_cache_sha="" cur_count=""
     cache="$(devtool_recipes_cache_path "$machine")"
     meta="$(devtool_recipes_meta_path "$machine")"
     if [[ -f "$cache" ]]; then
-        if [[ ! -f "$meta" ]]; then
-            state="stale"
-        else
-            local m_schema
-            m_schema="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("schema_version",""))' "$meta" 2>/dev/null || true)"
-            state="stale"
-            if [[ "$m_schema" == "$(_devtool_recipes_schema_version)" ]]; then
-                local cur_hash cur_mtime cur_commit m_hash m_mtime m_commit
-                cur_hash="$(sha256sum "${build_dir}/conf/bblayers.conf" 2>/dev/null | awk '{print $1}' || true)"
-                cur_mtime="$(stat -c %Y "${build_dir}/conf/bblayers.conf" 2>/dev/null || echo 0)"
-                cur_commit="$(git -C "${OPENBMC_DIR}" rev-parse HEAD 2>/dev/null || echo "")"
-                m_hash="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("bblayers_hash",""))' "$meta" 2>/dev/null || true)"
-                m_mtime="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("bblayers_mtime",0))' "$meta" 2>/dev/null || true)"
-                m_commit="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("openbmc_commit",""))' "$meta" 2>/dev/null || true)"
-                if [[ "$m_hash" == "$cur_hash" && "$m_mtime" == "$cur_mtime" && "$m_commit" == "$cur_commit" ]]; then
-                    local cur_cache_sha cur_count m_cache_sha m_count
-                    cur_cache_sha="$(sha256sum "$cache" 2>/dev/null | awk '{print $1}' || true)"
-                    cur_count="$(wc -l < "$cache" 2>/dev/null | tr -d ' ' || echo 0)"
-                    m_cache_sha="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("cache_sha256",""))' "$meta" 2>/dev/null || true)"
-                    m_count="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("count",0))' "$meta" 2>/dev/null || true)"
-                    if [[ -n "$m_cache_sha" && "$m_cache_sha" == "$cur_cache_sha" && "$m_count" == "$cur_count" ]]; then
-                        state="fresh"
-                    fi
-                fi
-            fi
+        state="stale"
+        if [[ -f "$meta" ]] &&
+           _devtool_recipes_read_meta_values "$meta" m_schema m_hash m_mtime m_commit m_cache_sha m_count &&
+           [[ "$m_schema" == "$(_devtool_recipes_schema_version)" ]] &&
+           _devtool_recipes_is_sha256 "$m_hash" &&
+           _devtool_recipes_is_nonnegative_integer "$m_mtime" &&
+           _devtool_recipes_is_git_revision "$m_commit" &&
+           _devtool_recipes_is_sha256 "$m_cache_sha" &&
+           _devtool_recipes_is_positive_integer "$m_count" &&
+           _devtool_recipes_collect_source_fingerprint "$build_dir" cur_hash cur_mtime cur_commit &&
+           [[ "$m_hash" == "$cur_hash" && "$m_mtime" == "$cur_mtime" && "$m_commit" == "$cur_commit" ]] &&
+           _devtool_recipes_collect_cache_integrity "$cache" cur_cache_sha cur_count &&
+           [[ "$m_cache_sha" == "$cur_cache_sha" && "$m_count" == "$cur_count" ]]; then
+            state="fresh"
         fi
     fi
     printf -v "$state_outvar" '%s' "$state"
     return 0
 }
 
-# devtool_search_list <machine> <pattern>
-devtool_search_list() {
-    local machine="$1" pattern="$2"
-    local cache
+# _devtool_search_list_unlocked <machine> <pattern>
+_devtool_search_list_unlocked() {
+    local machine="$1" pattern="$2" cache
     cache="$(devtool_recipes_cache_path "$machine")"
     [[ -f "$cache" ]] || return 0
     python3 -c '
-import json, sys
+import json
+import sys
+
 cache, pattern = sys.argv[1], sys.argv[2]
+records = []
 try:
-    f = open(cache)
-except OSError:
-    sys.exit(0)
-for line in f:
-    line = line.strip()
-    if not line:
-        continue
-    try:
-        d = json.loads(line)
-    except ValueError:
-        continue
-    if not pattern or pattern in d.get("recipe", ""):
-        print(line)
-' "$cache" "$pattern" 2>/dev/null || true
-    return 0
+    with open(cache, encoding="utf-8") as cache_file:
+        for line in cache_file:
+            line = line.strip()
+            if not line:
+                continue
+            record = json.loads(line)
+            if not isinstance(record, dict) or not isinstance(record.get("recipe"), str):
+                raise ValueError("invalid recipe record")
+            if not pattern or pattern in record["recipe"]:
+                records.append(line)
+except (OSError, ValueError, TypeError, UnicodeError):
+    raise SystemExit(1)
+
+if records:
+    print("\n".join(records))
+' "$cache" "$pattern" 2>/dev/null
+}
+
+# devtool_search_cache_state <machine> <build_dir> <state_outvar>
+# Acquires a shared lock so standalone callers never inspect a partial publish.
+devtool_search_cache_state() {
+    local machine="$1" build_dir="$2" state_outvar="$3" result_state="stale" lock rc=0
+    [[ -d "${CONFIGS_DIR}" ]] || { printf -v "$state_outvar" '%s' "missing"; return 0; }
+    lock="$(devtool_recipes_lock_path "$machine")"
+    {
+        if ! flock -s 9; then
+            rc=1
+        else
+            _devtool_search_cache_state_unlocked "$machine" "$build_dir" result_state || rc=$?
+        fi
+    } 9>"$lock" 2>/dev/null || rc=1
+    [[ "$rc" -eq 0 ]] || result_state="stale"
+    printf -v "$state_outvar" '%s' "$result_state"
+    return "$rc"
+}
+
+# devtool_search_list <machine> <pattern>
+# Acquires a shared lock for callers that only need JSONL rendering.
+devtool_search_list() {
+    local machine="$1" pattern="$2" lock rc=0
+    [[ -d "${CONFIGS_DIR}" ]] || return 0
+    lock="$(devtool_recipes_lock_path "$machine")"
+    {
+        if ! flock -s 9; then
+            rc=1
+        else
+            _devtool_search_list_unlocked "$machine" "$pattern" || rc=$?
+        fi
+    } 9>"$lock" 2>/dev/null || rc=1
+    return "$rc"
+}
+
+# devtool_search_read <machine> <build_dir> <pattern> <state_outvar>
+# One shared-lock operation: validate cache and render JSONL from the same generation.
+devtool_search_read() {
+    local machine="$1" build_dir="$2" pattern="$3" state_outvar="$4"
+    local result_state="stale" lock rc=0
+    [[ -d "${CONFIGS_DIR}" ]] || { printf -v "$state_outvar" '%s' "missing"; return 0; }
+    lock="$(devtool_recipes_lock_path "$machine")"
+    {
+        if ! flock -s 9; then
+            rc=1
+        else
+            _devtool_search_cache_state_unlocked "$machine" "$build_dir" result_state || rc=$?
+            if [[ "$rc" -eq 0 && "$result_state" == "fresh" ]]; then
+                _devtool_search_list_unlocked "$machine" "$pattern" || rc=$?
+            fi
+        fi
+    } 9>"$lock" 2>/dev/null || rc=1
+    [[ "$rc" -eq 0 ]] || result_state="stale"
+    printf -v "$state_outvar" '%s' "$result_state"
+    return "$rc"
 }
 
 # devtool_search_refresh <machine> <build_dir> <stage_outvar> <stderr_file_outvar>
@@ -140,26 +301,32 @@ devtool_search_refresh() {
         printf -v "$stage_outvar" '%s' ""; printf -v "$stderr_file_outvar" '%s' "$stderr_file"
         rm -f "$stage_file" "$stdout_file"; return 1
     fi
-    local pre_hash pre_commit
-    pre_hash="$(sha256sum "${build_dir}/conf/bblayers.conf" 2>/dev/null | awk '{print $1}' || true)"
-    pre_commit="$(git -C "${OPENBMC_DIR}" rev-parse HEAD 2>/dev/null || echo "")"
-    local lock="${CONFIGS_DIR}/.${machine}.recipes.lock"
+    local pre_hash="" pre_mtime="" pre_commit=""
+    if ! _devtool_recipes_collect_source_fingerprint "$build_dir" pre_hash pre_mtime pre_commit; then
+        printf 'ob dev refresh: failed to collect source fingerprint before generation\n' >>"$stderr_file"
+        rc=1
+    fi
+    local lock
+    lock="$(devtool_recipes_lock_path "$machine")"
     {
         if ! flock 9; then
             printf 'ob dev refresh: failed to acquire cache lock %s\n' "$lock" >>"$stderr_file"
             rc=1
         else
-            _devtool_env_exec "$machine" "$build_dir" "$stage_file" "$stdout_file" "$stderr_file" -- \
-                python3 "${OB_ENTRY_DIR}/tools/parse_bitbake_recipes.py" --build-dir "$build_dir" --machine "$machine" || rc=$?
+            if [[ "$rc" -eq 0 ]]; then
+                _devtool_env_exec "$machine" "$build_dir" "$stage_file" "$stdout_file" "$stderr_file" -- \
+                    python3 "${OB_ENTRY_DIR}/tools/parse_bitbake_recipes.py" --build-dir "$build_dir" --machine "$machine" || rc=$?
+            fi
             if [[ "$rc" -eq 0 && -s "$stdout_file" ]]; then
-                local post_hash post_commit
-                post_hash="$(sha256sum "${build_dir}/conf/bblayers.conf" 2>/dev/null | awk '{print $1}' || true)"
-                post_commit="$(git -C "${OPENBMC_DIR}" rev-parse HEAD 2>/dev/null || echo "")"
-                if [[ "$pre_hash" != "$post_hash" || "$pre_commit" != "$post_commit" ]]; then
+                local post_hash="" post_mtime="" post_commit=""
+                if ! _devtool_recipes_collect_source_fingerprint "$build_dir" post_hash post_mtime post_commit; then
+                    printf 'ob dev refresh: failed to collect source fingerprint after generation\n' >>"$stderr_file"
+                    rc=1
+                elif [[ "$pre_hash" != "$post_hash" || "$pre_mtime" != "$post_mtime" || "$pre_commit" != "$post_commit" ]]; then
                     printf 'ob dev refresh: bblayers or OpenBMC commit changed during generation\n' >>"$stderr_file"
                     rc=1
                 else
-                    local cache meta tmp_cache="" tmp_meta="" cur_mtime sha count
+                    local cache meta tmp_cache="" tmp_meta="" staged_cache_sha="" staged_record_count=""
                     local old_cache_bak="" old_meta_bak="" had_cache=0 had_meta=0 meta_published=0
                     cache="$(devtool_recipes_cache_path "$machine")"
                     meta="$(devtool_recipes_meta_path "$machine")"
@@ -171,14 +338,14 @@ devtool_search_refresh() {
                         rc=1
                     fi
                     if [[ "$rc" -eq 0 ]]; then
-                        sha="$(sha256sum "$tmp_cache" 2>/dev/null | awk '{print $1}' || true)"
-                        count="$(wc -l < "$tmp_cache" 2>/dev/null | tr -d ' ' || echo 0)"
-                        cur_mtime="$(stat -c %Y "${build_dir}/conf/bblayers.conf" 2>/dev/null || echo 0)"
-                        if ! tmp_meta="$(mktemp "${meta}.XXXXXX" 2>/dev/null)"; then
+                        if ! _devtool_recipes_collect_cache_integrity "$tmp_cache" staged_cache_sha staged_record_count; then
+                            printf 'ob dev refresh: failed to collect staged cache integrity data\n' >>"$stderr_file"
+                            rc=1
+                        elif ! tmp_meta="$(mktemp "${meta}.XXXXXX" 2>/dev/null)"; then
                             printf 'ob dev refresh: failed to stage metadata at %s\n' "$meta" >>"$stderr_file"
                             rc=1
                         elif ! printf '{"schema_version":"%s","bblayers_hash":"%s","bblayers_mtime":%s,"openbmc_commit":"%s","cache_sha256":"%s","count":%s,"generated_at":"%s"}\n' \
-                                "$(_devtool_recipes_schema_version)" "$post_hash" "$cur_mtime" "$post_commit" "$sha" "$count" \
+                                "$(_devtool_recipes_schema_version)" "$post_hash" "$post_mtime" "$post_commit" "$staged_cache_sha" "$staged_record_count" \
                                 "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" > "$tmp_meta" 2>/dev/null; then
                             printf 'ob dev refresh: failed to write staged metadata %s\n' "$tmp_meta" >>"$stderr_file"
                             rc=1
@@ -249,8 +416,18 @@ devtool_search_refresh() {
 
 # devtool_recipes_clear_cache <machine>
 devtool_recipes_clear_cache() {
-    local machine="$1"
+    local machine="$1" cache meta lock rc=0
     [[ "${DRY_RUN:-0}" == "1" ]] && return 0
-    rm -f "$(devtool_recipes_cache_path "$machine")" "$(devtool_recipes_meta_path "$machine")"
-    return 0
+    [[ -d "${CONFIGS_DIR}" ]] || return 0
+    cache="$(devtool_recipes_cache_path "$machine")"
+    meta="$(devtool_recipes_meta_path "$machine")"
+    lock="$(devtool_recipes_lock_path "$machine")"
+    {
+        if ! flock 9; then
+            rc=1
+        elif ! rm -f "$cache" "$meta"; then
+            rc=1
+        fi
+    } 9>"$lock" 2>/dev/null || rc=1
+    return "$rc"
 }

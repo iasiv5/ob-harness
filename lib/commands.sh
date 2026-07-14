@@ -894,8 +894,12 @@ cmd_dev() {
                 error "[DRY-RUN] ob dev list: would read recipe cache + output JSONL (pattern='$dev_pattern')." >&2
                 exit 0
             fi
-            local _state=""
-            devtool_search_cache_state "$dev_machine" "$dev_build_dir" _state
+            local _state="" _read_rc=0
+            devtool_search_read "$dev_machine" "$dev_build_dir" "$dev_pattern" _state || _read_rc=$?
+            if [[ "$_read_rc" -ne 0 ]]; then
+                error "ob dev list: failed to read recipe cache safely." >&2
+                exit 1
+            fi
             case "$_state" in
                 missing)
                     local _rstage="" _rstderr="" _rrc=0
@@ -906,9 +910,14 @@ cmd_dev() {
                         error "ob dev list: failed to generate recipe cache (stage=$_rstage)." >&2
                         exit 1
                     fi
-                    # 🔴1: refresh 后重检 cache_state,只有 fresh 才 list(防 partial/degraded 误输出)
+                    # Refresh 后在同一 shared lock 内重检并读取，避免 state/list 跨代。
                     local _post_state=""
-                    devtool_search_cache_state "$dev_machine" "$dev_build_dir" _post_state
+                    _read_rc=0
+                    devtool_search_read "$dev_machine" "$dev_build_dir" "$dev_pattern" _post_state || _read_rc=$?
+                    if [[ "$_read_rc" -ne 0 ]]; then
+                        error "ob dev list: failed to read generated recipe cache safely." >&2
+                        exit 1
+                    fi
                     if [[ "$_post_state" != "fresh" ]]; then
                         error "ob dev list: cache not fresh after refresh (state=$_post_state)." >&2
                         exit 1
@@ -921,7 +930,6 @@ cmd_dev() {
                     ;;
                 fresh) ;;
             esac
-            devtool_search_list "$dev_machine" "$dev_pattern"
             exit 0
             ;;
         modify)

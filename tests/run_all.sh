@@ -8,12 +8,13 @@
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR/.." || exit 1   # 切到仓库根,使 expect 脚本的 spawn ./ob 成立
+usage() { echo "Usage: tests/run_all.sh [--full] [--integration]" >&2; }
 FULL=0; INTEGRATION=0
 for arg in "$@"; do
     case "$arg" in
         --full) FULL=1 ;;
         --integration) INTEGRATION=1 ;;
-        *) echo "unknown: $arg" >&2 ;;
+        *) echo "unknown: $arg" >&2; usage; exit 1 ;;
     esac
 done
 LAYERS=(protocol unit orchestration); [[ "$INTEGRATION" == 1 ]] && LAYERS+=(integration)
@@ -26,13 +27,21 @@ run_sh() { # <file>
     output="$(mktemp "$tmp_root/ob-run-sh.XXXXXX")" || { echo "FAIL $base (mktemp failed)"; FAILED+=("$file"); return; }
     bash "$file" >"$output" 2>&1
     rc=$?
-    if [[ "$rc" -eq 0 ]]; then
-        if grep -q '^skip ' "$output"; then
-            grep '^skip ' "$output"
-        else
+    if [[ "$rc" -eq 77 ]]; then
+        if grep -q '^SKIP: ' "$output"; then
             cat "$output"
-            echo "ok   $base"
+            echo "skip $base"
+        else
+            echo "FAIL $base (rc=77 without SKIP: protocol marker)"
+            sed 's/^/  | /' "$output"
+            FAILED+=("$file")
         fi
+        rm -f "$output"
+        return
+    fi
+    if [[ "$rc" -eq 0 ]]; then
+        cat "$output"
+        echo "ok   $base"
         rm -f "$output"
         return
     fi

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1091
 # tests/integration/ob_dev.sh — ob dev real integration (opt-in via --integration).
 # Select an unmodified recipe and clean it even if modify succeeds before reporting failure.
 set -uo pipefail
@@ -9,7 +10,6 @@ devtool_in_env() {
     (
         cd "$OPENBMC_DIR" &&
         set +u &&
-        # shellcheck disable=SC1091
         source setup "$machine" "$OPENBMC_DIR/build/$machine" >/dev/null 2>&1 &&
         devtool "$@"
     ) 2>/dev/null
@@ -60,7 +60,7 @@ ob_dev_integration_main() {
             [[ -f "$machine_marker" ]] && MACHINE="$(basename "$machine_marker" .init-done)" && break
         done
     fi
-    [[ -n "$MACHINE" ]] || { echo "skip no init machine"; exit 0; }
+    [[ -n "$MACHINE" ]] || { echo "SKIP: no init machine"; exit 77; }
     echo "[integration] machine=$MACHINE openbmc=$OPENBMC_DIR"
 
     ./ob dev --machine "$MACHINE" refresh >/dev/null 2>&1
@@ -121,7 +121,7 @@ print("\n".join(recipes))
             break
         fi
     done <<<"$CANDIDATES"
-    [[ -n "$RECIPE" ]] || { echo "skip no unmodified recipe in cache (first 50)"; exit 0; }
+    [[ -n "$RECIPE" ]] || { echo "SKIP: no unmodified recipe in cache (first 50)"; exit 77; }
     echo "modify recipe=$RECIPE (selected unmodified)"
 
     CLEANUP_NEEDED=0

@@ -99,8 +99,8 @@ assert_eq "partial modify cleanup leaves no modified recipe" "$(cat "$FAKE_STATE
 printf 'user-recipe: %s\n' "$FAKE_SRCTREE" >"$FAKE_STATE"
 : >"$FAKE_LOG"
 run_harness normal
-assert_eq "all sampled recipes modified is a skip" "$RUN_RC" 0
-assert_contains "skip outcome is explicit" "$RUN_OUT" "skip no unmodified recipe"
-assert_true "skip outcome matches runner protocol" grep -q '^skip ' <<<"$RUN_OUT"
+assert_eq "all sampled recipes modified is a skip" "$RUN_RC" 77
+assert_contains "skip outcome is explicit" "$RUN_OUT" "SKIP: no unmodified recipe"
+assert_true "skip outcome matches runner protocol" grep -q '^SKIP: ' <<<"$RUN_OUT"
 
 assert_summary
