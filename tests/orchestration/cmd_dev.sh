@@ -27,6 +27,7 @@ devtool_search_refresh() {
     touch "$TMP/refresh_called" 2>/dev/null || true   # 文件标记(跨子 shell 可见,变量不回传)
     printf -v "$so" '%s' "command"
     printf -v "$se" '%s' "/dev/null"
+    MOCK_STATE="fresh"   # 🔴1: refresh 成功后 cache fresh(cmd_dev list missing 重检 cache_state 要 fresh)
     return "$MOCK_REFRC"
 }
 devtool_modify_run() {

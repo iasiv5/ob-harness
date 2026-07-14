@@ -85,7 +85,8 @@ def main():
                 if _recipe_classes(recipe) & _skip_classes:
                     continue
                 # PN variant 附加防御(cross/canadian recipe 若无对应 class)
-                if any(s in pn for s in ("-cross", "-crosssdk", "-cross-canadian", "nativesdk-", "canadian-", "-native", "packagegroup-")):
+                # 🟡5: 对齐 standard.py 排除 gcc-source/kernel-devsrc/package-index/perf(devtool 拒绝)
+                if any(s in pn for s in ("-cross", "-crosssdk", "-cross-canadian", "nativesdk-", "canadian-", "-native", "packagegroup-", "gcc-source-", "kernel-devsrc")) or pn in ("package-index", "perf"):
                     continue
                 try:
                     d = tinfoil.parse_recipe(pn)
@@ -114,7 +115,7 @@ def main():
         sys.stdout = real_stdout
 
     print(f"emitted={emitted} skipped={skipped}", file=sys.stderr)
-    return 0 if emitted > 0 else 1
+    return 0 if emitted > 0 and skipped == 0 else 1   # 🔴1: skipped>0 → 失败(partial 不发布 active cache)
 
 
 if __name__ == "__main__":

@@ -826,13 +826,25 @@ cmd_dev() {
         case "$1" in
             --machine)
                 [[ $# -ge 2 ]] || { error "Missing value for --machine" >&2; exit 1; }
+                [[ -z "$2" || "$2" == -* ]] && { error "ob dev: invalid --machine value '$2'" >&2; exit 1; }
                 dev_machine="$2"; shift 2 ;;
-            --machine=*) dev_machine="${1#--machine=}"; shift ;;
+            --machine=*)
+                dev_machine="${1#--machine=}"; shift
+                [[ -z "$dev_machine" ]] && { error "ob dev: empty --machine value" >&2; exit 1; } ;;
             -d|-D|--dry-run) DRY_RUN=1; shift ;;
             list|modify|refresh|build|deploy|finish|reset)
-                [[ -z "$dev_subcmd" ]] || { error "ob dev: duplicate subcommand '$1'" >&2; exit 1; }
-                dev_subcmd="$1"; shift ;;
-            --*) error "ob dev: unknown option '$1'" >&2; exit 1 ;;
+                if [[ -z "$dev_subcmd" ]]; then
+                    dev_subcmd="$1"
+                else
+                    _positional_count=$((_positional_count + 1))
+                    case "$dev_subcmd" in
+                        list)   [[ -z "$dev_pattern" ]] || { error "ob dev list: too many patterns" >&2; exit 1; }; dev_pattern="$1" ;;
+                        modify) [[ -z "$dev_recipe" ]]  || { error "ob dev modify: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
+                        *)      error "ob dev $dev_subcmd: unexpected argument '$1'" >&2; exit 1 ;;
+                    esac
+                fi
+                shift ;;
+            -*) error "ob dev: unknown option '$1'" >&2; exit 1 ;;
             *)
                 _positional_count=$((_positional_count + 1))
                 case "$dev_subcmd" in
@@ -892,6 +904,13 @@ cmd_dev() {
                     rm -f "$_rstderr" 2>/dev/null
                     if [[ "$_rrc" -ne 0 ]]; then
                         error "ob dev list: failed to generate recipe cache (stage=$_rstage)." >&2
+                        exit 1
+                    fi
+                    # 🔴1: refresh 后重检 cache_state,只有 fresh 才 list(防 partial/degraded 误输出)
+                    local _post_state=""
+                    devtool_search_cache_state "$dev_machine" "$dev_build_dir" _post_state
+                    if [[ "$_post_state" != "fresh" ]]; then
+                        error "ob dev list: cache not fresh after refresh (state=$_post_state)." >&2
                         exit 1
                     fi
                     ;;
