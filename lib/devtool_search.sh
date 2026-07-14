@@ -65,6 +65,42 @@ _devtool_recipes_is_git_revision() { [[ "$1" =~ ^([[:xdigit:]]{40}|[[:xdigit:]]{
 _devtool_recipes_is_nonnegative_integer() { [[ "$1" =~ ^[0-9]+$ ]]; }
 _devtool_recipes_is_positive_integer() { [[ "$1" =~ ^[1-9][0-9]*$ ]]; }
 
+# _devtool_recipes_validate_jsonl <path> <record_count_outvar>
+# Cache records are machine-readable API data: every line must satisfy the full schema.
+_devtool_recipes_validate_jsonl() {
+    local path="$1" outvar="$2" validated_record_count=""
+    [[ -f "$path" ]] || return 1
+    validated_record_count="$(python3 - "$path" <<'PY'
+import json
+import sys
+
+try:
+    with open(sys.argv[1], encoding="utf-8") as cache_file:
+        record_count = 0
+        for line_number, line in enumerate(cache_file, 1):
+            if not line.strip():
+                raise ValueError(f"blank JSONL record {line_number}")
+            record = json.loads(line)
+            if not isinstance(record, dict):
+                raise ValueError(f"non-object JSONL record {line_number}")
+            for field in ("recipe", "layer", "summary"):
+                value = record.get(field)
+                if not isinstance(value, str) or not value.strip():
+                    raise ValueError(f"invalid {field} in JSONL record {line_number}")
+            record_count += 1
+except (OSError, UnicodeError, ValueError):
+    raise SystemExit(1)
+
+if record_count == 0:
+    raise SystemExit(1)
+print(record_count)
+PY
+)" || return 1
+    _devtool_recipes_is_positive_integer "$validated_record_count" || return 1
+    printf -v "$outvar" '%s' "$validated_record_count"
+    return 0
+}
+
 # _devtool_recipes_read_sha256 <path> <outvar>
 _devtool_recipes_read_sha256() {
     local path="$1" outvar="$2" output="" digest=""
@@ -95,17 +131,6 @@ _devtool_recipes_read_commit() {
     return 0
 }
 
-# _devtool_recipes_read_record_count <path> <outvar>
-_devtool_recipes_read_record_count() {
-    local path="$1" outvar="$2" observed_count=""
-    [[ -f "$path" ]] || return 1
-    observed_count="$(wc -l <"$path")" || return 1
-    observed_count="${observed_count//[[:space:]]/}"
-    _devtool_recipes_is_positive_integer "$observed_count" || return 1
-    printf -v "$outvar" '%s' "$observed_count"
-    return 0
-}
-
 # _devtool_recipes_collect_source_fingerprint <build_dir> <hash_outvar> <mtime_outvar> <commit_outvar>
 _devtool_recipes_collect_source_fingerprint() {
     local build_dir="$1" hash_outvar="$2" mtime_outvar="$3" commit_outvar="$4"
@@ -123,7 +148,7 @@ _devtool_recipes_collect_source_fingerprint() {
 _devtool_recipes_collect_cache_integrity() {
     local cache="$1" sha_outvar="$2" count_outvar="$3" computed_digest="" computed_records=""
     _devtool_recipes_read_sha256 "$cache" computed_digest || return 1
-    _devtool_recipes_read_record_count "$cache" computed_records || return 1
+    _devtool_recipes_validate_jsonl "$cache" computed_records || return 1
     printf -v "$sha_outvar" '%s' "$computed_digest"
     printf -v "$count_outvar" '%s' "$computed_records"
     return 0
@@ -206,9 +231,11 @@ _devtool_search_cache_state_unlocked() {
 
 # _devtool_search_list_unlocked <machine> <pattern>
 _devtool_search_list_unlocked() {
-    local machine="$1" pattern="$2" cache
+    local machine="$1" pattern="$2" cache validated_records=""
     cache="$(devtool_recipes_cache_path "$machine")"
     [[ -f "$cache" ]] || return 0
+    _devtool_recipes_validate_jsonl "$cache" validated_records || return 1
+    [[ -n "$validated_records" ]] || return 1
     python3 -c '
 import json
 import sys
@@ -222,8 +249,11 @@ try:
             if not line:
                 continue
             record = json.loads(line)
-            if not isinstance(record, dict) or not isinstance(record.get("recipe"), str):
+            if not isinstance(record, dict):
                 raise ValueError("invalid recipe record")
+            for field in ("recipe", "layer", "summary"):
+                if not isinstance(record.get(field), str) or not record[field].strip():
+                    raise ValueError("invalid recipe record")
             if not pattern or pattern in record["recipe"]:
                 records.append(line)
 except (OSError, ValueError, TypeError, UnicodeError):
@@ -292,14 +322,35 @@ devtool_search_read() {
 
 # devtool_search_refresh <machine> <build_dir> <stage_outvar> <stderr_file_outvar>
 # A publish failure restores the old cache/meta pair. Backup or restore failures are fail-closed.
+# If diagnostics tempfile creation itself fails, stderr is the only remaining error channel.
 devtool_search_refresh() {
     local machine="$1" build_dir="$2" stage_outvar="$3" stderr_file_outvar="$4"
-    local stage_file stdout_file stderr_file rc
-    stage_file="$(mktemp)"; stdout_file="$(mktemp)"; stderr_file="$(mktemp)"
-    rc=0
+    local stage_file="" stdout_file="" stderr_file="" rc=0
+    if ! stderr_file="$(mktemp)"; then
+        printf 'ob dev refresh: failed to create diagnostics tempfile\n' >&2
+        printf -v "$stage_outvar" '%s' ""
+        printf -v "$stderr_file_outvar" '%s' ""
+        return 1
+    fi
+    if ! stage_file="$(mktemp)"; then
+        printf 'ob dev refresh: failed to create stage tempfile\n' >>"$stderr_file"
+        printf -v "$stage_outvar" '%s' ""
+        printf -v "$stderr_file_outvar" '%s' "$stderr_file"
+        return 1
+    fi
+    if ! stdout_file="$(mktemp)"; then
+        printf 'ob dev refresh: failed to create command-output tempfile\n' >>"$stderr_file"
+        rm -f "$stage_file"
+        printf -v "$stage_outvar" '%s' ""
+        printf -v "$stderr_file_outvar" '%s' "$stderr_file"
+        return 1
+    fi
     if ! mkdir -p "${CONFIGS_DIR}" 2>/dev/null; then
-        printf -v "$stage_outvar" '%s' ""; printf -v "$stderr_file_outvar" '%s' "$stderr_file"
-        rm -f "$stage_file" "$stdout_file"; return 1
+        printf 'ob dev refresh: failed to create cache directory %s\n' "${CONFIGS_DIR}" >>"$stderr_file"
+        printf -v "$stage_outvar" '%s' ""
+        printf -v "$stderr_file_outvar" '%s' "$stderr_file"
+        rm -f "$stage_file" "$stdout_file"
+        return 1
     fi
     local pre_hash="" pre_mtime="" pre_commit=""
     if ! _devtool_recipes_collect_source_fingerprint "$build_dir" pre_hash pre_mtime pre_commit; then
@@ -318,12 +369,18 @@ devtool_search_refresh() {
                     python3 "${OB_ENTRY_DIR}/tools/parse_bitbake_recipes.py" --build-dir "$build_dir" --machine "$machine" || rc=$?
             fi
             if [[ "$rc" -eq 0 && -s "$stdout_file" ]]; then
-                local post_hash="" post_mtime="" post_commit=""
+                local post_hash="" post_mtime="" post_commit="" generated_record_count=""
                 if ! _devtool_recipes_collect_source_fingerprint "$build_dir" post_hash post_mtime post_commit; then
                     printf 'ob dev refresh: failed to collect source fingerprint after generation\n' >>"$stderr_file"
                     rc=1
                 elif [[ "$pre_hash" != "$post_hash" || "$pre_mtime" != "$post_mtime" || "$pre_commit" != "$post_commit" ]]; then
                     printf 'ob dev refresh: bblayers or OpenBMC commit changed during generation\n' >>"$stderr_file"
+                    rc=1
+                elif ! _devtool_recipes_validate_jsonl "$stdout_file" generated_record_count; then
+                    printf 'ob dev refresh: recipe index generator produced invalid JSONL\n' >>"$stderr_file"
+                    rc=1
+                elif [[ -z "$generated_record_count" ]]; then
+                    printf 'ob dev refresh: recipe index generator produced no valid records\n' >>"$stderr_file"
                     rc=1
                 else
                     local cache meta tmp_cache="" tmp_meta="" staged_cache_sha="" staged_record_count=""

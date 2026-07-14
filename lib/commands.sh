@@ -745,7 +745,10 @@ cmd_init() {
         exit 1
     fi
     # 清理 recipes cache/meta(init 重跑后旧索引必然过期)
-    devtool_recipes_clear_cache "$MACHINE"
+    if ! devtool_recipes_clear_cache "$MACHINE"; then
+        error "Failed to clear recipe cache for '$MACHINE'."
+        exit 1
+    fi
 
     # --- Detect fresh run vs incremental re-run ---
     local is_rerun=0

@@ -74,12 +74,18 @@ if [[ "${FAKE_STAT_FAIL:-0}" == "1" && "$*" == *"$TEST_BBLAYERS"* ]]; then
 fi
 PATH=/usr/bin:/bin exec stat "$@"
 EOF
-cat > "$TMP/bin/wc" <<'EOF'
+cat > "$TMP/bin/mktemp" <<'EOF'
 #!/usr/bin/env bash
-[[ "${FAKE_WC_FAIL:-0}" == "1" ]] && exit 1
-PATH=/usr/bin:/bin exec wc "$@"
+if [[ -n "${FAKE_MKTEMP_FAIL_AT:-}" ]]; then
+    call_count=0
+    [[ -f "$FAKE_MKTEMP_COUNT_FILE" ]] && call_count="$(cat "$FAKE_MKTEMP_COUNT_FILE")"
+    call_count=$((call_count + 1))
+    printf '%s\n' "$call_count" >"$FAKE_MKTEMP_COUNT_FILE"
+    [[ "$call_count" == "$FAKE_MKTEMP_FAIL_AT" ]] && exit 1
+fi
+PATH=/usr/bin:/bin exec mktemp "$@"
 EOF
-chmod +x "$TMP/bin/cp" "$TMP/bin/mv" "$TMP/bin/sha256sum" "$TMP/bin/stat" "$TMP/bin/wc"
+chmod +x "$TMP/bin/cp" "$TMP/bin/mv" "$TMP/bin/sha256sum" "$TMP/bin/stat" "$TMP/bin/mktemp"
 
 write_cache() { printf '%s\n' "$1" > "$CACHE"; }
 write_meta() {
@@ -157,9 +163,38 @@ assert_eq "refresh stage=command" "$rstage" "command"
 assert_true "refresh stderr_file 存在" test -f "$rstderr"
 assert_contains "refresh 写 cache(JSONL)" "$(cat "$CACHE" 2>/dev/null)" "phosphor-ipmi-host"
 assert_true "refresh 写 meta" test -f "$META"
+assert_eq "refresh meta count uses valid records" \
+    "$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["count"])' "$META")" "3"
 # refresh 后 cache_state 应 fresh(meta 匹配当前)
 st=""; devtool_search_cache_state "$MACHINE" "$BUILD_DIR" st
 assert_eq "refresh 后 cache_state=fresh" "$st" "fresh"
+
+# === refresh rejects malformed, blank, or incomplete JSONL before publication ===
+rm -f "$CACHE" "$META"
+REFRESH_JSONL='{"recipe":"broken"'
+rc=0; devtool_search_refresh "$MACHINE" "$BUILD_DIR" rstage rstderr || rc=$?
+assert_false "malformed JSONL makes refresh fail" test "$rc" -eq 0
+assert_false "malformed JSONL does not publish cache" test -f "$CACHE"
+assert_false "malformed JSONL does not publish metadata" test -f "$META"
+assert_contains "malformed JSONL diagnostic" "$(cat "$rstderr")" "invalid JSONL"
+
+REFRESH_JSONL='   '
+rc=0; devtool_search_refresh "$MACHINE" "$BUILD_DIR" rstage rstderr || rc=$?
+assert_false "blank JSONL makes refresh fail" test "$rc" -eq 0
+assert_false "blank JSONL does not publish cache" test -f "$CACHE"
+assert_false "blank JSONL does not publish metadata" test -f "$META"
+
+REFRESH_JSONL='{"recipe":"incomplete","layer":"meta-test","summary":" "}'
+rc=0; devtool_search_refresh "$MACHINE" "$BUILD_DIR" rstage rstderr || rc=$?
+assert_false "incomplete JSONL schema makes refresh fail" test "$rc" -eq 0
+assert_false "incomplete JSONL does not publish cache" test -f "$CACHE"
+assert_false "incomplete JSONL does not publish metadata" test -f "$META"
+
+write_cache '{"recipe":"incomplete","layer":"meta-test","summary":" "}'
+write_meta "$(cur_hash)" "$(cur_mtime)" "$MOCK_COMMIT" "$(cache_sha)" "$(cache_count)"
+st=""; devtool_search_cache_state "$MACHINE" "$BUILD_DIR" st
+assert_eq "semantic-invalid cache_state is stale" "$st" "stale"
+REFRESH_JSONL="$JSONL_FIXTURE"
 
 # refresh 失败保留旧 cache
 write_cache "$JSONL_FIXTURE"
@@ -233,6 +268,32 @@ assert_old_pair_preserved() {
     assert_eq "$label preserves metadata" "$(cat "$META")" "$old_meta"
 }
 
+# Initial tempfile allocation failures must preserve the prior pair and retain diagnostics when possible.
+run_initial_mktemp_failure_case() {
+    local fail_at="$1" label="$2"
+    local capture="$TMP/mktemp-$fail_at.stderr"
+    local count_file="$TMP/mktemp-$fail_at.count"
+    prepare_old_pair
+    : >"$capture"
+    rm -f "$count_file"
+    export FAKE_MKTEMP_FAIL_AT="$fail_at" FAKE_MKTEMP_COUNT_FILE="$count_file"
+    rc=0; rstage=""; rstderr=""
+    devtool_search_refresh "$MACHINE" "$BUILD_DIR" rstage rstderr 2>"$capture" || rc=$?
+    unset FAKE_MKTEMP_FAIL_AT FAKE_MKTEMP_COUNT_FILE
+    assert_false "$label makes refresh fail" test "$rc" -eq 0
+    assert_old_pair_preserved "$label"
+    if [[ "$fail_at" == "1" ]]; then
+        assert_eq "$label has no stderr tempfile" "$rstderr" ""
+        assert_contains "$label writes fallback diagnostic" "$(cat "$capture")" "diagnostics tempfile"
+    else
+        assert_true "$label returns stderr tempfile" test -f "$rstderr"
+        assert_contains "$label records diagnostic" "$(cat "$rstderr")" "tempfile"
+    fi
+}
+run_initial_mktemp_failure_case 1 "diagnostics tempfile failure"
+run_initial_mktemp_failure_case 2 "stage tempfile failure"
+run_initial_mktemp_failure_case 3 "command-output tempfile failure"
+
 prepare_old_pair
 export FAKE_GIT_FAIL=1
 rc=0; devtool_search_refresh "$MACHINE" "$BUILD_DIR" rstage rstderr || rc=$?
@@ -268,15 +329,6 @@ unset FAKE_STAT_FAIL
 assert_false "mtime failure makes refresh fail" test "$rc" -eq 0
 assert_eq "mtime failure makes cache stale" "$st" "stale"
 assert_old_pair_preserved "mtime failure"
-
-prepare_old_pair
-export FAKE_WC_FAIL=1
-rc=0; devtool_search_refresh "$MACHINE" "$BUILD_DIR" rstage rstderr || rc=$?
-st=""; devtool_search_cache_state "$MACHINE" "$BUILD_DIR" st
-unset FAKE_WC_FAIL
-assert_false "record count failure makes refresh fail" test "$rc" -eq 0
-assert_eq "record count failure makes cache stale" "$st" "stale"
-assert_old_pair_preserved "record count failure"
 
 # A reader that validates and renders under one shared lock must only see a complete generation.
 write_cache "$JSONL_FIXTURE"

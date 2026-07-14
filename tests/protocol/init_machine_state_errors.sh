@@ -56,10 +56,17 @@ run_cmd_init_case() {
             clear)
                 machine_state_clear_init_progress() { return 1; }
                 machine_state_mark_init_done() { return 0; }
+                devtool_recipes_clear_cache() { return 0; }
                 ;;
             mark)
                 machine_state_clear_init_progress() { return 0; }
                 machine_state_mark_init_done() { return 1; }
+                devtool_recipes_clear_cache() { return 0; }
+                ;;
+            recipe_cache)
+                machine_state_clear_init_progress() { return 0; }
+                machine_state_mark_init_done() { return 0; }
+                devtool_recipes_clear_cache() { return 1; }
                 ;;
         esac
 
@@ -74,5 +81,9 @@ assert_contains "init clear failure message" "$output" "Failed to clear machine 
 output="$(run_cmd_init_case mark)"; rc=$?
 assert_eq "init mark failure rc" "$rc" 1
 assert_contains "init mark failure message" "$output" "Failed to write init-done marker: $TMP/workspace/configs/romulus.init-done"
+
+output="$(run_cmd_init_case recipe_cache)"; rc=$?
+assert_eq "init recipe cache clear failure rc" "$rc" 1
+assert_contains "init recipe cache clear failure message" "$output" "Failed to clear recipe cache for 'romulus'."
 
 assert_summary
