@@ -70,12 +70,22 @@ def main():
                         return coll
                 return None
 
-            # 排除 native/sdk/cross/canadian 变体(用 substring 覆盖 -cross-/-cross-canadian-/canadian- 等,
-            # 比 suffix/prefix 更全;评审指出 binutils-cross-arm/gcc-cross-canadian-arm 漏过滤)
-            _skip_substrings = ("-native", "-cross", "-crosssdk-", "-cross-canadian-", "nativesdk-", "canadian-")
+            # 🟡5: 按 class 过滤(inherit_files 权威,评审要求;覆盖 native/sdk/cross/canadian/image/populate_sdk/packagegroup)
+            _skip_classes = {"native", "nativesdk", "cross", "crosssdk", "cross-canadian",
+                             "image", "populate_sdk", "populate_sdk_qa", "packagegroup"}
+
+            def _recipe_classes(recipe):
+                try:
+                    return {os.path.basename(cf).replace(".bbclass", "") for cf in recipe.inherit_files}
+                except (AttributeError, TypeError):
+                    return set()
+
             for recipe in tinfoil.all_recipes():
                 pn = recipe.pn
-                if any(s in pn for s in _skip_substrings):
+                if _recipe_classes(recipe) & _skip_classes:
+                    continue
+                # PN variant 附加防御(cross/canadian recipe 若无对应 class)
+                if any(s in pn for s in ("-cross", "-crosssdk", "-cross-canadian", "nativesdk-", "canadian-", "-native")):
                     continue
                 try:
                     d = tinfoil.parse_recipe(pn)

@@ -32,7 +32,9 @@ devtool_search_cache_state() {
                 cur_count="$(wc -l < "$cache" 2>/dev/null | tr -d ' ' || echo 0)"
                 m_cache_sha="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("cache_sha256",""))' "$meta" 2>/dev/null || true)"
                 m_count="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("count",0))' "$meta" 2>/dev/null || true)"
-                if [[ -n "$m_cache_sha" && "$m_cache_sha" == "$cur_cache_sha" && "$m_count" == "$cur_count" ]]; then
+                local m_degraded
+                m_degraded="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("degraded","false"))' "$meta" 2>/dev/null || true)"
+                if [[ "$m_degraded" != "true" && -n "$m_cache_sha" && "$m_cache_sha" == "$cur_cache_sha" && "$m_count" == "$cur_count" ]]; then
                     state="fresh"
                 fi
             fi
@@ -111,8 +113,11 @@ devtool_search_refresh() {
                         count="$(wc -l < "$tmp_cache" 2>/dev/null | tr -d ' ' || echo 0)"
                         cur_mtime="$(stat -c %Y "${build_dir}/conf/bblayers.conf" 2>/dev/null || echo 0)"
                         tmp_meta="$(mktemp "${meta}.XXXXXX")"
-                        if printf '{"bblayers_hash":"%s","bblayers_mtime":%s,"openbmc_commit":"%s","cache_sha256":"%s","count":%s,"generated_at":"%s"}\n' \
-                                "$post_hash" "$cur_mtime" "$post_commit" "$sha" "$count" \
+                        local _skipped degraded="false"
+                        _skipped="$(grep -oE 'skipped=[0-9]+' "$stderr_file" 2>/dev/null | head -1 | grep -oE '[0-9]+' || echo 0)"
+                        [[ "$_skipped" -gt 0 ]] && degraded="true"
+                        if printf '{"bblayers_hash":"%s","bblayers_mtime":%s,"openbmc_commit":"%s","cache_sha256":"%s","count":%s,"degraded":"%s","generated_at":"%s"}\n' \
+                                "$post_hash" "$cur_mtime" "$post_commit" "$sha" "$count" "$degraded" \
                                 "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" > "$tmp_meta" 2>/dev/null; then
                             # 🔴3: 先 mv meta,成功后才 mv cache(meta 失败保留旧 cache+meta)
                             if ! mv "$tmp_meta" "$meta" 2>/dev/null; then rm -f "$tmp_cache" "$tmp_meta"; rc=1
