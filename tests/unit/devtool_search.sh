@@ -30,10 +30,12 @@ META="$CONFIGS_DIR/$MACHINE.recipes.meta.json"
 
 write_cache() { printf '%s\n' "$1" > "$CACHE"; }
 write_meta() {
-    # $1=hash $2=mtime $3=commit
-    printf '{"bblayers_hash":"%s","bblayers_mtime":%s,"openbmc_commit":"%s","generated_at":"2026-07-13T00:00:00Z"}\n' \
-        "$1" "$2" "$3" > "$META"
+    # $1=hash $2=mtime $3=commit [$4=cache_sha $5=count]
+    printf '{"bblayers_hash":"%s","bblayers_mtime":%s,"openbmc_commit":"%s","cache_sha256":"%s","count":%s,"generated_at":"2026-07-14T00:00:00Z"}\n' \
+        "$1" "$2" "$3" "${4:-}" "${5:-0}" > "$META"
 }
+cache_sha() { sha256sum "$CACHE" | awk '{print $1}'; }
+cache_count() { wc -l < "$CACHE" | tr -d ' '; }
 cur_hash() { sha256sum "$BUILD_DIR/conf/bblayers.conf" | awk '{print $1}'; }
 cur_mtime() { stat -c %Y "$BUILD_DIR/conf/bblayers.conf"; }
 
@@ -56,11 +58,16 @@ while IFS= read -r line; do
 done <<<"$out"
 
 # === cache_state 三态 ===
-# fresh: meta 匹配当前
+# fresh: meta 匹配当前(含 cache_sha256/count 一致)
 write_cache "$JSONL_FIXTURE"
-write_meta "$(cur_hash)" "$(cur_mtime)" "mockcommit123"
+write_meta "$(cur_hash)" "$(cur_mtime)" "mockcommit123" "$(cache_sha)" "$(cache_count)"
 st=""; devtool_search_cache_state "$MACHINE" "$BUILD_DIR" st
 assert_eq "cache_state fresh" "$st" "fresh"
+# 🔴3: cache 与 meta cache_sha 不一致 → stale(新 cache+旧 meta 场景)
+write_cache "$JSONL_FIXTURE"
+write_meta "$(cur_hash)" "$(cur_mtime)" "mockcommit123" "WRONG_SHA" "$(cache_count)"
+st=""; devtool_search_cache_state "$MACHINE" "$BUILD_DIR" st
+assert_eq "cache_state stale(cache_sha 不匹配 meta)" "$st" "stale"
 # missing: 删 cache
 rm -f "$CACHE"
 st=""; devtool_search_cache_state "$MACHINE" "$BUILD_DIR" st
