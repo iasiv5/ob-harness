@@ -71,19 +71,36 @@ devtool_search_refresh() {
     local stage_file stdout_file stderr_file rc
     stage_file="$(mktemp)"; stdout_file="$(mktemp)"; stderr_file="$(mktemp)"
     rc=0
-    _devtool_env_exec "$machine" "$build_dir" "$stage_file" "$stdout_file" "$stderr_file" -- \
-        python3 "${OB_ENTRY_DIR}/tools/parse_bitbake_recipes.py" --build-dir "$build_dir" --machine "$machine" || rc=$?
-    if [[ "$rc" -eq 0 && -s "$stdout_file" ]]; then
-        local cache meta cur_hash cur_mtime cur_commit
-        cache="$(devtool_recipes_cache_path "$machine")"
-        meta="$(devtool_recipes_meta_path "$machine")"
-        cp "$stdout_file" "${cache}.tmp" && mv "${cache}.tmp" "$cache"
-        cur_hash="$(sha256sum "${build_dir}/conf/bblayers.conf" 2>/dev/null | awk '{print $1}' || true)"
-        cur_mtime="$(stat -c %Y "${build_dir}/conf/bblayers.conf" 2>/dev/null || echo 0)"
-        cur_commit="$(git -C "${OPENBMC_DIR}" rev-parse HEAD 2>/dev/null || echo "")"
-        printf '{"bblayers_hash":"%s","bblayers_mtime":%s,"openbmc_commit":"%s","generated_at":"%s"}\n' \
-            "$cur_hash" "$cur_mtime" "$cur_commit" "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" > "$meta"
-    fi
+    mkdir -p "${CONFIGS_DIR}" 2>/dev/null || true
+    {
+        flock 9
+        _devtool_env_exec "$machine" "$build_dir" "$stage_file" "$stdout_file" "$stderr_file" -- \
+            python3 "${OB_ENTRY_DIR}/tools/parse_bitbake_recipes.py" --build-dir "$build_dir" --machine "$machine" || rc=$?
+        if [[ "$rc" -eq 0 && -s "$stdout_file" ]]; then
+            local cache meta tmp_cache tmp_meta cur_hash cur_mtime cur_commit sha count
+            cache="$(devtool_recipes_cache_path "$machine")"
+            meta="$(devtool_recipes_meta_path "$machine")"
+            tmp_cache="$(mktemp "${cache}.XXXXXX")"
+            if cp "$stdout_file" "$tmp_cache" 2>/dev/null; then
+                sha="$(sha256sum "$tmp_cache" 2>/dev/null | awk '{print $1}' || true)"
+                count="$(wc -l < "$tmp_cache" 2>/dev/null | tr -d ' ' || echo 0)"
+                cur_hash="$(sha256sum "${build_dir}/conf/bblayers.conf" 2>/dev/null | awk '{print $1}' || true)"
+                cur_mtime="$(stat -c %Y "${build_dir}/conf/bblayers.conf" 2>/dev/null || echo 0)"
+                cur_commit="$(git -C "${OPENBMC_DIR}" rev-parse HEAD 2>/dev/null || echo "")"
+                tmp_meta="$(mktemp "${meta}.XXXXXX")"
+                if printf '{"bblayers_hash":"%s","bblayers_mtime":%s,"openbmc_commit":"%s","cache_sha256":"%s","count":%s,"generated_at":"%s"}\n' \
+                        "$cur_hash" "$cur_mtime" "$cur_commit" "$sha" "$count" \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" > "$tmp_meta" 2>/dev/null; then
+                    if ! mv "$tmp_cache" "$cache" 2>/dev/null; then rm -f "$tmp_cache" "$tmp_meta"; rc=1
+                    elif ! mv "$tmp_meta" "$meta" 2>/dev/null; then rm -f "$tmp_meta"; rc=1; fi
+                else
+                    rm -f "$tmp_cache" "$tmp_meta"; rc=1
+                fi
+            else
+                rm -f "$tmp_cache"; rc=1
+            fi
+        fi
+    } 9>"${CONFIGS_DIR}/.${machine}.recipes.lock"
     printf -v "$stage_outvar" '%s' "$(cat "$stage_file" 2>/dev/null || true)"
     printf -v "$stderr_file_outvar" '%s' "$stderr_file"
     rm -f "$stage_file" "$stdout_file"
