@@ -891,6 +891,49 @@ cmd_dev() {
     fi
     local dev_build_dir="$OPENBMC_DIR/build/$dev_machine"
 
+    # 无子命令 + TTY → 交互引导(选 list/modify/refresh, 按需补 pattern/recipe)。
+    # 非 TTY 不进此段, 落到下面 case "" 分支维持 agent/CI 契约(exit 3 + remedy)。
+    if [[ -z "$dev_subcmd" && -t 0 ]]; then
+        # 1) 子命令菜单(只列已实现: list/modify/refresh; reserved 的 build/deploy/finish/reset 不列)
+        echo "  ob dev subcommands:"
+        echo "    1) list     Search/list recipes (read-only, reads cache)"
+        echo "    2) modify   devtool modify a recipe (outputs srctree path)"
+        echo "    3) refresh  Regenerate recipe metadata cache"
+        local _sub_choice=""
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select subcommand [1-3] (0 to cancel): ")" _sub_choice; then
+            error "Unable to read subcommand selection from stdin." >&2
+            exit 1
+        fi
+        case "$_sub_choice" in
+            0) warn "ob dev cancelled by user."; exit 2 ;;
+            1) dev_subcmd="list" ;;
+            2) dev_subcmd="modify" ;;
+            3) dev_subcmd="refresh" ;;
+            *) error "ob dev: invalid subcommand selection '$_sub_choice'." >&2; exit 1 ;;
+        esac
+        # 2) 按子命令补必填/可选位置参数
+        case "$dev_subcmd" in
+            list)
+                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} pattern (Enter = all recipes): ")" dev_pattern; then
+                    error "Unable to read pattern." >&2
+                    exit 1
+                fi
+                ;;
+            modify)
+                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} recipe name: ")" dev_recipe; then
+                    error "Unable to read recipe name." >&2
+                    exit 1
+                fi
+                if [[ -z "$dev_recipe" ]]; then
+                    error "ob dev modify: no recipe specified." >&2
+                    error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
+                    exit 3
+                fi
+                ;;
+            refresh) ;;
+        esac
+    fi
+
     case "$dev_subcmd" in
         list)
             if [[ "${DRY_RUN:-0}" == "1" ]]; then
