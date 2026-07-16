@@ -59,6 +59,16 @@ devtool_reset_run() {
     return "$MOCK_RST_RC"
 }
 
+# status mock: 5 参数(machine/build_dir + entries/stage/stderr_file outvar); MOCK_ST_* 控制
+devtool_status_run() {
+    local m="$1" b="$2"
+    printf -v "$3" '%s' "${MOCK_ST_ENTRIES:-}"
+    printf -v "$4" '%s' "${MOCK_ST_STAGE:-command}"
+    printf -v "$5" '%s' "$TMP/st_sterr"
+    : > "$TMP/st_sterr"
+    return "${MOCK_ST_RC:-0}"
+}
+
 # run_dev <args...>: 跑 cmd_dev(子 shell 捕获 exit), 设 RUN_RC/RUN_OUT/RUN_ERR
 run_dev() {
     local err
@@ -307,5 +317,53 @@ json.loads(data)
 fi
 rm -f "$_jbf"
 assert_eq "JSON 字节: 生产 stdout 恰好一个尾换行" "$_jbrc" "0"
+
+# ============================================================================
+# status: JSONL 列表/空/失败/dry-run/编码失败(镜像 reset 的原子发布契约)
+# ============================================================================
+
+# === status 列表 → exit 0 + JSONL(语义校验, 不锁空格格式) ===
+MOCK_ST_ENTRIES=$'ipmi-host\t/build/m/sources/ipmi-host\nbmcweb\t/build/m/sources/bmcweb'; run_dev --machine testm status
+assert_eq "status 列表 exit 0" "$RUN_RC" "0"
+assert_eq "status stdout 恰好 2 行 JSONL" "$(grep -c . <<<"$RUN_OUT")" "2"
+# 每行合法 JSON + 字段值正确 + key 集合(python json.loads, 容忍 json.dumps 默认空格; 不把空格变成契约)
+# 捕获退出码(脚本成功不打印 stdout, $() 会得空串), 不是 stdout
+_st_json_rc=0
+python3 -c 'import json,sys
+ok=True
+for ln in sys.stdin:
+    ln=ln.strip()
+    if not ln: continue
+    d=json.loads(ln)
+    if set(d.keys()) != {"recipe","srctree"}: ok=False
+    if d.get("recipe") not in ("ipmi-host","bmcweb"): ok=False
+    if not d.get("srctree","").startswith("/"): ok=False
+sys.exit(0 if ok else 1)' <<<"$RUN_OUT" || _st_json_rc=$?
+assert_eq "status stdout 每行合法 JSON + recipe/srctree 字段" "$_st_json_rc" "0"
+assert_false "status stdout 纯(无 [ERROR])" grep -q "\[ERROR\]" <<<"$RUN_OUT"
+# === status 空列表 → exit 0 + stderr warn + stdout 空 ===
+MOCK_ST_ENTRIES=""; run_dev --machine testm status
+assert_eq "status 空 exit 0" "$RUN_RC" "0"
+assert_eq "status 空 stdout 空" "$RUN_OUT" ""
+assert_contains "status 空 stderr warn" "$RUN_ERR" "No modified recipes for testm"
+# === status 失败 → exit 1(精确, 区分 exit 3 前置缺失) ===
+MOCK_ST_RC=1; run_dev --machine testm status
+assert_eq "status 失败 exit 1" "$RUN_RC" "1"
+# === status dry-run → exit 0 + stderr 提示 ===
+DRY_RUN=1; run_dev --machine testm status; DRY_RUN=0
+assert_eq "status dry-run exit 0" "$RUN_RC" "0"
+assert_contains "status dry-run stderr 提示" "$RUN_ERR" "[DRY-RUN] ob dev status"
+# === status JSONL 编码失败(python3 -c 失败) → stdout 空 + exit 1(钉牢 partial stdout 契约) ===
+# 显式重置 mock 成功态: 前一用例 MOCK_ST_RC=1 残留会让 devtool_status_run 直接 return 1,
+# 在 status) 分支的 rc 检查处就 exit 1("devtool status failed"), 走不到 JSONL 生成循环, fake python3 没被调用
+MOCK_ST_RC=0
+MOCK_ST_STAGE="command"
+MOCK_ST_ENTRIES=$'badrecipe\t/build/m/s/badrecipe'
+python3() { return 1; }   # fake python3: json.dumps 编码失败(前两轮 partial stdout 反复踩坑的回归点)
+run_dev --machine testm status
+unset -f python3
+assert_eq "status 编码失败 exit 1" "$RUN_RC" "1"
+assert_eq "status 编码失败 stdout 空(不 partial 发布)" "$RUN_OUT" ""
+assert_contains "status 编码失败 stderr 诊断" "$RUN_ERR" "result JSONL"
 
 assert_summary

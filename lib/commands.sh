@@ -835,7 +835,7 @@ cmd_dev() {
                 dev_machine="${1#--machine=}"; shift
                 [[ -z "$dev_machine" || "$dev_machine" == -* ]] && { error "ob dev: invalid --machine value '$dev_machine'" >&2; exit 1; } ;;
             -d|-D|--dry-run) DRY_RUN=1; shift ;;
-            list|modify|refresh|build|deploy|finish|reset)
+            list|modify|refresh|build|deploy|finish|reset|status)
                 if [[ -z "$dev_subcmd" ]]; then
                     dev_subcmd="$1"
                 else
@@ -894,14 +894,15 @@ cmd_dev() {
     # 无子命令 + TTY → 交互引导(选 list/modify/refresh, 按需补 pattern/recipe)。
     # 非 TTY 不进此段, 落到下面 case "" 分支维持 agent/CI 契约(exit 3 + remedy)。
     if [[ -z "$dev_subcmd" && -t 0 ]]; then
-        # 1) 子命令菜单(只列已实现: list/modify/refresh/reset; reserved 的 build/deploy/finish 不列)
+        # 1) 子命令菜单(只列已实现: list/modify/refresh/reset/status; reserved 的 build/deploy/finish 不列)
         echo "  ob dev subcommands:"
         echo "    1) list     Search/list recipes (read-only, reads cache)"
         echo "    2) modify   devtool modify a recipe (outputs srctree path)"
         echo "    3) refresh  Regenerate recipe metadata cache"
         echo "    4) reset    devtool reset a recipe (outputs disposition JSON)"
+        echo "    5) status   List modified recipes (read-only, outputs JSONL)"
         local _sub_choice=""
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select subcommand [1-4] (0 to cancel): ")" _sub_choice; then
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select subcommand [1-5] (0 to cancel): ")" _sub_choice; then
             error "Unable to read subcommand selection from stdin." >&2
             exit 1
         fi
@@ -911,6 +912,7 @@ cmd_dev() {
             2) dev_subcmd="modify" ;;
             3) dev_subcmd="refresh" ;;
             4) dev_subcmd="reset" ;;
+            5) dev_subcmd="status" ;;
             *) error "ob dev: invalid subcommand selection '$_sub_choice'." >&2; exit 1 ;;
         esac
         # 2) 按子命令补必填/可选位置参数
@@ -932,7 +934,7 @@ cmd_dev() {
                     exit 3
                 fi
                 ;;
-            refresh) ;;
+            refresh|status) ;;
         esac
     fi
 
@@ -1087,6 +1089,63 @@ json.loads(data)' "$_json_tmp" 2>/dev/null || _vrf_rc=$?
             fi
             cat "$_json_tmp"
             rm -f "$_json_tmp" 2>/dev/null
+            exit 0
+            ;;
+        status)
+            if [[ "${DRY_RUN:-0}" == "1" ]]; then
+                error "[DRY-RUN] ob dev status: would list modified recipes via devtool status." >&2
+                exit 0
+            fi
+            local _st_entries="" _st_stage="" _st_stderr_file="" _st_rc=0
+            devtool_status_run "$dev_machine" "$dev_build_dir" _st_entries _st_stage _st_stderr_file || _st_rc=$?
+            cat "$_st_stderr_file" >&2 2>/dev/null || true
+            rm -f "$_st_stderr_file" 2>/dev/null
+            case "$_st_stage" in
+                cd|setup|postcondition)
+                    error "ob dev status: build env not ready (stage=$_st_stage)." >&2
+                    exit 1
+                    ;;
+            esac
+            if [[ "$_st_rc" -ne 0 ]]; then
+                error "ob dev status: devtool status failed (rc=$_st_rc)." >&2
+                exit 1
+            fi
+            if [[ -z "$_st_entries" ]]; then
+                warn "No modified recipes for $dev_machine." >&2
+                exit 0
+            fi
+            # JSONL 原子发布: 逐行 json.dumps(argv 不插值) → tempfile → 行数+key+json.loads 校验 → cat → 删
+            # (真原子: 记生成 rc + 输出行数==entries 行数, 杜绝 || true 吞错导致的 partial stdout 假成功)
+            local _st_jsonl="" _st_r="" _st_s="" _st_json_rc=0 _st_expected=0 _st_actual=0
+            _st_jsonl="$(mktemp 2>/dev/null)"
+            : > "$_st_jsonl"
+            while IFS=$'\t' read -r _st_r _st_s; do
+                [[ -z "$_st_r" ]] && continue
+                _st_expected=$((_st_expected + 1))
+                python3 -c 'import json,sys
+print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2]}))' "$_st_r" "$_st_s" >> "$_st_jsonl" 2>/dev/null || _st_json_rc=$?
+            done <<< "$_st_entries"
+            _st_actual="$(grep -c . "$_st_jsonl" 2>/dev/null || true)"
+            # 行数全等 + 生成无错(任一行 json.dumps 失败 → 行数不等或 rc!=0 → exit 1, 不 partial 发布)
+            if [[ "$_st_json_rc" -ne 0 || "$_st_actual" -ne "$_st_expected" ]]; then
+                rm -f "$_st_jsonl" 2>/dev/null
+                error "ob dev status: failed to encode result JSONL." >&2
+                exit 1
+            fi
+            # 形状校验: 每行合法 JSON + key 集合恰为 {recipe,srctree}
+            python3 -c 'import json,sys
+for line in open(sys.argv[1]):
+    line=line.strip()
+    if not line: continue
+    d=json.loads(line)
+    assert set(d.keys()) == {"recipe","srctree"}' "$_st_jsonl" 2>/dev/null || _st_json_rc=$?
+            if [[ "$_st_json_rc" -ne 0 ]]; then
+                rm -f "$_st_jsonl" 2>/dev/null
+                error "ob dev status: result JSONL malformed." >&2
+                exit 1
+            fi
+            cat "$_st_jsonl"
+            rm -f "$_st_jsonl" 2>/dev/null
             exit 0
             ;;
         *)
