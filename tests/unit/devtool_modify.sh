@@ -123,4 +123,26 @@ sv=""; st=""; se=""; mrc=0
 devtool_modify_run "$MACHINE" "$BUILD_DIR" "badrecipe" sv st se 2>/dev/null || mrc=$?
 assert_false "srctree 非绝对 → rc!=0" test "$mrc" -eq 0
 
+# === _devtool_parse_status_all: 全量解析 status 行 ===
+_psa_tmp="$(mktemp)"
+printf 'foorecipe: %s/workspace/sources/foorecipe (recipes-foo/foorecipe.bb)\n' "$TMP" > "$_psa_tmp"
+printf 'barrecipe: %s/workspace/sources/barrecipe\n' "$TMP" >> "$_psa_tmp"
+printf 'Currently working recipes:\n' >> "$_psa_tmp"   # header 行(应跳过)
+_psa_out="$(_devtool_parse_status_all "$_psa_tmp")"
+assert_eq "parse_status_all 行数(2 recipe,header 跳过)" "$(printf '%s\n' "$_psa_out" | grep -c .)" "2"
+assert_contains "parse_status_all foorecipe+srctree" "$_psa_out" $'foorecipe\t'"$TMP/workspace/sources/foorecipe"
+assert_false "parse_status_all 剥掉 recipefile 后缀" grep -q 'recipes-foo/foorecipe.bb' <<<"$_psa_out"
+assert_false "parse_status_all 跳过 header" grep -q 'Currently working recipes' <<<"$_psa_out"
+rm -f "$_psa_tmp"
+# 空文件 → 空输出
+_psa_empty="$(mktemp)"; assert_eq "parse_status_all 空文件无输出" "$(_devtool_parse_status_all "$_psa_empty" | grep -c .)" "0"; rm -f "$_psa_empty"
+# 负例: NOTE 噪声 / WARNING+绝对路径(诊断 token) / recipe 含空白 / srctree 相对路径 → 全跳过
+_psa_neg="$(mktemp)"
+printf 'NOTE: some bitbake noise\n' > "$_psa_neg"
+printf 'WARNING: /abs/path\n' >> "$_psa_neg"         # 诊断 token + 绝对路径 → 仍跳过(靠 token 排除)
+printf 'foo bar: /tmp/x\n' >> "$_psa_neg"           # recipe 含空白 → 跳过
+printf 'good: relative/path\n' >> "$_psa_neg"        # srctree 非绝对 → 跳过
+assert_eq "parse_status_all 负例全跳过(0 行)" "$(_devtool_parse_status_all "$_psa_neg" | grep -c .)" "0"
+rm -f "$_psa_neg"
+
 assert_summary

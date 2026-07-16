@@ -33,6 +33,25 @@ _devtool_parse_srctree() {
     awk -v r="$rcp" 'index($0,r": ")==1{s=substr($0,index($0,": ")+2);sub(/ \([^)]*\)$/,"",s);print s;exit}' "$file" 2>/dev/null
 }
 
+# _devtool_parse_status_all <status_file> → stdout 每行 "recipe<TAB>srctree"
+# 全量解析 devtool status: 行内首个 ": " 前=recipe(非空、不含空白),后=srctree(剥 "(recipefile)" 后缀)。
+# 跳过 header/空行/无 ": "/recipe 空。纯函数(读 file, 输出 stdout), 绝不 exit。
+_devtool_parse_status_all() {
+    local file="$1"
+    awk '{
+        pos = index($0, ": ")
+        if (pos <= 1) next
+        recipe = substr($0, 1, pos - 1)
+        if (recipe == "") next
+        srctree = substr($0, pos + 2)
+        sub(/ \([^)]*\)$/, "", srctree)
+        if (recipe ~ /^(NOTE|WARNING|ERROR|DEBUG|CRITICAL)$/) next   # bitbake 诊断 token(防 WARNING: /abs/path 漏网)
+        if (recipe !~ /^[A-Za-z0-9._+-]+$/) next                     # PN 字符集(挡含空白噪声行)
+        if (srctree !~ /^\//) next                                   # srctree 必须绝对路径(devtool EXTERNALSRC)
+        print recipe "\t" srctree
+    }' "$file" 2>/dev/null
+}
+
 # devtool_modify_run <machine> <build_dir> <recipe> <srctree_outvar> <stage_outvar> <stderr_file_outvar>
 # 三段: status 查已 modify(status 失败则不进 modify) → 未命中 devtool modify → 再次 status 解析 srctree。
 # srctree 校验: 非空 + 绝对路径 + 目录存在,否则失败。通过 outvar 回传。返回 rc(不 exit)。
