@@ -41,7 +41,7 @@ if {![catch {exec sh -c {ls workspace/configs/*.init-done >/dev/null 2>&1}}]} {
 }
 
 if {!$has_machine} {
-    incr SKIP 4
+    incr SKIP 3
     puts "skip dev 交互引导（workspace 无 init-done machine）"
 } else {
     # === 引导菜单 + cancel: ./ob dev → 选 machine(1) → 选 subcmd 0 → exit 2 ===
@@ -100,25 +100,35 @@ if {!$has_machine} {
         catch {close}; catch {wait}
     }
 
-    # === reset 空 recipe: ./ob dev → 选 machine(1) → subcmd 4 → recipe 空 → exit 3 ===
-    spawn ./ob dev
-    expect -re "Select a machine for Develop"; send "1\r"
-    set _ok 1
-    expect {
-        -re "Select subcommand.*0 to cancel"   { }
-        -re "no subcommand"                     { incr FAIL; puts "FAIL dev reset-empty: 引导菜单未出现"; set _ok 0 }
-        timeout                                 { incr FAIL; puts "FAIL dev reset-empty: 超时"; set _ok 0 }
-    }
-    if {$_ok} {
-        send "4\r"
-        expect "recipe name"
-        send "\r"
-        expect "no recipe specified"
-        expect eof; catch wait r
-        chk "dev reset 空 recipe → 3" [lindex $r 3] 3
-    } else {
-        catch {close}; catch {wait}
-    }
+    # === reset 空 recipe 段已移除(改为下方 wrapper mock 场景: reset TTY 列表 pick) ===
+}
+
+# === reset TTY 空列表 + 菜单 [1-5](wrapper mock, 不依赖真实 devtool) ===
+# 移出 has_machine gate 无条件跑: mock 了 machine_state_*, 不依赖真实 init-done machine
+spawn bash -c {OB_NO_MAIN=1 source ./ob 2>/dev/null
+machine_state_initialized_machines() { echo testm; }
+machine_state_is_initialized() { return 0; }
+detect_harness_root() { return 0; }
+devtool_status_run() { local _f; _f="$(mktemp)"; printf -v "$3" '%s' ''; printf -v "$4" '%s' 'command'; printf -v "$5" '%s' "$_f"; : >"$_f"; return 0; }
+main dev
+}
+expect -re "Select a machine for Develop"; send "1\r"
+# 先匹配菜单项 5) status(它出现在 prompt 之前), 再匹配 prompt——
+# 反序会先消费掉 prompt、把 5) status 从 buffer 吃掉, 后续 expect "5) status" 必超时
+expect "5) status"
+set _ok 1
+expect {
+    -re {Select subcommand.*\[1-5\].*0 to cancel}   { }
+    -re "no subcommand"                              { incr FAIL; puts "FAIL dev reset-mock: 引导菜单未出现"; set _ok 0 }
+    timeout                                          { incr FAIL; puts "FAIL dev reset-mock: 超时"; set _ok 0 }
+}
+if {$_ok} {
+    send "4\r"
+    expect "No modified recipes"
+    expect eof; catch wait r
+    chk "dev reset 空列表(mock) → 3" [lindex $r 3] 3
+} else {
+    catch {close}; catch {wait}
 }
 
 puts "\nPASS=$PASS FAIL=$FAIL SKIP=$SKIP"

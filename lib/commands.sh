@@ -923,16 +923,51 @@ cmd_dev() {
                     exit 1
                 fi
                 ;;
-            modify|reset)
+            modify)
                 if ! read -r -p "$(echo -e "${PROMPT_PREFIX} recipe name: ")" dev_recipe; then
                     error "Unable to read recipe name." >&2
                     exit 1
                 fi
                 if [[ -z "$dev_recipe" ]]; then
-                    error "ob dev $dev_subcmd: no recipe specified." >&2
+                    error "ob dev modify: no recipe specified." >&2
                     error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
                     exit 3
                 fi
+                ;;
+            reset)
+                # TTY reset: 跑 devtool status 列已 modify recipe → 空 exit 3 / 非空编号 pick
+                local _rst_entries="" _rst_stage="" _rst_stderr_file="" _rst_rc=0
+                devtool_status_run "$dev_machine" "$dev_build_dir" _rst_entries _rst_stage _rst_stderr_file || _rst_rc=$?
+                cat "$_rst_stderr_file" >&2 2>/dev/null || true
+                rm -f "$_rst_stderr_file" 2>/dev/null
+                case "$_rst_stage" in
+                    cd|setup|postcondition)
+                        error "ob dev reset: build env not ready (stage=$_rst_stage)." >&2
+                        exit 1
+                        ;;
+                esac
+                if [[ "$_rst_rc" -ne 0 ]]; then
+                    error "ob dev reset: devtool status failed (rc=$_rst_rc)." >&2
+                    exit 1
+                fi
+                local -a _rst_recipes=()
+                local _rst_r=""
+                while IFS=$'\t' read -r _rst_r _; do
+                    [[ -n "$_rst_r" ]] && _rst_recipes+=("$_rst_r")
+                done <<< "$_rst_entries"
+                if [[ ${#_rst_recipes[@]} -eq 0 ]]; then
+                    warn "No modified recipes for $dev_machine." >&2
+                    error "Run 'ob dev --machine $dev_machine modify <recipe>' first." >&2
+                    exit 3
+                fi
+                local _rst_i _rst_width=${#_rst_recipes[@]}
+                for (( _rst_i=0; _rst_i<_rst_width; _rst_i++ )); do
+                    printf '  %d) %s\n' "$((_rst_i + 1))" "${_rst_recipes[$_rst_i]}" >&2
+                done
+                local _rst_pick_rc=0
+                read_list_choice "$_rst_width" "recipe" "reset" _rst_recipes dev_recipe >&2 || _rst_pick_rc=$?
+                if [[ "$_rst_pick_rc" -eq 2 ]]; then exit 2; fi   # cancel
+                if [[ "$_rst_pick_rc" -ne 0 ]]; then exit 1; fi   # read 失败
                 ;;
             refresh|status) ;;
         esac
