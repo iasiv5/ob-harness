@@ -36,7 +36,19 @@ case "${4:-}" in
             mkdir -p "$FAKE_SRCTREE"
             exit 1
         fi
+        if [[ "${FAKE_SCENARIO:-}" == "reset-fail" ]]; then
+            printf 'user-recipe: %s\n' "$FAKE_SRCTREE" >"$FAKE_STATE"
+            mkdir -p "$FAKE_SRCTREE"
+            printf '%s\n' "$FAKE_SRCTREE"
+            exit 0
+        fi
         exit 1
+        ;;
+    reset)
+        if [[ "${FAKE_SCENARIO:-}" == "reset-fail" ]]; then exit 1; fi
+        : > "$FAKE_STATE"
+        printf '{"recipe":"%s","srctree":"","srctreebase":"","disposition":"noop","destination_parent":null,"destination":null}\n' "${5:-}"
+        exit 0
         ;;
 esac
 exit 1
@@ -100,7 +112,30 @@ printf 'user-recipe: %s\n' "$FAKE_SRCTREE" >"$FAKE_STATE"
 : >"$FAKE_LOG"
 run_harness normal
 assert_eq "all sampled recipes modified is a skip" "$RUN_RC" 77
-assert_contains "skip outcome is explicit" "$RUN_OUT" "SKIP: no unmodified recipe"
+assert_contains "skip outcome is explicit" "$RUN_OUT" "SKIP: no safe candidate"
 assert_true "skip outcome matches runner protocol" grep -q '^SKIP: ' <<<"$RUN_OUT"
+
+# reset 段失败(reset-fail) → integration exit 1, trap cleanup 仍按 ADR-0008 权威 status recheck 清 modified recipe
+: >"$FAKE_STATE"; : >"$FAKE_LOG"
+run_harness reset-fail
+assert_eq "reset failure fails integration" "$RUN_RC" 1
+assert_contains "reset failure cleanup resets recipe(ADR-0008 recheck)" "$(cat "$FAKE_LOG")" "reset:user-recipe"
+assert_eq "reset failure cleanup leaves no modified recipe" "$(cat "$FAKE_STATE")" ""
+
+# 候选已有孤儿 appends/<recipe>(status 不含但 appends 存在) → 跳过该候选 → SKIP 77(不选用户遗留)
+: >"$FAKE_STATE"; : >"$FAKE_LOG"
+mkdir -p "$FAKE_ROOT/workspace/openbmc/build/testm/workspace/appends/user-recipe"
+run_harness orphan-appends
+assert_eq "orphan appends → SKIP 77(不选用户遗留)" "$RUN_RC" 77
+assert_false "orphan appends 不调 candidate modify(user-recipe)" grep -q '^ob:dev --machine testm modify user-recipe$' "$FAKE_LOG"
+rm -rf "$FAKE_ROOT/workspace/openbmc/build/testm/workspace/appends"
+
+# 继承的 EXTERNAL_SRCTREE 不被 cleanup 误删(入口清空 + canonical 校验双重保险)
+_victim="$(mktemp -d)"; echo precious > "$_victim/file"
+: >"$FAKE_STATE"; : >"$FAKE_LOG"
+EXTERNAL_SRCTREE="$_victim" run_harness reset-fail
+assert_eq "继承 EXTERNAL_SRCTREE + reset-fail: integration exit 1" "$RUN_RC" 1
+assert_true "继承的 EXTERNAL_SRCTREE 未被 cleanup 误删" test -f "$_victim/file"
+rm -rf "$_victim"
 
 assert_summary

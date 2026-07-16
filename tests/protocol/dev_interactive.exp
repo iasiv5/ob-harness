@@ -41,7 +41,7 @@ if {![catch {exec sh -c {ls workspace/configs/*.init-done >/dev/null 2>&1}}]} {
 }
 
 if {!$has_machine} {
-    incr SKIP 3
+    incr SKIP 4
     puts "skip dev 交互引导（workspace 无 init-done machine）"
 } else {
     # === 引导菜单 + cancel: ./ob dev → 选 machine(1) → 选 subcmd 0 → exit 2 ===
@@ -96,6 +96,26 @@ if {!$has_machine} {
         expect "invalid subcommand selection"
         expect eof; catch wait r
         chk "dev 非法子命令 → 1" [lindex $r 3] 1
+    } else {
+        catch {close}; catch {wait}
+    }
+
+    # === reset 空 recipe: ./ob dev → 选 machine(1) → subcmd 4 → recipe 空 → exit 3 ===
+    spawn ./ob dev
+    expect -re "Select a machine for Develop"; send "1\r"
+    set _ok 1
+    expect {
+        -re "Select subcommand.*0 to cancel"   { }
+        -re "no subcommand"                     { incr FAIL; puts "FAIL dev reset-empty: 引导菜单未出现"; set _ok 0 }
+        timeout                                 { incr FAIL; puts "FAIL dev reset-empty: 超时"; set _ok 0 }
+    }
+    if {$_ok} {
+        send "4\r"
+        expect "recipe name"
+        send "\r"
+        expect "no recipe specified"
+        expect eof; catch wait r
+        chk "dev reset 空 recipe → 3" [lindex $r 3] 3
     } else {
         catch {close}; catch {wait}
     }

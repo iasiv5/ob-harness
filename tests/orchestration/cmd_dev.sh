@@ -4,6 +4,7 @@
 #       refresh、无子命令、porcelain(stdout 纯)。
 source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
+source "$(dirname "$0")/../lib/stub.sh"
 assert_reset
 
 TMP="$(mktemp -d)"
@@ -40,6 +41,22 @@ devtool_modify_run() {
     printf -v "$st" '%s' "$MOCK_STAGE"
     printf -v "$se" '%s' "/dev/null"
     return "$MOCK_MODRC"
+}
+
+# reset mock: 10 参数(machine/build_dir/recipe + 7 outvar); 用 MOCK_RST_* 回传, 真实 _reset_*
+MOCK_RST_SRCTREE=""; MOCK_RST_SRCTREEBASE=""; MOCK_RST_DISPOSITION="moved"
+MOCK_RST_DEST_PARENT=""; MOCK_RST_PHASE=""; MOCK_RST_STAGE=""; MOCK_RST_RC=0
+devtool_reset_run() {
+    local _o_srctree="$4" _o_srctreebase="$5" _o_disposition="$6" _o_dest="$7" _o_phase="$8" _o_stage="$9" _o_stderr="${10}"
+    touch "$TMP/reset_called" 2>/dev/null || true
+    printf -v "$_o_srctree" '%s' "$MOCK_RST_SRCTREE"
+    printf -v "$_o_srctreebase" '%s' "$MOCK_RST_SRCTREEBASE"
+    printf -v "$_o_disposition" '%s' "$MOCK_RST_DISPOSITION"
+    printf -v "$_o_dest" '%s' "$MOCK_RST_DEST_PARENT"
+    printf -v "$_o_phase" '%s' "$MOCK_RST_PHASE"
+    printf -v "$_o_stage" '%s' "$MOCK_RST_STAGE"
+    printf -v "$_o_stderr" '%s' "/dev/null"
+    return "$MOCK_RST_RC"
 }
 
 # run_dev <args...>: 跑 cmd_dev(子 shell 捕获 exit), 设 RUN_RC/RUN_OUT/RUN_ERR
@@ -154,5 +171,141 @@ assert_false "多余 positional(modify 2 recipe) 拒绝" test "$RUN_RC" -eq 0
 run_dev --machine=-d list
 assert_eq "--machine=-d 拒绝" "$RUN_RC" 1
 assert_contains "--machine=-d 诊断" "$RUN_ERR" "invalid --machine value"
+
+# ============================================================================
+# reset: JSON 六字段精确契约 + 原子发布 + phase 映射 + parser + porcelain
+# ============================================================================
+
+# assert_reset_json <label> <stdout> <recipe> <srctree> <srctreebase> <disposition> <dest_parent(空=None)>
+# 校验: 恰好一物理行 + 尾换行 + json.loads + 精确六字段 key 集合 + 类型/值
+assert_reset_json() {
+    local label="$1" out="$2" recipe="$3" srctree="$4" srctreebase="$5" disposition="$6" dest_parent="$7"
+    local jrc=0
+    EXP_RECIPE="$recipe" EXP_ST="$srctree" EXP_SB="$srctreebase" EXP_DISP="$disposition" EXP_DP="$dest_parent" \
+    python3 -c '
+import json, os, sys
+data = sys.stdin.read()
+lines = data.splitlines()
+assert len(lines) == 1, "物理行数=%d (want 1): %r" % (len(lines), data)
+assert data.endswith("\n"), "缺尾换行: %r" % data
+d = json.loads(data)
+keys = sorted(d.keys())
+assert keys == ["destination", "destination_parent", "disposition", "recipe", "srctree", "srctreebase"], "keys=%r" % keys
+assert d["recipe"] == os.environ["EXP_RECIPE"], ("recipe", d["recipe"])
+assert d["srctree"] == os.environ["EXP_ST"], ("srctree", d["srctree"])
+assert d["srctreebase"] == os.environ["EXP_SB"], ("srctreebase", d["srctreebase"])
+assert d["disposition"] == os.environ["EXP_DISP"], ("disposition", d["disposition"])
+exp_dp = None if os.environ["EXP_DP"] == "" else os.environ["EXP_DP"]
+assert d["destination_parent"] == exp_dp, ("destination_parent", d["destination_parent"], exp_dp)
+assert d["destination"] is None, ("destination", d["destination"])
+' <<< "$out" || jrc=$?
+    assert_eq "$label (JSON 六字段精确)" "$jrc" "0"
+}
+
+# --- moved → destination_parent=<ws>/attic/sources, destination=null ---
+MOCK_RST_SRCTREE="/ws/sources/r1"; MOCK_RST_SRCTREEBASE="/ws/sources/r1"
+MOCK_RST_DISPOSITION="moved"; MOCK_RST_DEST_PARENT="/ws/attic/sources"; MOCK_RST_PHASE=""; MOCK_RST_RC=0
+run_dev --machine testm reset r1
+assert_eq "reset moved: exit 0" "$RUN_RC" "0"
+assert_reset_json "reset moved" "$RUN_OUT" "r1" "/ws/sources/r1" "/ws/sources/r1" "moved" "/ws/attic/sources"
+
+# --- retained/removed/absent → destination_parent=null, destination=null ---
+MOCK_RST_DISPOSITION="retained"; MOCK_RST_DEST_PARENT=""
+run_dev --machine testm reset r2
+assert_reset_json "reset retained" "$RUN_OUT" "r2" "/ws/sources/r1" "/ws/sources/r1" "retained" ""
+MOCK_RST_DISPOSITION="removed"; run_dev --machine testm reset r3
+assert_reset_json "reset removed" "$RUN_OUT" "r3" "/ws/sources/r1" "/ws/sources/r1" "removed" ""
+MOCK_RST_DISPOSITION="absent"; run_dev --machine testm reset r4
+assert_reset_json "reset absent" "$RUN_OUT" "r4" "/ws/sources/r1" "/ws/sources/r1" "absent" ""
+
+# --- noop → srctree="", srctreebase="" ---
+MOCK_RST_SRCTREE=""; MOCK_RST_SRCTREEBASE=""; MOCK_RST_DISPOSITION="noop"; MOCK_RST_DEST_PARENT=""
+run_dev --machine testm reset r5
+assert_eq "reset noop: exit 0" "$RUN_RC" "0"
+assert_reset_json "reset noop" "$RUN_OUT" "r5" "" "" "noop" ""
+
+# --- JSON 全链路 round-trip 含特殊字符(引号/反斜杠/真换行) ---
+_weird_st=$'/ws/strange "quote\nline'
+MOCK_RST_SRCTREE="$_weird_st"; MOCK_RST_SRCTREEBASE='/ws/back\slash'
+MOCK_RST_DISPOSITION="retained"; MOCK_RST_DEST_PARENT=""
+run_dev --machine testm reset r6
+assert_reset_json "reset 特殊字符 round-trip" "$RUN_OUT" "r6" "$_weird_st" '/ws/back\slash' "retained" ""
+
+# --- JSON 编码失败(REAL_PYTHON fake python 只让 -c 失败) → exit 1 + stdout 空(约束 ④) ---
+REAL_PYTHON="$(command -v python3)"; export REAL_PYTHON
+_PYDB="$(mktemp -d)"; mkfake_bin "$_PYDB" python3
+stub_script "$_PYDB" python3 'if [[ "$1" == "-c" ]]; then exit 1; fi
+exec "$REAL_PYTHON" "$@"'
+MOCK_RST_DISPOSITION="moved"; MOCK_RST_DEST_PARENT="/ws/attic/sources"; MOCK_RST_PHASE=""; MOCK_RST_RC=0
+_jerr="$(mktemp)"; _jrc=0
+RUN_OUT="$(with_stub "$_PYDB" -- cmd_dev --machine testm reset rfail 2>"$_jerr" </dev/null)" && _jrc=0 || _jrc=$?
+RUN_RC=$_jrc; RUN_ERR="$(cat "$_jerr")"; rm -f "$_jerr"
+assert_false "JSON 编码失败: exit 1" test "$RUN_RC" -eq 0
+assert_eq "JSON 编码失败: stdout 空" "$RUN_OUT" ""
+rm -rf "$_PYDB"
+
+# --- stage=postcondition(_devtool_env_exec postcondition 检查失败) → build env not ready ---
+# 证明 cmd_dev stage case 的 postcondition 分支非死代码(对应 _devtool_env_exec postcondition 检查失败,
+# devtool_modify 同模式; 报告 🟢1 误判它为死代码——实际 _devtool_env_exec 在 local.conf/devtool/bitbake-layers
+# 可用性检查失败时写 stage_file=postcondition, 经 devtool_reset_run 第一次 status 回传)。
+MOCK_RST_SRCTREE="/ws/s"; MOCK_RST_DISPOSITION="moved"; MOCK_RST_DEST_PARENT=""; MOCK_RST_RC=1
+MOCK_RST_STAGE="postcondition"; MOCK_RST_PHASE="status"
+run_dev --machine testm reset rstage
+assert_eq "stage=postcondition: exit 1" "$RUN_RC" "1"
+assert_contains "stage=postcondition: build env 诊断" "$RUN_ERR" "build env"
+
+# --- phase 映射(status/metadata/reset/postcondition → exit 1, 诊断含 phase 词) ---
+MOCK_RST_STAGE=""; MOCK_RST_SRCTREE="/ws/s"; MOCK_RST_DISPOSITION="moved"; MOCK_RST_DEST_PARENT=""; MOCK_RST_RC=1
+MOCK_RST_PHASE="metadata"; run_dev --machine testm reset rmeta
+assert_eq "reset phase=metadata: exit 1" "$RUN_RC" "1"
+assert_contains "reset phase=metadata 诊断" "$RUN_ERR" "metadata"
+MOCK_RST_PHASE="status"; run_dev --machine testm reset rstat
+assert_false "reset phase=status: exit 1" test "$RUN_RC" -eq 0
+assert_contains "reset phase=status 诊断" "$RUN_ERR" "status"
+MOCK_RST_PHASE="reset"; run_dev --machine testm reset rreset
+assert_contains "reset phase=reset 诊断" "$RUN_ERR" "reset"
+MOCK_RST_PHASE="postcondition"; run_dev --machine testm reset rpost
+assert_contains "reset phase=postcondition 诊断" "$RUN_ERR" "postcondition"
+
+# --- parser + 前置 ---
+MOCK_RST_PHASE=""; MOCK_RST_RC=0; MOCK_RST_DISPOSITION="noop"; MOCK_RST_SRCTREE=""
+run_dev --machine testm reset
+assert_eq "reset 无recipe: exit 3" "$RUN_RC" "3"
+assert_contains "reset 无recipe remedy(list)" "$RUN_ERR" "ob dev --machine testm list"
+rm -f "$TMP/reset_called"
+run_dev --machine testm reset rr --dry-run
+assert_eq "reset 尾随dry-run: exit 0" "$RUN_RC" "0"
+assert_false "reset dry-run 不调 devtool_reset_run" test -f "$TMP/reset_called"
+run_dev --machine testm reset r1 r2
+assert_false "reset 双recipe 拒绝" test "$RUN_RC" -eq 0
+run_dev --machine testm --remove-work reset r1
+assert_false "--remove-work(子命令前): exit 1" test "$RUN_RC" -eq 0
+assert_contains "--remove-work 诊断(unknown option)" "$RUN_ERR" "unknown option"
+run_dev --machine testm reset r1 --remove-work
+assert_false "--remove-work(recipe 后): exit 1" test "$RUN_RC" -eq 0
+
+# --- porcelain: stdout 只 JSON, 无 [ERROR]/logo ---
+MOCK_RST_DISPOSITION="moved"; MOCK_RST_DEST_PARENT="/ws/attic/sources"; MOCK_RST_PHASE=""; MOCK_RST_RC=0
+MOCK_RST_SRCTREE="/ws/sources/rp"; MOCK_RST_SRCTREEBASE="/ws/sources/rp"
+run_dev --machine testm reset rporc
+assert_eq "reset porcelain: exit 0" "$RUN_RC" "0"
+assert_false "reset stdout 纯(无 [ERROR])" grep -q "\[ERROR\]" <<<"$RUN_OUT"
+assert_eq "reset stdout 恰好一行 JSON" "$(grep -c . <<<"$RUN_OUT")" "1"
+
+# JSON 字节检查: cmd_dev stdout 直接写 tempfile(不经命令替换删尾换行), 按字节验证生产 stdout 自带恰好一个尾换行
+_jbf="$(mktemp)"; _jbrc=0
+MOCK_RST_DISPOSITION="moved"; MOCK_RST_DEST_PARENT="/ws/attic/sources"; MOCK_RST_PHASE=""; MOCK_RST_RC=0
+MOCK_RST_SRCTREE="/ws/s"; MOCK_RST_SRCTREEBASE="/ws/s"
+( cmd_dev --machine testm reset rbyte ) > "$_jbf" 2>/dev/null || _jbrc=$?
+if [[ "$_jbrc" -eq 0 ]]; then
+    python3 -c '
+import json, sys
+data = open(sys.argv[1], "rb").read()
+assert data.endswith(b"\n") and data.count(b"\n") == 1, "trailing newline wrong: %r" % data
+json.loads(data)
+' "$_jbf" || _jbrc=1
+fi
+rm -f "$_jbf"
+assert_eq "JSON 字节: 生产 stdout 恰好一个尾换行" "$_jbrc" "0"
 
 assert_summary

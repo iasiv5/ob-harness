@@ -842,7 +842,7 @@ cmd_dev() {
                     _positional_count=$((_positional_count + 1))
                     case "$dev_subcmd" in
                         list)   [[ -z "$dev_pattern" ]] || { error "ob dev list: too many patterns" >&2; exit 1; }; dev_pattern="$1" ;;
-                        modify) [[ -z "$dev_recipe" ]]  || { error "ob dev modify: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
+                        modify|reset) [[ -z "$dev_recipe" ]] || { error "ob dev $dev_subcmd: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
                         *)      error "ob dev $dev_subcmd: unexpected argument '$1'" >&2; exit 1 ;;
                     esac
                 fi
@@ -852,7 +852,7 @@ cmd_dev() {
                 _positional_count=$((_positional_count + 1))
                 case "$dev_subcmd" in
                     list)   [[ -z "$dev_pattern" ]] || { error "ob dev list: too many patterns" >&2; exit 1; }; dev_pattern="$1" ;;
-                    modify) [[ -z "$dev_recipe" ]]  || { error "ob dev modify: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
+                    modify|reset) [[ -z "$dev_recipe" ]] || { error "ob dev $dev_subcmd: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
                     *)      error "ob dev: unexpected positional '$1' (need subcommand first)" >&2; exit 1 ;;
                 esac
                 shift ;;
@@ -894,13 +894,14 @@ cmd_dev() {
     # 无子命令 + TTY → 交互引导(选 list/modify/refresh, 按需补 pattern/recipe)。
     # 非 TTY 不进此段, 落到下面 case "" 分支维持 agent/CI 契约(exit 3 + remedy)。
     if [[ -z "$dev_subcmd" && -t 0 ]]; then
-        # 1) 子命令菜单(只列已实现: list/modify/refresh; reserved 的 build/deploy/finish/reset 不列)
+        # 1) 子命令菜单(只列已实现: list/modify/refresh/reset; reserved 的 build/deploy/finish 不列)
         echo "  ob dev subcommands:"
         echo "    1) list     Search/list recipes (read-only, reads cache)"
         echo "    2) modify   devtool modify a recipe (outputs srctree path)"
         echo "    3) refresh  Regenerate recipe metadata cache"
+        echo "    4) reset    devtool reset a recipe (outputs disposition JSON)"
         local _sub_choice=""
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select subcommand [1-3] (0 to cancel): ")" _sub_choice; then
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select subcommand [1-4] (0 to cancel): ")" _sub_choice; then
             error "Unable to read subcommand selection from stdin." >&2
             exit 1
         fi
@@ -909,6 +910,7 @@ cmd_dev() {
             1) dev_subcmd="list" ;;
             2) dev_subcmd="modify" ;;
             3) dev_subcmd="refresh" ;;
+            4) dev_subcmd="reset" ;;
             *) error "ob dev: invalid subcommand selection '$_sub_choice'." >&2; exit 1 ;;
         esac
         # 2) 按子命令补必填/可选位置参数
@@ -919,13 +921,13 @@ cmd_dev() {
                     exit 1
                 fi
                 ;;
-            modify)
+            modify|reset)
                 if ! read -r -p "$(echo -e "${PROMPT_PREFIX} recipe name: ")" dev_recipe; then
                     error "Unable to read recipe name." >&2
                     exit 1
                 fi
                 if [[ -z "$dev_recipe" ]]; then
-                    error "ob dev modify: no recipe specified." >&2
+                    error "ob dev $dev_subcmd: no recipe specified." >&2
                     error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
                     exit 3
                 fi
@@ -1024,6 +1026,68 @@ cmd_dev() {
             error "ob dev: no subcommand." >&2
             error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
             exit 3
+            ;;
+        reset)
+            if [[ -z "$dev_recipe" ]]; then
+                error "ob dev reset: no recipe specified." >&2
+                error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
+                exit 3
+            fi
+            if [[ "${DRY_RUN:-0}" == "1" ]]; then
+                error "[DRY-RUN] ob dev reset $dev_recipe: would devtool reset (source-preserving, no --remove-work)." >&2
+                exit 0
+            fi
+            local _reset_srctree="" _reset_srctreebase="" _reset_disposition=""
+            local _reset_destination_parent="" _reset_phase="" _reset_stage="" _reset_stderr_file=""
+            local _reset_rc=0 _json_tmp="" _json_rc=0 _vrf_rc=0
+            devtool_reset_run "$dev_machine" "$dev_build_dir" "$dev_recipe" \
+                _reset_srctree _reset_srctreebase _reset_disposition _reset_destination_parent \
+                _reset_phase _reset_stage _reset_stderr_file || _reset_rc=$?
+            cat "$_reset_stderr_file" >&2 2>/dev/null || true
+            rm -f "$_reset_stderr_file" 2>/dev/null
+            case "$_reset_stage" in
+                cd|setup|postcondition)
+                    error "ob dev reset: build env not ready (stage=$_reset_stage)." >&2
+                    exit 1
+                    ;;
+            esac
+            if [[ -n "$_reset_phase" ]]; then
+                case "$_reset_phase" in
+                    metadata)      error "ob dev reset: metadata error (phase=metadata); cannot safely reset." >&2 ;;
+                    status)        error "ob dev reset: devtool status failed (phase=status)." >&2 ;;
+                    reset)         error "ob dev reset: devtool reset failed (phase=reset)." >&2
+                        ;;
+                    postcondition) error "ob dev reset: postcondition failed (phase=postcondition)." >&2 ;;
+                    *)             error "ob dev reset: failed (phase=$_reset_phase)." >&2 ;;
+                esac
+                exit 1
+            fi
+            if [[ "$_reset_rc" -ne 0 ]]; then
+                error "ob dev reset: devtool failed (rc=$_reset_rc, stage=$_reset_stage)." >&2
+                exit 1
+            fi
+            # JSON 原子发布: python3 -c + argv(值不插值源码串) → tempfile → rc 校验 → 形状校验 → cat → 删
+            _json_tmp="$(mktemp 2>/dev/null)"
+            python3 -c 'import json,sys
+print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.argv[3],"disposition":sys.argv[4],"destination_parent":sys.argv[5] or None,"destination":None}))' \
+                "$dev_recipe" "$_reset_srctree" "$_reset_srctreebase" "$_reset_disposition" "$_reset_destination_parent" > "$_json_tmp" 2>/dev/null || _json_rc=$?
+            if [[ "$_json_rc" -ne 0 || ! -s "$_json_tmp" ]]; then
+                rm -f "$_json_tmp" 2>/dev/null
+                error "ob dev reset: failed to encode result JSON." >&2
+                exit 1
+            fi
+            python3 -c 'import json,sys
+data=open(sys.argv[1]).read()
+assert len(data.splitlines())==1 and data.endswith("\n"), "bad shape"
+json.loads(data)' "$_json_tmp" 2>/dev/null || _vrf_rc=$?
+            if [[ "$_vrf_rc" -ne 0 ]]; then
+                rm -f "$_json_tmp" 2>/dev/null
+                error "ob dev reset: result JSON malformed." >&2
+                exit 1
+            fi
+            cat "$_json_tmp"
+            rm -f "$_json_tmp" 2>/dev/null
+            exit 0
             ;;
         *)
             error "ob dev $dev_subcmd: reserved, not implemented yet." >&2

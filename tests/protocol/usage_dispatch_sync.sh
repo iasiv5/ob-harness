@@ -70,4 +70,19 @@ cmd_dev() { return 0; }
 main dev --machine m list >/dev/null 2>&1
 assert_eq "ob dev 跳过 show_logo(porcelain)" "$_logo_called" "0"
 
+# === ob dev reset 登记: usage 含 reset(不含 --remove-work) + DEV_ARGS 交接 + 真实 dispatch ===
+_usage_out="$(usage 2>/dev/null)"
+assert_contains "usage dev 行含 reset" "$_usage_out" "reset"
+assert_false "usage 不含 --remove-work(本轮未实现)" grep -q -- "--remove-work" <<<"$_usage_out"
+
+parse_args dev --machine m reset myrecipe
+assert_eq "DEV_ARGS reset [2]=reset" "${DEV_ARGS[2]}" "reset"
+assert_eq "DEV_ARGS reset [3]=myrecipe" "${DEV_ARGS[3]}" "myrecipe"
+
+# main dev reset → cmd_dev 收到恰好 --machine m reset myrecipe(重设 cmd_dev 捕获)
+cmd_dev() { printf 'GOT:%s\n' "$@"; return 0; }
+_dispatch_out="$(main dev --machine m reset myrecipe 2>/dev/null)"
+assert_contains "main dev reset 调 cmd_dev(reset)" "$_dispatch_out" "GOT:reset"
+assert_contains "main dev reset 调 cmd_dev(recipe)" "$_dispatch_out" "GOT:myrecipe"
+
 assert_summary

@@ -121,3 +121,19 @@ _Avoid_: 提示语, hint, 错误提示, 锁死为 ob 命令
 
 assignment-state 判定（"用户是否接管某 ob-managed variable"）的底层事实由 `read_local_conf_var` 的 exit code 承载（generic local.conf reader，不专属 ob-managed variable 集合）：`generate_build_config`（注入决策）与 `resolve_effective_dl_dir` / `resolve_effective_sstate_dir`（缓存目录 effective 路径解析 + mkdir）共用这一 exit code 判定，**不**用值判定（`-z` / `-n`）。本次只做 existing seam alignment，**未**把 `ob-managed variable` 落成完整领域 module。**effective-path 失败语义只适用路径类变量 DL_DIR / SSTATE_DIR**：有赋值行但值为空、或路径不可用（unwritable）→ `resolve_effective_*` 静默 `return 1`，调用点 `exit 3` + remedy（因 bitbake 会用空/无效路径破坏 fetch / sstate，且 ob 会把 bare mirror 填到 bitbake 不会用的位置）。`PREMIRRORS = ""` 仍是 ADR-0004 / ADR-0005 明确支持的合法禁用语义，不进路径 resolver、不触发 exit 3。
 _Avoid_: ob 配置变量, 自动配置变量, 把空值当"未配置", `-n` 判定（已统一为 exit code）, `-z` 判定（resolve_effective_* 已对齐 exit code）
+
+**srctree**:
+`ob dev modify` 后 recipe 源码检出到的本地目录（devtool workspace），由 `devtool status` 权威解析、不缓存、不拼接；它是 `ob dev modify` stdout 的契约对象（恰好一行绝对路径），externalsrc 将 recipe 指向它。
+_Avoid_: source tree（口语化）, 源码目录, source directory（与 working tree 混）
+
+**recipe metadata cache**:
+`ob dev list` 的权威数据源，物理为 `workspace/configs/<machine>.recipes.jsonl`（每行 recipe/layer/summary）+ sidecar `<machine>.recipes.meta.json`（bblayers hash/mtime + openbmc commit）。sidecar 决定 cache 三态 `fresh`/`missing`/`stale`（分别对应直接读、懒生成、`exit 3` + refresh remedy），scope 为当前 bblayers 全量 target recipe。
+_Avoid_: recipe 索引, recipe list, 把 stale 当 missing（exit 码与 remedy 不同）
+
+**ob dev porcelain stdout**:
+`ob dev` 作为 agent-facing 命令组的 stdout 契约：stdout 只输出机器解析数据（`list` JSONL / `modify` 恰好一行 srctree / `refresh` 空 / `reset` 单行 JSON），logo/info/warn/诊断一律走 stderr；`ob dev` dispatch 跳过 `show_logo`，`cmd_dev` 不调写 stdout 的 `log`/`info`/`warn`。`reset` 输出恰好一行 JSON（`python3 json.dumps` 生成，字段值经 argv 传入不插值源码串、tempfile 原子发布：编码/校验失败则 stdout 空 + exit 1），六字段 `{"recipe","srctree","srctreebase","disposition","destination_parent","destination"}`：`disposition` 五态 "moved"/"retained"/"removed"/"absent"/"noop"（默认 source-preserving reset：srctreebase 归档到 `attic/sources` / 外部保留 / 空目录被 rmdir / 本来就不存在 / 未 modified）；`destination_parent` 仅 `moved` 为 `<workspace>/attic/sources`，其余四态为 `null`（精确 attic 子目录不可用）；`destination` 恒 `null`。**agent 不得自动清理 attic，也不得按 mtime/name 猜最新 attic 子目录**——需删除时用户明确检查后手动处理。
+_Avoid_: machine-readable output, JSON output（泛称；list JSONL 与 reset 单行 JSON 是两种具体形态）
+
+**ob dev cleanup/收尾语义**:
+ob dev 收尾动作（`reset` 丢弃 / `finish` 落回 / integration harness 回滚）共享的故障安全不变量：cleanup target 由 `devtool status` 权威 recheck（不缓存/不推断），cleanup-needed 标志在产生副作用（`modify`）之前设置，`status`/`list` 失败是真失败不降级，环境不具备/无候选 `exit 77` SKIP。详见 [ADR-0008](docs/adr/0008-ob-dev-cleanup-fail-safe.md)。
+_Avoid_: cleanup 逻辑（实现口语）, rollback（仅收尾的一种场景）
