@@ -130,7 +130,7 @@ if git -C "$SKILLS_DIR" rev-parse --git-dir >/dev/null 2>&1; then
     printf '\033[33m  ob-harness 有变更尚未提交：\033[0m\n'
     printf '%s\n' "$changed" | sed 's/^/    /'
     printf '\033[33m─────────────────────────────────────────\033[0m\n'
-    printf '  git add -A && git commit -m "sync skills from m marketplace"\n'
+    printf '  git add -A && git commit -m "sync skills from iasiv5/m marketplace"\n'
   else
     printf '  已是最新，无需提交。\n'
   fi
