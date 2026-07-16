@@ -38,4 +38,21 @@ MACHINE=""; pick_machine __pick_test_list Build </dev/null >/dev/null 2>&1; asse
 MACHINE=""; pick_machine __pick_test_list Build <<< $'9\nfoo\nromulus\n' >/dev/null 2>&1; assert_eq "invalid then valid rc" "$?" 0
 assert_eq "invalid then valid MACHINE" "$MACHINE" "romulus"
 
+# === read_list_choice: 参数化 noun/verb 的索引选择 ===
+# caller 数组名用 _rlc_data(避开 helper 内部 nameref _rlc_items/_rlc_sel, 防 nameref 同名遮蔽 circular)
+RLC_SEL=""
+_rlc_data=("ipmi-host" "bmcweb")
+read_list_choice 2 "recipe" "reset" _rlc_data RLC_SEL <<< $'1\n' >/dev/null 2>&1
+assert_eq "read_list_choice 数字选中 rc" "$?" "0"
+assert_eq "read_list_choice 数字选中值" "$RLC_SEL" "ipmi-host"
+RLC_SEL=""; read_list_choice 2 "recipe" "reset" _rlc_data RLC_SEL <<< $'bmcweb\n' >/dev/null 2>&1
+assert_eq "read_list_choice 名字选中 rc" "$?" "0"
+assert_eq "read_list_choice 名字选中值" "$RLC_SEL" "bmcweb"
+RLC_SEL=""; read_list_choice 2 "recipe" "reset" _rlc_data RLC_SEL <<< $'0\n' >/dev/null 2>&1
+assert_eq "read_list_choice cancel rc" "$?" "2"
+# 非法输入(越界数字 + 不存在名字)后重试, 最终合法选中
+RLC_SEL=""; read_list_choice 2 "recipe" "reset" _rlc_data RLC_SEL <<< $'9\nbadname\n1\n' >/dev/null 2>&1
+assert_eq "read_list_choice 非法重试后选中 rc" "$?" "0"
+assert_eq "read_list_choice 非法重试后选中值" "$RLC_SEL" "ipmi-host"
+
 assert_summary
