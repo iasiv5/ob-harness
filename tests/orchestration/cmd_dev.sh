@@ -61,7 +61,6 @@ devtool_reset_run() {
 
 # status mock: 5 参数(machine/build_dir + entries/stage/stderr_file outvar); MOCK_ST_* 控制
 devtool_status_run() {
-    local m="$1" b="$2"
     printf -v "$3" '%s' "${MOCK_ST_ENTRIES:-}"
     printf -v "$4" '%s' "${MOCK_ST_STAGE:-command}"
     printf -v "$5" '%s' "$TMP/st_sterr"
