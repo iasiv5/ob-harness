@@ -154,4 +154,156 @@ for _mode in trunc nosentinel; do
 done
 rm -rf "$_BP"
 
+# ============================================================================
+# T4: _devtool_finish_capture_landing_snapshot (JSON) + _devtool_finish_detect_landing (status+digest)
+# ============================================================================
+
+PREJ="$TMP/det_pre.json"; POSTJ="$TMP/det_post.json"; SNAP="$TMP/cap.snap"
+
+# --- _devtool_finish_capture_landing_snapshot <openbmc_dir> <snapshot_outfile> <phase_out> ---
+call_capture() {  # <openbmc_dir>
+    _cap_phase=""; _caprc=0
+    _devtool_finish_capture_landing_snapshot "$1" "$SNAP" _cap_phase || _caprc=$?
+}
+
+# git 仓库: dirty foo.bb(M) + 新增 patch(??) + build/workspace/attic(过滤)
+CAP="$TMP/cap-git"; mkdir -p "$CAP/meta-x/conf" "$CAP/meta-x/recipes/foo" "$CAP/build/m/workspace/attic" "$CAP/workspace/w"
+git -C "$CAP" init -q
+: > "$CAP/meta-x/conf/layer.conf"
+printf 'SRCREV = "old"\nSRC_URI = "file://x.patch "\n' > "$CAP/meta-x/recipes/foo/foo.bb"
+git -C "$CAP" add -A && git -C "$CAP" -c user.email=t@t -c user.name=t commit -q -m init
+echo "changed" >> "$CAP/meta-x/recipes/foo/foo.bb"   # M
+: > "$CAP/meta-x/recipes/foo/0001-new.patch"          # ?? 新增
+: > "$CAP/build/m/workspace/attic/x"                  # 过滤
+: > "$CAP/workspace/w/y"                              # 过滤
+call_capture "$CAP"
+assert_eq "capture git: phase空" "$_cap_phase" ""
+_cvrc=0
+python3 -c '
+import json, re, sys
+d = json.load(open(sys.argv[1]))
+paths = d["paths"]
+assert "meta-x/recipes/foo/foo.bb" in paths, ("foo.bb missing", list(paths))
+assert "meta-x/recipes/foo/0001-new.patch" in paths, ("patch missing", list(paths))
+for p in paths:
+    assert not (p.startswith("build/") or p.startswith("workspace/") or p.startswith("attic/")), ("未过滤", p)
+for p in ("meta-x/recipes/foo/foo.bb", "meta-x/recipes/foo/0001-new.patch"):
+    sha = paths[p]["sha256"]
+    assert re.match(r"^[0-9a-f]{64}$", sha), ("sha非64hex", p, sha)
+assert "M" in paths["meta-x/recipes/foo/foo.bb"]["status"], paths["meta-x/recipes/foo/foo.bb"]
+assert "?" in paths["meta-x/recipes/foo/0001-new.patch"]["status"], paths["meta-x/recipes/foo/0001-new.patch"]
+' "$SNAP" || _cvrc=$?
+assert_eq "capture git: JSON校验(过滤build/workspace/attic + sha64hex + status)" "$_cvrc" "0"
+
+# capture 复用(T8 要求): 同一 helper 跑两次(pre/post)格式一致
+call_capture "$CAP"
+assert_eq "capture 复用: 二次仍phase空" "$_cap_phase" ""
+
+# 非 git 仓库 → phase(fail closed)
+NOGIT="$TMP/cap-nogit"; mkdir -p "$NOGIT/sub"; : > "$NOGIT/sub/f.bb"
+call_capture "$NOGIT"
+assert_false "capture非git: phase非空(fail closed)" test -z "$_cap_phase"
+
+# --- _devtool_finish_detect_landing <openbmc_dir> <pre_json> <post_json> <mode><patches><recipe_files><srcrev><landing_layer><phase> ---
+call_detect() {  # <openbmc_dir> <pre_json_str> <post_json_str>
+    printf '%s' "$2" > "$PREJ"
+    printf '%s' "$3" > "$POSTJ"
+    _det_mode=""; _det_patches=""; _det_recipe_files=""; _det_srcrev=""; _det_landing_layer=""; _det_phase=""; _detrc=0
+    _devtool_finish_detect_landing "$1" "$PREJ" "$POSTJ" \
+        _det_mode _det_patches _det_recipe_files _det_srcrev _det_landing_layer _det_phase || _detrc=$?
+}
+
+# detect fixture: openbmc_dir + meta-x/conf/layer.conf + post recipe(.bb, 可选 SRCREV)
+mk_det() {  # <root> <srcrev_or_empty>
+    mkdir -p "$1/meta-x/conf" "$1/meta-x/recipes/foo"
+    : > "$1/meta-x/conf/layer.conf"
+    if [[ -n "$2" ]]; then printf 'SRCREV = "%s"\n' "$2" > "$1/meta-x/recipes/foo/foo.bb"
+    else printf 'SUMMARY = "foo"\n' > "$1/meta-x/recipes/foo/foo.bb"; fi
+}
+# 校验 JSON array outvar: <label> <actual_json_array_str> <expected_list_python>
+ja_eq() {  # <label> <actual> <expected_py_literal>
+    _jarc=0
+    python3 -c 'import json,sys; assert json.loads(sys.argv[1])==json.loads(sys.argv[2])' "$2" "$3" || _jarc=$?
+    assert_eq "$1" "$_jarc" "0"
+}
+
+# patch mode: post 新增 patch(pre 无) + foo.bb M(digest 变), 同 layer → patch
+DET="$TMP/det-patch"; mk_det "$DET" ""
+call_detect "$DET" \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"aaa"}}}' \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"bbb"},"meta-x/recipes/foo/0001-new.patch":{"status":"??","sha256":"ccc"}}}'
+assert_eq "detect patch: mode" "$_det_mode" "patch"
+assert_eq "detect patch: phase空" "$_det_phase" ""
+ja_eq "detect patch: patches" "$_det_patches" '["meta-x/recipes/foo/0001-new.patch"]'
+ja_eq "detect patch: recipe_files" "$_det_recipe_files" '["meta-x/recipes/foo/foo.bb"]'
+assert_eq "detect patch: srcrev空" "$_det_srcrev" ""
+assert_eq "detect patch: landing_layer=meta-x(相对openbmc)" "$_det_landing_layer" "meta-x"
+
+# dirty-to-dirty(🔴 round-3): pre/post 都 M foo.bb, sha 变 → recipe_files 含 foo.bb(不漏报)
+DET="$TMP/det-dirty"; mk_det "$DET" "newrev"
+call_detect "$DET" \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"aaa"}}}' \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"bbb"}}}'
+assert_eq "detect dirty-to-dirty: mode=srcrev" "$_det_mode" "srcrev"
+assert_eq "detect dirty-to-dirty: phase空" "$_det_phase" ""
+ja_eq "detect dirty-to-dirty: recipe_files含foo.bb(digest变)" "$_det_recipe_files" '["meta-x/recipes/foo/foo.bb"]'
+assert_eq "detect dirty-to-dirty: srcrev=post值" "$_det_srcrev" "newrev"
+
+# patch-only refresh(🟡 round-3): post M existing.patch(sha 变, recipe 不变) → patch, recipe_files=[]
+DET="$TMP/det-patchonly"; mk_det "$DET" ""
+call_detect "$DET" \
+    '{"paths":{"meta-x/recipes/foo/existing.patch":{"status":" M","sha256":"aaa"}}}' \
+    '{"paths":{"meta-x/recipes/foo/existing.patch":{"status":" M","sha256":"bbb"}}}'
+assert_eq "detect patch-only: mode=patch" "$_det_mode" "patch"
+assert_eq "detect patch-only: phase空(不因recipe_files空fail)" "$_det_phase" ""
+ja_eq "detect patch-only: patches" "$_det_patches" '["meta-x/recipes/foo/existing.patch"]'
+ja_eq "detect patch-only: recipe_files空" "$_det_recipe_files" '[]'
+
+# srcrev mode: 无 patch + foo.bb M + post SRCREV → srcrev
+DET="$TMP/det-srcrev"; mk_det "$DET" "deadbeef"
+call_detect "$DET" \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"aaa"}}}' \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"bbb"}}}'
+assert_eq "detect srcrev: mode=srcrev" "$_det_mode" "srcrev"
+assert_eq "detect srcrev: srcrev值" "$_det_srcrev" "deadbeef"
+ja_eq "detect srcrev: patches空" "$_det_patches" '[]'
+
+# deleted patch(pre 有 post 无) → phase=landing(fail closed, 不塞进 patches)
+DET="$TMP/det-deleted"; mk_det "$DET" ""
+call_detect "$DET" \
+    '{"paths":{"meta-x/recipes/foo/old.patch":{"status":" M","sha256":"aaa"}}}' \
+    '{"paths":{}}'
+assert_eq "detect deleted patch: phase=landing(fail closed)" "$_det_phase" "landing"
+
+# 多 layer root(增量跨 meta-x/meta-y) → phase=landing
+DET="$TMP/det-multi"; mkdir -p "$DET/meta-x/conf" "$DET/meta-x/recipes/a" "$DET/meta-y/conf" "$DET/meta-y/recipes/b"
+: > "$DET/meta-x/conf/layer.conf"; : > "$DET/meta-y/conf/layer.conf"
+call_detect "$DET" \
+    '{"paths":{}}' \
+    '{"paths":{"meta-x/recipes/a/a.bb":{"status":"??","sha256":"x"},"meta-y/recipes/b/b.bb":{"status":"??","sha256":"y"}}}'
+assert_eq "detect 多layer: phase=landing" "$_det_phase" "landing"
+
+# noop(status 同 + digest 同) → phase=landing(无变化)
+DET="$TMP/det-noop"; mk_det "$DET" ""
+call_detect "$DET" \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"aaa"}}}' \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"aaa"}}}'
+assert_eq "detect noop: phase=landing(无变化)" "$_det_phase" "landing"
+
+# JSON 解析失败(post 非法) → phase=landing
+DET="$TMP/det-badjson"; mk_det "$DET" ""
+call_detect "$DET" '{"paths":{}}' 'not json'
+assert_eq "detect JSON失败: phase=landing" "$_det_phase" "landing"
+
+# trap 不变(capture + detect 都不安装 trap)
+trap 'echo TEST_TRAP' EXIT
+call_capture "$CAP" >/dev/null 2>&1 || true
+_trap_state="$(trap -p EXIT)"; assert_contains "capture trap不变" "$_trap_state" "TEST_TRAP"
+DET="$TMP/det-trap"; mk_det "$DET" ""
+call_detect "$DET" \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"aaa"}}}' \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"bbb"},"meta-x/recipes/foo/p.patch":{"status":"??","sha256":"c"}}}' >/dev/null 2>&1 || true
+_trap_state="$(trap -p EXIT)"; assert_contains "detect trap不变" "$_trap_state" "TEST_TRAP"
+trap - EXIT
+
 assert_summary
