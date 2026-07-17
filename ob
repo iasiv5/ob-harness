@@ -186,7 +186,7 @@ Commands:
   status                      Show current OpenBMC source binding status
   start-qemu   [<machine>]    Launch QEMU with built BMC image
   stop-qemu    [<machine>]    Stop a running QEMU instance
-  dev          [--machine <machine>] <list|modify|refresh|reset|status>  Develop recipes via devtool (TTY prompts if omitted)
+  dev          [--machine <machine>] <list|modify|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
 
 Global Options:
   -d, --dry-run         Print actions without executing
@@ -240,6 +240,7 @@ Examples:
   ob dev --machine romulus modify phosphor-ipmi-host   # devtool modify, outputs srctree
   ob dev --machine romulus refresh     # Regenerate recipe metadata cache
   ob dev --machine romulus reset phosphor-ipmi-host  # devtool reset, outputs disposition JSON
+  ob dev --machine romulus finish phosphor-ipmi-host  # devtool finish, lands patches to layer, outputs JSON
   ob dev --machine romulus status             # List modified recipes (outputs JSONL)
   ob dev                               # Interactive: pick machine, then pick subcommand (TTY)
 EOF

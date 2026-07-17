@@ -87,7 +87,7 @@ assert_contains "main dev reset 调 cmd_dev(recipe)" "$_dispatch_out" "GOT:myrec
 
 # === ob dev status 登记: usage dev 行含 status(锚定 dev 行枚举, 避开顶层 status 命令) + DEV_ARGS 交接 + 真实 dispatch ===
 _usage_out2="$(usage 2>/dev/null)"
-assert_contains "usage dev 行枚举含 status" "$_usage_out2" "refresh|reset|status"
+assert_contains "usage dev 行枚举含 status|finish" "$_usage_out2" "refresh|reset|status|finish"
 
 parse_args dev --machine m status
 assert_eq "DEV_ARGS status [2]=status" "${DEV_ARGS[2]}" "status"
@@ -97,5 +97,15 @@ cmd_dev() { printf 'GOT:%s\n' "$@"; return 0; }
 _dispatch_out2="$(main dev --machine m status 2>/dev/null)"
 assert_contains "main dev status 调 cmd_dev(status)" "$_dispatch_out2" "GOT:status"
 assert_false "main dev status 不把 dev 字面传给 cmd_dev" grep -q "GOT:dev" <<<"$_dispatch_out2"
+
+# === ob dev finish 登记: DEV_ARGS 交接 + 真实 dispatch(照 status 段) ===
+parse_args dev --machine m finish myrecipe
+assert_eq "DEV_ARGS finish [2]=finish" "${DEV_ARGS[2]}" "finish"
+assert_eq "DEV_ARGS finish [3]=myrecipe" "${DEV_ARGS[3]}" "myrecipe"
+
+cmd_dev() { printf 'GOT:%s\n' "$@"; return 0; }
+_dispatch_out3="$(main dev --machine m finish myrecipe 2>/dev/null)"
+assert_contains "main dev finish 调 cmd_dev(finish)" "$_dispatch_out3" "GOT:finish"
+assert_contains "main dev finish 调 cmd_dev(recipe)" "$_dispatch_out3" "GOT:myrecipe"
 
 assert_summary
