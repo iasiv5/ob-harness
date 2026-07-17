@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib/devtool_reset.sh — devtool reset 执行(默认 source-preserving reset,无 --remove-work)。
 #   devtool_reset_run 组装器 + 3 私有 helper(resolve_workspace/locate_bbappend/classify)。
-#   复用 lib/devtool_modify.sh 的 _devtool_env_exec / _devtool_parse_srctree(靠 ob loader glob 字母序 m<r<s)。
+#   复用 lib/devtool_workspace.sh 的 _devtool_env_exec / _devtool_parse_srctree(ob loader source 全部 lib; bash 运行时按名解析,不依赖 source 顺序)。
 #   Python helper ↔ Bash 用 tempfile NUL framing + __OB_NUL_END__ sentinel 协议。
 # 术语见 CONTEXT.md ob dev porcelain stdout / ob dev cleanup收尾语义。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断。

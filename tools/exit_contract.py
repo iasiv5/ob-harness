@@ -61,6 +61,8 @@ LEAF_EXIT_EXCEPTIONS_BY_BASENAME = {
     'devtool_modify.sh': set(),
     'devtool_reset.sh': set(),
     'devtool_search.sh': set(),
+    'devtool_status.sh': set(),
+    'devtool_workspace.sh': set(),
 }
 
 # Z 的「向前看 vs 回溯诊断」软告警启发（尽力而为、非权威，供人工审核）。
