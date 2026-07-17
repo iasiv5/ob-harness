@@ -67,8 +67,8 @@ pick_machine() {
 # read_list_choice <total> <noun> <verb> <items_nameref> <selected_outvar_nameref>
 # 参数化 noun/verb 的索引选择(数字或名字, 0 cancel)。镜像 read_machine_choice 读入循环,
 # 但 prompt 用 noun/verb(供 recipe 等 non-machine 选择)。caller 已渲染序号列表 + 集合非空 + 交互终端。
-# caller outvar 名约束: <items_nameref>/<selected_outvar_nameref> 不可带 _rlc_ 前缀
-#   (撞内部 nameref _rlc_items/_rlc_sel → bash circular; 同 read_machine_choice 的 _rmc_ 范式, caller 用业务名)。
+# caller nameref 名约束: <items_nameref>/<selected_outvar_nameref> 不可与内部 nameref
+#   _rlc_items/_rlc_sel 精确同名(否则 bash circular); caller 用业务名(如 _rst_recipes/RLC_SEL)。
 # 选中 → 设 selected_outvar + return 0; 0 → return 2(cancel); read 失败 → return 1。绝不 exit。
 read_list_choice() {
     local total="$1" noun="$2" verb="$3"
