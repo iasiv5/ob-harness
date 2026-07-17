@@ -56,3 +56,33 @@ _devtool_parse_status_all() {
         print recipe "\t" srctree
     }' "$file" 2>/dev/null
 }
+
+# _devtool_parse_status_entry <recipe> <status_file> <srctree_outvar> <recipefile_outvar>
+# 单条 status 行解析: "recipe: srctree (recipefile)" → srctree + recipefile(剥括号);
+# 无 (recipefile) → recipefile 空, srctree 仍出; 无匹配行 → 两者空。
+# (与 _devtool_parse_srctree 对偶: srctree 只剥后缀; 本函数同时取 recipefile 供 finish destination 解析;
+#  recipefile 绝对/相对原样交调用者用 base_dir 解析)。纯函数(读 file, 填 outvar), 绝不 exit。
+_devtool_parse_status_entry() {
+    local rcp="$1" file="$2" srctree_out="$3" recipefile_out="$4"
+    local _parsed _srctree="" _recipefile=""
+    _parsed="$(awk -v r="$rcp" '
+        index($0, r": ")==1 {
+            s = substr($0, index($0, ": ")+2)   # "srctree" 或 "srctree (recipefile)"
+            if (match(s, / \([^)]*\)$/)) {
+                recipefile = substr(s, RSTART+2, RLENGTH-3)   # 括号内(去 " (" + ")")
+                srctree = substr(s, 1, RSTART-1)              # srctree(去 " (recipefile)")
+            } else {
+                srctree = s
+                recipefile = ""
+            }
+            print srctree "\t" recipefile
+            done = 1
+        }
+    ' "$file" 2>/dev/null)"
+    if [[ -n "$_parsed" ]]; then
+        _srctree="${_parsed%%$'\t'*}"
+        _recipefile="${_parsed#*$'\t'}"
+    fi
+    printf -v "$srctree_out" '%s' "$_srctree"
+    printf -v "$recipefile_out" '%s' "$_recipefile"
+}
