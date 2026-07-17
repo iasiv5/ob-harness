@@ -358,13 +358,29 @@ devtool_finish_run() {
         rc=0
     fi
 
-    # 4. resolve_layer_root(origin_layer 绝对; destination); recipefile 空 → destination 无法解析 → metadata
+    # 4. resolve_layer_root(origin_layer 绝对; destination); recipefile 空 → bitbake -e FILE fallback
+    #    (devtool status 不总输出 recipefile, 如 a2jmidid; T0.5 未核实的地基事实 → bitbake -e one-shot 查 recipe FILE)
     if [[ -z "$phase" && -z "$disposition" ]]; then
         if [[ -z "$recipefile" ]]; then
-            phase="metadata"
-        else
-            _devtool_resolve_layer_root "$OPENBMC_DIR" "$recipefile" _layered_origin_layer _layered_phase || rc=$?
-            [[ -n "$_layered_phase" ]] && phase="$_layered_phase"
+            : > "$stdout_file"
+            _devtool_env_exec "$machine" "$build_dir" "$stage_file" "$stdout_file" "$stderr_file" -- bitbake -e "$recipe" || rc=$?
+            if [[ "$rc" -ne 0 ]]; then
+                phase="metadata"; stage="$(cat "$stage_file" 2>/dev/null || true)"
+            else
+                recipefile="$(python3 -c 'import re,sys
+data = open(sys.argv[1]).read()
+m = re.search(r"^FILE=\"([^\"]+)\"", data, re.M)
+print(m.group(1) if m else "")' "$stdout_file")"
+            fi
+            rc=0
+        fi
+        if [[ -z "$phase" ]]; then
+            if [[ -z "$recipefile" ]]; then
+                phase="metadata"
+            else
+                _devtool_resolve_layer_root "$OPENBMC_DIR" "$recipefile" _layered_origin_layer _layered_phase || rc=$?
+                [[ -n "$_layered_phase" ]] && phase="$_layered_phase"
+            fi
         fi
         rc=0
     fi

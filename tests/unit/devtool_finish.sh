@@ -333,7 +333,10 @@ cat > "$T5TMP/bin/devtool" <<'EOF'
 case "$1" in
   status)
     if [[ -f "${MOCK_FINISH_FLAG:-/nonexistent}" ]]; then exit "${MOCK_POST_STATUS_RC:-0}"; fi
-    [[ -n "$MOCK_SRCTREE" ]] && printf '%s: %s (%s)\n' "$MOCK_RECIPE" "$MOCK_SRCTREE" "$MOCK_RECIPEFILE"
+    if [[ -n "$MOCK_SRCTREE" ]]; then
+        if [[ -n "${MOCK_RECIPEFILE:-}" ]]; then printf '%s: %s (%s)\n' "$MOCK_RECIPE" "$MOCK_SRCTREE" "$MOCK_RECIPEFILE"
+        else printf '%s: %s\n' "$MOCK_RECIPE" "$MOCK_SRCTREE"; fi
+    fi
     exit "${MOCK_STATUS_RC:-0}" ;;
   finish)
     case "${MOCK_FINISH_ACTION:-patch}" in
@@ -343,9 +346,10 @@ case "$1" in
             mkdir -p "$_attic"; mv "$MOCK_SRCTREEBASE" "$_attic/$(basename "$MOCK_SRCTREEBASE").ts" 2>/dev/null
         fi
         [[ -n "$MOCK_CLEANED_BBAPPEND" ]] && rm -f "$MOCK_CLEANED_BBAPPEND" 2>/dev/null
-        _ld="$(dirname "$MOCK_RECIPEFILE")"
+        _rf="${MOCK_RECIPEFILE:-${MOCK_BITBAKE_FILE:-}}"
+        _ld="$(dirname "$_rf")"
         : > "$_ld/0001-new.patch"
-        echo 'SRC_URI += "file://0001-new.patch"' >> "$MOCK_RECIPEFILE"
+        echo 'SRC_URI += "file://0001-new.patch"' >> "$_rf"
         : > "${MOCK_FINISH_FLAG:-/dev/null}"; exit 0 ;;
       fail) exit 1 ;;
     esac ;;
@@ -353,6 +357,16 @@ esac
 EOF
 chmod +x "$T5TMP/bin/devtool"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$T5TMP/bin/bitbake-layers"; chmod +x "$T5TMP/bin/bitbake-layers"
+cat > "$T5TMP/bin/bitbake" <<'EOF'
+#!/usr/bin/env bash
+# bitbake -e <recipe>: 输出 MOCK_BITBAKE_FILE 作 FILE(模拟 recipe FILE 解析, fallback 路径)
+if [[ "${1:-}" == "-e" && -n "${MOCK_BITBAKE_FILE:-}" ]]; then
+    printf 'FILE="%s"\n' "$MOCK_BITBAKE_FILE"
+    exit 0
+fi
+exit 1
+EOF
+chmod +x "$T5TMP/bin/bitbake"
 export PATH="$T5TMP/bin:$PATH"
 
 MACHINE="testm"
@@ -398,6 +412,17 @@ python3 -c 'import json,sys; assert json.loads(sys.argv[1])==["meta-x/recipes/fo
 assert_eq "patch: patches(JSON array, 相对OPENBMC_DIR)" "${_fv:-0}" "0"; _fv=0
 python3 -c 'import json,sys; assert json.loads(sys.argv[1])==["meta-x/recipes/foo/foo.bb"]' "$_fin_recipe_files" || _fv=$?
 assert_eq "patch: recipe_files(JSON array)" "${_fv:-0}" "0"; _fv=0
+
+# --- recipefile 空(devtool status 不给, 如真实 a2jmidid) → bitbake -e FILE fallback → resolve_layer_root ---
+mkdir -p "$OPENBMC_DIR/meta-x/recipes/fbrec"; : > "$OPENBMC_DIR/meta-x/recipes/fbrec/fbrec.bb"
+ws="$T5TMP/ws-fb"; setup_modified "fbrec" "$ws/sources/fbrec" "$ws"
+MOCK_RECIPEFILE=""; export MOCK_RECIPEFILE
+MOCK_BITBAKE_FILE="$OPENBMC_DIR/meta-x/recipes/fbrec/fbrec.bb"; export MOCK_BITBAKE_FILE
+MOCK_FINISH_ACTION=patch call_run "fbrec"
+assert_eq "fallback: rc=0" "$_finrc" "0"
+assert_eq "fallback: phase空(bitbake -e FILE → resolve, 不 metadata)" "$_fin_phase" ""
+assert_eq "fallback: disposition=moved(非 noop, fallback 成功落回)" "$_fin_disposition" "moved"
+unset MOCK_BITBAKE_FILE
 
 # --- noop(status 无 recipe 行 → disposition=noop, landing 全空) ---
 setup_modified "bar" "$T5TMP/ws-noop/sources/bar" "$T5TMP/ws-noop"

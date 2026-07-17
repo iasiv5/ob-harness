@@ -133,7 +133,7 @@ d = json.loads(sys.stdin.read())
 exp = os.environ["EXP_DISP"]
 assert d["disposition"] == exp, ("disposition", d["disposition"], exp)
 keys = sorted(d.keys())
-assert keys == ["destination","destination_parent","disposition","recipe","srctree","srctreebase"], keys
+assert keys == ["cleaned_bbappend","destination","destination_parent","disposition","recipe","srctree","srctreebase"], keys
 if os.environ.get("EXP_DP_SUFFIX"):
     assert d["destination_parent"] is not None and d["destination_parent"].endswith(os.environ["EXP_DP_SUFFIX"]), ("dp", d["destination_parent"])
 else:
@@ -302,8 +302,8 @@ print("\n".join(recipes))
         echo "FAIL: external modify"; exit 1
     fi
     # 读 bbappend srctreebase(HARNESS_ROOT source 的 _devtool_reset_locate_bbappend; 无 # srctreebase 注释 → 回退 status_srctree)
-    local _lraw="" _lphase=""
-    _devtool_reset_locate_bbappend "$_EFF_WS" "$RECIPE" "$EXTERNAL_SRCTREE" _lraw _lphase || true
+    local _lraw="" _lbbappend="" _lphase=""
+    _devtool_reset_locate_bbappend "$_EFF_WS" "$RECIPE" "$EXTERNAL_SRCTREE" _lraw _lbbappend _lphase || true
     [[ -z "$_lphase" && "$_lraw" == "$EXTERNAL_SRCTREE" ]] || { echo "FAIL: locate bbappend phase=$_lphase raw=$_lraw (want $EXTERNAL_SRCTREE)"; exit 1; }
 
     _reset_rc=0

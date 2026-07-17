@@ -82,8 +82,8 @@
 #### v6 规格 A：T5 `devtool_finish_run` 实际流程（无 safety copy，复用 reset disposition）
 
 ```
-resolve_workspace(_resolved_*) → devtool status → _devtool_parse_status_entry(recipe, status_file → srctree + recipefile; recipefile 空→phase=metadata)
-→ [status 无 recipe 行 → noop] → _devtool_resolve_layer_root(OPENBMC_DIR, recipefile → origin_layer 绝对; 无 conf/layer.conf→phase=metadata)
+resolve_workspace(_resolved_*) → devtool status → _devtool_parse_status_entry(recipe, status_file → srctree + recipefile)
+→ [status 无 recipe 行 → noop] → [recipefile 空(devtool status 不总输出 recipefile, 如 a2jmidid; T0.5 未核实 → bitbake -e FILE one-shot fallback)] → _devtool_resolve_layer_root(OPENBMC_DIR, recipefile → origin_layer 绝对; 无 conf/layer.conf→phase=metadata)
 → _devtool_reset_locate_bbappend(ws, recipe, srctree → srctreebase + bbappend; _located_*)
 → _devtool_reset_classify(build_dir, ws_raw, ws_eff, srctreebase → expected_disposition; _classified_*)
 → _devtool_finish_capture_landing_snapshot(OPENBMC_DIR, snap_pre)
