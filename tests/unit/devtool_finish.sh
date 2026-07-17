@@ -306,4 +306,146 @@ call_detect "$DET" \
 _trap_state="$(trap -p EXIT)"; assert_contains "detect trap不变" "$_trap_state" "TEST_TRAP"
 trap - EXIT
 
+# ============================================================================
+# T5: devtool_finish_run(组装: resolver + reset 链 + capture/detect; 无 safety copy)
+# ============================================================================
+T5TMP="$(mktemp -d)"; export T5TMP
+OPENBMC_DIR="$T5TMP/openbmc"; BUILD_DIR="$T5TMP/build"
+export OPENBMC_DIR BUILD_DIR
+mkdir -p "$OPENBMC_DIR" "$BUILD_DIR/conf" "$T5TMP/bin"
+
+cat > "$OPENBMC_DIR/setup" <<'EOF'
+#!/usr/bin/env bash
+export SETUP_DONE=1
+EOF
+chmod +x "$OPENBMC_DIR/setup"
+
+# OPENBMC_DIR 是 git 仓库(capture 需要) + meta-x layer + recipe(committed 干净 → capture pre 空)
+git -C "$OPENBMC_DIR" init -q
+mkdir -p "$OPENBMC_DIR/meta-x/conf" "$OPENBMC_DIR/meta-x/recipes/foo"
+: > "$OPENBMC_DIR/meta-x/conf/layer.conf"
+printf 'SUMMARY = "foo"\nSRCREV = "oldrev"\n' > "$OPENBMC_DIR/meta-x/recipes/foo/foo.bb"
+git -C "$OPENBMC_DIR" add -A && git -C "$OPENBMC_DIR" -c user.email=t@t -c user.name=t commit -q -m init
+
+# mock devtool: status(输出 recipe+recipefile, 二次无); finish(归档 srctreebase + 删 bbappend + 落回 patch + 退出)
+cat > "$T5TMP/bin/devtool" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  status)
+    if [[ -f "${MOCK_FINISH_FLAG:-/nonexistent}" ]]; then exit "${MOCK_POST_STATUS_RC:-0}"; fi
+    [[ -n "$MOCK_SRCTREE" ]] && printf '%s: %s (%s)\n' "$MOCK_RECIPE" "$MOCK_SRCTREE" "$MOCK_RECIPEFILE"
+    exit "${MOCK_STATUS_RC:-0}" ;;
+  finish)
+    case "${MOCK_FINISH_ACTION:-patch}" in
+      patch)
+        if [[ -n "$MOCK_SRCTREEBASE" && -d "$MOCK_SRCTREEBASE" ]]; then
+            _attic="$(dirname "$(dirname "$MOCK_SRCTREEBASE")")/attic/sources"
+            mkdir -p "$_attic"; mv "$MOCK_SRCTREEBASE" "$_attic/$(basename "$MOCK_SRCTREEBASE").ts" 2>/dev/null
+        fi
+        [[ -n "$MOCK_CLEANED_BBAPPEND" ]] && rm -f "$MOCK_CLEANED_BBAPPEND" 2>/dev/null
+        _ld="$(dirname "$MOCK_RECIPEFILE")"
+        : > "$_ld/0001-new.patch"
+        echo 'SRC_URI += "file://0001-new.patch"' >> "$MOCK_RECIPEFILE"
+        : > "${MOCK_FINISH_FLAG:-/dev/null}"; exit 0 ;;
+      fail) exit 1 ;;
+    esac ;;
+esac
+EOF
+chmod +x "$T5TMP/bin/devtool"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$T5TMP/bin/bitbake-layers"; chmod +x "$T5TMP/bin/bitbake-layers"
+export PATH="$T5TMP/bin:$PATH"
+
+MACHINE="testm"
+touch "$BUILD_DIR/conf/local.conf" "$BUILD_DIR/conf/bblayers.conf"
+MOCK_FINISH_FLAG="$T5TMP/.finish_done"; export MOCK_FINISH_FLAG
+
+# setup_modified <recipe> <srctree> <ws>: devtool.conf + appends bbappend + srctreebase(nonempty)
+setup_modified() {
+    local recipe="$1" srctree="$2" ws="$3"
+    mkdir -p "$ws/appends" "$srctree"
+    printf 'EXTERNALSRC:pn-%s = "%s"\n' "$recipe" "$srctree" > "$ws/appends/${recipe}_1.0.bbappend"
+    printf '[General]\nworkspace_path = %s\n' "$ws" > "$BUILD_DIR/conf/devtool.conf"
+    echo c > "$srctree/f"
+    export MOCK_RECIPE="$recipe" MOCK_SRCTREE="$srctree" MOCK_SRCTREEBASE="$srctree"
+    export MOCK_RECIPEFILE="$OPENBMC_DIR/meta-x/recipes/foo/foo.bb"
+    export MOCK_CLEANED_BBAPPEND="$ws/appends/${recipe}_1.0.bbappend"
+    rm -f "$MOCK_FINISH_FLAG"
+}
+
+call_run() {  # <recipe>
+    _fin_srctree=""; _fin_srctreebase=""; _fin_disposition=""; _fin_dest_parent=""; _fin_cleaned_bbappend=""
+    _fin_landing_mode=""; _fin_landing_layer=""; _fin_patches=""; _fin_recipe_files=""; _fin_srcrev=""
+    _fin_phase=""; _fin_stage=""; _fin_stderr_file=""; _finrc=0
+    devtool_finish_run "$MACHINE" "$BUILD_DIR" "$1" \
+        _fin_srctree _fin_srctreebase _fin_disposition _fin_dest_parent _fin_cleaned_bbappend \
+        _fin_landing_mode _fin_landing_layer _fin_patches _fin_recipe_files _fin_srcrev \
+        _fin_phase _fin_stage _fin_stderr_file || _finrc=$?
+    rm -f "$_fin_stderr_file" 2>/dev/null
+}
+
+# --- patch mode(mock finish 落回 patch + moved 归档) ---
+ws="$T5TMP/ws-patch"; setup_modified "foo" "$ws/sources/foo" "$ws"
+MOCK_FINISH_ACTION=patch call_run "foo"
+assert_eq "patch: rc=0" "$_finrc" "0"
+assert_eq "patch: phase空" "$_fin_phase" ""
+assert_eq "patch: disposition=moved" "$_fin_disposition" "moved"
+assert_eq "patch: srctreebase" "$_fin_srctreebase" "$ws/sources/foo"
+assert_eq "patch: destination_parent=ws/attic/sources" "$_fin_dest_parent" "$ws/attic/sources"
+assert_eq "patch: cleaned_bbappend" "$_fin_cleaned_bbappend" "$ws/appends/foo_1.0.bbappend"
+assert_eq "patch: landing_mode=patch" "$_fin_landing_mode" "patch"
+assert_eq "patch: landing_layer=meta-x" "$_fin_landing_layer" "meta-x"
+python3 -c 'import json,sys; assert json.loads(sys.argv[1])==["meta-x/recipes/foo/0001-new.patch"]' "$_fin_patches" || _fv=$?
+assert_eq "patch: patches(JSON array, 相对OPENBMC_DIR)" "${_fv:-0}" "0"; _fv=0
+python3 -c 'import json,sys; assert json.loads(sys.argv[1])==["meta-x/recipes/foo/foo.bb"]' "$_fin_recipe_files" || _fv=$?
+assert_eq "patch: recipe_files(JSON array)" "${_fv:-0}" "0"; _fv=0
+
+# --- noop(status 无 recipe 行 → disposition=noop, landing 全空) ---
+setup_modified "bar" "$T5TMP/ws-noop/sources/bar" "$T5TMP/ws-noop"
+MOCK_SRCTREE="" MOCK_FINISH_ACTION=patch call_run "bar"
+assert_eq "noop: rc=0" "$_finrc" "0"
+assert_eq "noop: disposition=noop" "$_fin_disposition" "noop"
+assert_eq "noop: landing_mode空" "$_fin_landing_mode" ""
+assert_eq "noop: patches空" "$_fin_patches" ""
+assert_eq "noop: srctree空" "$_fin_srctree" ""
+
+# --- finish 失败(mock finish fail) → phase=finish ---
+setup_modified "failr" "$T5TMP/ws-fail/sources/failr" "$T5TMP/ws-fail"
+MOCK_FINISH_ACTION=fail call_run "failr"
+assert_false "finish-fail: rc非0" test "$_finrc" -eq 0
+assert_eq "finish-fail: phase=finish" "$_fin_phase" "finish"
+
+# --- capture pre 失败(OPENBMC_DIR 非 git) → phase=landing(short-circuit, 不 finish) ---
+NOGIT="$T5TMP/nogit-ob"; mkdir -p "$NOGIT/meta-x/conf" "$NOGIT/meta-x/recipes/foo"
+: > "$NOGIT/meta-x/conf/layer.conf"
+printf 'SUMMARY = "x"\n' > "$NOGIT/meta-x/recipes/foo/foo.bb"
+cat > "$NOGIT/setup" <<'EOF'
+#!/usr/bin/env bash
+export SETUP_DONE=1
+EOF
+chmod +x "$NOGIT/setup"
+_OPENBMC_SAVE="$OPENBMC_DIR"; OPENBMC_DIR="$NOGIT"; export OPENBMC_DIR
+ws="$T5TMP/ws-nogit"; setup_modified "nogr" "$ws/sources/nogr" "$ws"
+MOCK_FINISH_ACTION=patch call_run "nogr"
+assert_eq "capture非git: phase=landing(fail closed, 不 finish)" "$_fin_phase" "landing"
+assert_false "capture非git: rc非0" test "$_finrc" -eq 0
+OPENBMC_DIR="$_OPENBMC_SAVE"; export OPENBMC_DIR
+
+# --- srctreebase/srctree 含空格 → 13 outvar 原样 ---
+ws="$T5TMP/ws-sp"; sp_path="$ws/sources/recipe with space"
+setup_modified "foosp" "$sp_path" "$ws"
+MOCK_FINISH_ACTION=patch call_run "foosp"
+assert_eq "空格: disposition=moved" "$_fin_disposition" "moved"
+assert_eq "空格: srctree含空格原样" "$_fin_srctree" "$sp_path"
+assert_eq "空格: srctreebase含空格原样" "$_fin_srctreebase" "$sp_path"
+
+# --- trap 不变 ---
+trap 'echo TEST_TRAP' EXIT
+ws="$T5TMP/ws-trap"; setup_modified "trapr" "$ws/sources/trapr" "$ws"
+MOCK_FINISH_ACTION=patch call_run "trapr"
+_trap_state="$(trap -p EXIT)"
+assert_contains "run trap不变" "$_trap_state" "TEST_TRAP"
+trap - EXIT
+
+rm -rf "$T5TMP"
+
 assert_summary

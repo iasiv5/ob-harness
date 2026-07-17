@@ -298,3 +298,183 @@ PY
     rm -f -- "$tempfile"
     [[ -z "$phase" ]]
 }
+
+
+# devtool_finish_run <machine> <build_dir> <recipe> <srctree_out> <srctreebase_out> <disposition_out>
+#                    <destination_parent_out> <cleaned_bbappend_out> <landing_mode_out> <landing_layer_out>
+#                    <patches_out> <recipe_files_out> <srcrev_out> <phase_out> <stage_out> <stderr_file_out>
+# 组装器(落回 recipe 原属 layer + source-preserving + 单 writer; 镜像 reset 链 + light destination resolver +
+#   capture/detect landing 观测; 无 safety copy, plan v6 规格 A):
+#   resolve_workspace → status → parse_status_entry(srctree+recipefile; recipefile空→metadata) → [无行 noop] →
+#   resolve_layer_root(origin_layer 绝对; 无 conf/layer.conf→metadata) → locate_bbappend(srctreebase+bbappend) →
+#   classify(expected_disposition) → capture_pre(landing fail closed→不 finish) → devtool finish "$recipe" "$origin_layer" →
+#   capture_post → detect_landing(landing_*) → postcondition(二次 status + recipe 退出 workspace + srctreebase vs expected)。
+#   srctreebase 处置 = reset 同构(devtool finish 内部 _reset(remove_work=False) 归档 attic/sources; ob 不做 safety copy)。
+# 回传 13 outvar(_finish_*); moved 时 destination_parent=<ws_eff>/attic/sources; cleaned_bbappend=locate bbappend;
+# landing_*来自 detect(相对 OPENBMC_DIR); origin_layer(destination)绝对, 给 devtool 用(不进 JSON, JSON destination 恒 null)。
+# stderr_file 传调用者(不 rm); stage/snap tempfiles 内部 rm。返回 rc(不 exit)。
+devtool_finish_run() {
+    local machine="$1" build_dir="$2" recipe="$3"
+    local srctree_outvar="$4" srctreebase_outvar="$5" disposition_outvar="$6"
+    local destination_parent_outvar="$7" cleaned_bbappend_outvar="$8" landing_mode_outvar="$9"
+    local landing_layer_outvar="${10}" patches_outvar="${11}" recipe_files_outvar="${12}"
+    local srcrev_outvar="${13}" phase_outvar="${14}" stage_outvar="${15}" stderr_file_outvar="${16}"
+    local stage_file stdout_file stderr_file snap_pre snap_post
+    local _resolved_workspace_raw="" _resolved_workspace_effective="" _resolved_phase=""
+    local _located_srctreebase_raw="" _located_bbappend="" _located_phase=""
+    local _classified_expected="" _classified_phase=""
+    local _layered_origin_layer="" _layered_phase=""
+    local _cap_pre_phase="" _cap_post_phase=""
+    local _pse_srctree="" _pse_recipefile=""
+    local _det_mode="" _det_patches="" _det_recipe_files="" _det_srcrev="" _det_landing_layer="" _det_phase=""
+    local srctree="" srctreebase="" recipefile="" disposition="" destination_parent="" cleaned_bbappend=""
+    local landing_mode="" landing_layer="" patches="" recipe_files="" srcrev=""
+    local phase="" stage="" rc=0 _post_srctree=""
+
+    stage_file="$(mktemp 2>/dev/null)"; stdout_file="$(mktemp 2>/dev/null)"; stderr_file="$(mktemp 2>/dev/null)"
+    snap_pre="$(mktemp 2>/dev/null)"; snap_post="$(mktemp 2>/dev/null)"
+
+    # 1. effective workspace(outvar _resolved_*)
+    _devtool_reset_resolve_workspace "$build_dir" _resolved_workspace_raw _resolved_workspace_effective _resolved_phase || rc=$?
+    [[ -n "$_resolved_phase" ]] && phase="$_resolved_phase"
+    rc=0
+
+    # 2. status → srctree + recipefile(parse_status_entry; recipefile 空 → destination 无法解析 → metadata)
+    if [[ -z "$phase" ]]; then
+        : > "$stdout_file"
+        _devtool_env_exec "$machine" "$build_dir" "$stage_file" "$stdout_file" "$stderr_file" -- devtool status || rc=$?
+        if [[ "$rc" -ne 0 ]]; then
+            phase="status"; stage="$(cat "$stage_file" 2>/dev/null || true)"
+        else
+            _devtool_parse_status_entry "$recipe" "$stdout_file" _pse_srctree _pse_recipefile
+            srctree="$_pse_srctree"; recipefile="$_pse_recipefile"
+        fi
+        rc=0
+    fi
+
+    # 3. status 无 recipe 行 → noop(未 modified)
+    if [[ -z "$phase" && -z "$srctree" ]]; then
+        disposition="noop"
+        rc=0
+    fi
+
+    # 4. resolve_layer_root(origin_layer 绝对; destination); recipefile 空 → destination 无法解析 → metadata
+    if [[ -z "$phase" && -z "$disposition" ]]; then
+        if [[ -z "$recipefile" ]]; then
+            phase="metadata"
+        else
+            _devtool_resolve_layer_root "$OPENBMC_DIR" "$recipefile" _layered_origin_layer _layered_phase || rc=$?
+            [[ -n "$_layered_phase" ]] && phase="$_layered_phase"
+        fi
+        rc=0
+    fi
+
+    # 5. locate bbappend(srctreebase + bbappend; outvar _located_*)
+    if [[ -z "$phase" && -z "$disposition" ]]; then
+        _devtool_reset_locate_bbappend "$_resolved_workspace_effective" "$recipe" "$srctree" _located_srctreebase_raw _located_bbappend _located_phase || rc=$?
+        [[ -n "$_located_phase" ]] && phase="$_located_phase"
+        srctreebase="$_located_srctreebase_raw"
+        cleaned_bbappend="$_located_bbappend"
+        rc=0
+    fi
+
+    # 6. classify expected(reset 前; outvar _classified_*)
+    if [[ -z "$phase" && -z "$disposition" ]]; then
+        _devtool_reset_classify "$build_dir" "$_resolved_workspace_raw" "$_resolved_workspace_effective" "$srctreebase" _classified_expected _classified_phase || rc=$?
+        [[ -n "$_classified_phase" ]] && phase="$_classified_phase"
+        rc=0
+    fi
+
+    # 7. capture pre(landing fail closed → 不 finish)
+    if [[ -z "$phase" && -z "$disposition" ]]; then
+        _devtool_finish_capture_landing_snapshot "$OPENBMC_DIR" "$snap_pre" _cap_pre_phase || rc=$?
+        [[ -n "$_cap_pre_phase" ]] && phase="landing"
+        rc=0
+    fi
+
+    # 8. devtool finish "$recipe" "$origin_layer"(phase=finish on fail)
+    if [[ -z "$phase" && -z "$disposition" ]]; then
+        : > "$stdout_file"
+        _devtool_env_exec "$machine" "$build_dir" "$stage_file" "$stdout_file" "$stderr_file" -- devtool finish "$recipe" "$_layered_origin_layer" || rc=$?
+        if [[ "$rc" -ne 0 ]]; then
+            phase="finish"; stage="$(cat "$stage_file" 2>/dev/null || true)"
+        fi
+        rc=0
+    fi
+
+    # 9. capture post
+    if [[ -z "$phase" && -z "$disposition" ]]; then
+        _devtool_finish_capture_landing_snapshot "$OPENBMC_DIR" "$snap_post" _cap_post_phase || rc=$?
+        [[ -n "$_cap_post_phase" ]] && phase="landing"
+        rc=0
+    fi
+
+    # 10. detect landing(landing_*; phase=landing on fail/无变化/多root/deleted)
+    if [[ -z "$phase" && -z "$disposition" ]]; then
+        _devtool_finish_detect_landing "$OPENBMC_DIR" "$snap_pre" "$snap_post" \
+            _det_mode _det_patches _det_recipe_files _det_srcrev _det_landing_layer _det_phase || rc=$?
+        [[ -n "$_det_phase" ]] && phase="landing"
+        landing_mode="$_det_mode"; patches="$_det_patches"; recipe_files="$_det_recipe_files"
+        srcrev="$_det_srcrev"; landing_layer="$_det_landing_layer"
+        rc=0
+    fi
+
+    # 11. postcondition: 二次 status + recipe 退出 workspace
+    if [[ -z "$phase" && -z "$disposition" ]]; then
+        : > "$stdout_file"
+        _devtool_env_exec "$machine" "$build_dir" "$stage_file" "$stdout_file" "$stderr_file" -- devtool status || rc=$?
+        if [[ "$rc" -ne 0 ]]; then
+            phase="postcondition"; stage="$(cat "$stage_file" 2>/dev/null || true)"
+        else
+            _post_srctree="$(_devtool_parse_srctree "$recipe" "$stdout_file")"
+            [[ -n "$_post_srctree" ]] && phase="postcondition"   # recipe 仍在 workspace(未退出)
+        fi
+        rc=0
+    fi
+
+    # 11b. postcheck: srctreebase 原路径 vs expected(与 reset 同构)
+    if [[ -z "$phase" && -z "$disposition" ]]; then
+        python3 - "$build_dir" "$srctreebase" "$_classified_expected" >/dev/null 2>&1 <<'PY'
+import os
+import sys
+
+build_dir, srctreebase, expected = sys.argv[1], sys.argv[2], sys.argv[3]
+p = srctreebase if os.path.isabs(srctreebase) else os.path.join(build_dir, srctreebase)
+p = os.path.abspath(p)
+exists = os.path.lexists(p)
+ok = exists if expected == 'retained' else (not exists)   # moved/removed/absent → 必须不存在
+sys.exit(0 if ok else 1)
+PY
+        rc=$?
+        [[ "$rc" -ne 0 ]] && phase="postcondition"
+    fi
+
+    # 成功: 设 disposition + destination_parent
+    if [[ -z "$phase" && -z "$disposition" ]]; then
+        disposition="$_classified_expected"
+        if [[ "$disposition" == "moved" ]]; then
+            destination_parent="$_resolved_workspace_effective/attic/sources"
+        fi
+        rc=0
+    fi
+
+    # 末尾统一回传 13 outvar + 清内部 tempfile(stderr_file 传调用者)
+    printf -v "$srctree_outvar" '%s' "$srctree"
+    printf -v "$srctreebase_outvar" '%s' "$srctreebase"
+    printf -v "$disposition_outvar" '%s' "$disposition"
+    printf -v "$destination_parent_outvar" '%s' "$destination_parent"
+    printf -v "$cleaned_bbappend_outvar" '%s' "$cleaned_bbappend"
+    printf -v "$landing_mode_outvar" '%s' "$landing_mode"
+    printf -v "$landing_layer_outvar" '%s' "$landing_layer"
+    printf -v "$patches_outvar" '%s' "$patches"
+    printf -v "$recipe_files_outvar" '%s' "$recipe_files"
+    printf -v "$srcrev_outvar" '%s' "$srcrev"
+    printf -v "$phase_outvar" '%s' "$phase"
+    printf -v "$stage_outvar" '%s' "$stage"
+    printf -v "$stderr_file_outvar" '%s' "$stderr_file"
+    rm -f -- "$stage_file" "$stdout_file" "$snap_pre" "$snap_post"
+    if [[ -n "$phase" ]]; then
+        return 1
+    fi
+    return 0
+}
