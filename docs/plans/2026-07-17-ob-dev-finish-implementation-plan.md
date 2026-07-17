@@ -68,7 +68,7 @@
 
 - **FACT_GIT_BASELINE_SUPPORTED=yes**：主仓库是 git 仓库（`git rev-parse --is-inside-work-tree=true`）；`.gitignore` 第1行 `build*/*`（build/ gitignore 不进 baseline）；`build/` 存在（workspace attic 宿主）；OPENBMC_DIR=`workspace/openbmc`。✓ 与计划假设一致。
 
-### 🔴 STOP：FACT_FINISH_SOURCE_POLICY 与计划 T5 safety copy 设计矛盾（需修 plan 再进 T3）
+### ✅ v6 修订（2026-07-17）：safety copy 删除 → finish 复用 reset disposition 五态（原 STOP 已解决）
 
 计划全局约束（safety copy / source-preserving=copy-before-finish）基于"devtool finish 可能删源，需 ob copy-before-finish 兜底"的假设。FACT_② 推翻该假设：**devtool finish 默认（remove_work=False）绝不删源，已自带与 reset 同构的 source-preserving 归档**（srctreebase → `attic/sources/<pn>.<timestamp>` move / 原位 retained），归档命名 `<pn>.<timestamp>` 与 reset **完全相同**（无 `.finish-copy` 后缀）。
 
@@ -77,7 +77,32 @@
 2. **capture 过滤 attic 仍保留**（attic 是 devtool 归档产物，不属于 landing；safety copy 专属过滤理由消失，但 attic 过滤本身仍需——devtool move 进来的归档不应算 landing）。
 3. **CONTEXT.md / ADR-0008 复用确认**：finish 物理层与 reset 同构（ADR-0008 fail-safe 通则直接复用），进一步坐实"finish = reset 链 + landing 观测"，safety copy 是多余复杂度。
 
-**结论**：T1（emit）/T2（reset 对齐）不受影响（与 FACT_② 无关），本 session 继续。**T3 起需先修 plan（删 safety copy，finish srctreebase 处置复用 reset disposition 五态；T5 Step1/Step3 用例 + T8 integration safety copy 时序实测相应改写）再执行**，不按现 plan 硬写 T5。这是 T0.5 的核心产出。
+**结论**：T1（emit）/T2（reset 对齐）已完成并 commit（dbc26cd docs + 06b2b7f impl），不受 FACT_② 影响。本 v6 修订确立 T3-T10 执行规格：**finish 物理层复用 reset disposition 五态，无 safety copy**。plan 中所有 `safety copy` / `finish-copy` / `copy-before-finish` / `safety copy 时序` 字样（架构快照行20、全局约束行45-46、T5 行273-301、T8 行369-400、执行纪律行468、最终验证行484-485）一律按下述 v6 规格覆盖。
+
+#### v6 规格 A：T5 `devtool_finish_run` 实际流程（无 safety copy，复用 reset disposition）
+
+```
+resolve_workspace(_resolved_*) → devtool status → _devtool_parse_status_entry(recipe, status_file → srctree + recipefile; recipefile 空→phase=metadata)
+→ [status 无 recipe 行 → noop] → _devtool_resolve_layer_root(OPENBMC_DIR, recipefile → origin_layer 绝对; 无 conf/layer.conf→phase=metadata)
+→ _devtool_reset_locate_bbappend(ws, recipe, srctree → srctreebase + bbappend; _located_*)
+→ _devtool_reset_classify(build_dir, ws_raw, ws_eff, srctreebase → expected_disposition; _classified_*)
+→ _devtool_finish_capture_landing_snapshot(OPENBMC_DIR, snap_pre)
+→ _devtool_env_exec -- devtool finish "$recipe" "$origin_layer"   (phase=finish on fail)
+→ _devtool_finish_capture_landing_snapshot(OPENBMC_DIR, snap_post)
+→ _devtool_finish_detect_landing(OPENBMC_DIR, snap_pre, snap_post → landing_mode/patches/recipe_files/srcrev/landing_layer; _detected_*)
+→ postcondition(二次 status + recipe 退出 workspace + srctreebase vs expected_disposition; phase=postcondition on fail)
+→ 回传 13 outvar
+```
+
+- **srctreebase 处置 = reset 同构**：`devtool finish` 内部 `_reset(remove_work=False)` 已 source-preserving 归档（moved→`<ws>/attic/sources/<pn>.<timestamp>`、retained→原位、removed→空目录 rmdir、absent）。ob **不做 safety copy**；disposition=`_classified_expected`、destination_parent（moved 时=`<ws_eff>/attic/sources`）、cleaned_bbappend=`_located_bbappend`，与 reset 完全对称。
+- **失败路径无兜底需求**：phase!=空 → cmd_dev exit 1 不发布 JSON；devtool finish 未执行或部分执行均不删源（FACT_②），workspace metadata 残留可重建（ADR-0008 fail-safe 覆盖串行内失败）。
+
+#### v6 规格 B：T8 integration 实际形态（无 safety copy 时序实测）
+
+- **删**：safety copy 时序实测、无 `<recipe>.<timestamp>.finish-copy` 残留、无双归档、safety copy 兜底项。
+- **改为 disposition 归档实测**：finish 后 srctreebase 按 disposition 五态归档（moved→attic/sources 单一 `<pn>.<timestamp>`；retained→原位），与 reset 同构验证；无 `.finish-copy` 后缀。
+- **safety fault-inject**（保 ADR-0008）：status-fail 不 finish、list-fail 不降级、finish-partial-fail 残留检测（残留=workspace metadata，devtool 不删源故无源丢失风险）。
+- capture 过滤 build/workspace/attic 仍验证（devtool 归档 attic 不算 landing）。
 
 ## 输入工件
 
