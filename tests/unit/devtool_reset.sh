@@ -151,10 +151,10 @@ rm -rf "$_BP"
 # T2: _devtool_reset_locate_bbappend + _devtool_reset_classify
 # ============================================================================
 
-# --- _devtool_reset_locate_bbappend <workspace> <recipe> <status_srctree> <srctreebase_raw_out> <phase_out> ---
+# --- _devtool_reset_locate_bbappend <workspace> <recipe> <status_srctree> <srctreebase_raw_out> <bbappend_out> <phase_out> ---
 call_locate() {  # <workspace> <recipe> <status_srctree>
-    _located_srctreebase_raw=""; _located_phase=""; _lrc=0
-    _devtool_reset_locate_bbappend "$1" "$2" "$3" _located_srctreebase_raw _located_phase || _lrc=$?
+    _located_srctreebase_raw=""; _located_bbappend=""; _located_phase=""; _lrc=0
+    _devtool_reset_locate_bbappend "$1" "$2" "$3" _located_srctreebase_raw _located_bbappend _located_phase || _lrc=$?
 }
 
 # 普通 bbappend 命中(无 srctreebase 注释 → srctreebase_raw=status_srctree)
@@ -164,6 +164,7 @@ call_locate "$ws" "myrecipe" "$TMP/myrecipe-src"
 assert_eq "locate普通: rc=0" "$_lrc" "0"
 assert_eq "locate普通: phase空" "$_located_phase" ""
 assert_eq "locate普通: srctreebase_raw=status_srctree(无注释)" "$_located_srctreebase_raw" "$TMP/myrecipe-src"
+assert_eq "locate普通: bbappend=命中文件路径" "$_located_bbappend" "$ws/appends/myrecipe_1.0.bbappend"
 
 # 有 # srctreebase: 注释 → srctreebase_raw=注释值
 ws="$TMP/loc2"; mkdir -p "$ws/appends"
@@ -171,12 +172,14 @@ printf '# srctreebase: %s/sb-base\nEXTERNALSRC:pn-myrecipe = "%s/myrecipe-src"\n
 call_locate "$ws" "myrecipe" "$TMP/myrecipe-src"
 assert_eq "locate注释: rc=0" "$_lrc" "0"
 assert_eq "locate注释: srctreebase_raw=注释值" "$_located_srctreebase_raw" "$TMP/sb-base"
+assert_eq "locate注释: bbappend=命中文件路径" "$_located_bbappend" "$ws/appends/myrecipe_1.0.bbappend"
 
 # # srctreebase 注释后置于 EXTERNALSRC(顺序无关: 先完整解析单文件再关联)
 ws="$TMP/loc-after"; mkdir -p "$ws/appends"
 printf 'EXTERNALSRC:pn-myrecipe = "%s/myrecipe-src"\n# srctreebase: %s/sb-after\n' "$TMP" "$TMP" > "$ws/appends/myrecipe_1.0.bbappend"
 call_locate "$ws" "myrecipe" "$TMP/myrecipe-src"
 assert_eq "locate注释后置: srctreebase_raw=注释值(顺序无关)" "$_located_srctreebase_raw" "$TMP/sb-after"
+assert_eq "locate注释后置: bbappend=命中文件路径" "$_located_bbappend" "$ws/appends/myrecipe_1.0.bbappend"
 
 # gstreamer1.0 PN 含 . 字面匹配(不正则误匹配)
 ws="$TMP/loc3"; mkdir -p "$ws/appends"
@@ -184,34 +187,40 @@ printf 'EXTERNALSRC:pn-gstreamer1.0 = "%s/gst-src"\n' "$TMP" > "$ws/appends/gstr
 call_locate "$ws" "gstreamer1.0" "$TMP/gst-src"
 assert_eq "locate gstreamer1.0: rc=0" "$_lrc" "0"
 assert_eq "locate gstreamer1.0: srctreebase_raw" "$_located_srctreebase_raw" "$TMP/gst-src"
+assert_eq "locate gstreamer1.0: bbappend=命中文件路径" "$_located_bbappend" "$ws/appends/gstreamer1.0_1.0.bbappend"
 
 # PN 前缀相近(foobar 不匹配 foo) → 零匹配 metadata
 ws="$TMP/loc4"; mkdir -p "$ws/appends"
 printf 'EXTERNALSRC:pn-foobar = "%s/x"\n' "$TMP" > "$ws/appends/foobar_1.0.bbappend"
 call_locate "$ws" "foo" "$TMP/x"
 assert_eq "locate前缀相近: phase=metadata" "$_located_phase" "metadata"
+assert_eq "locate前缀相近: bbappend空(metadata)" "$_located_bbappend" ""
 
 # 注释伪 EXTERNALSRC(# 开头) → 不命中 → metadata
 ws="$TMP/loc5"; mkdir -p "$ws/appends"
 printf '# EXTERNALSRC:pn-myrecipe = "%s/x"\n' "$TMP" > "$ws/appends/myrecipe_1.0.bbappend"
 call_locate "$ws" "myrecipe" "$TMP/x"
 assert_eq "locate注释伪: phase=metadata" "$_located_phase" "metadata"
+assert_eq "locate注释伪: bbappend空(metadata)" "$_located_bbappend" ""
 
 # 多冲突行(同 bbappend 两行匹配) → metadata
 ws="$TMP/loc6"; mkdir -p "$ws/appends"
 printf 'EXTERNALSRC:pn-myrecipe = "%s/a"\nEXTERNALSRC:pn-myrecipe = "%s/b"\n' "$TMP" "$TMP" > "$ws/appends/myrecipe_1.0.bbappend"
 call_locate "$ws" "myrecipe" "$TMP/a"
 assert_eq "locate多冲突行: phase=metadata" "$_located_phase" "metadata"
+assert_eq "locate多冲突行: bbappend空(metadata)" "$_located_bbappend" ""
 
 # 零匹配(无 bbappend) → metadata
 ws="$TMP/loc7"; mkdir -p "$ws/appends"
 call_locate "$ws" "myrecipe" "$TMP/x"
 assert_eq "locate零匹配: phase=metadata" "$_located_phase" "metadata"
+assert_eq "locate零匹配: bbappend空(metadata)" "$_located_bbappend" ""
 
 # appends 目录不存在 → metadata
 ws="$TMP/loc8"; mkdir -p "$ws"
 call_locate "$ws" "myrecipe" "$TMP/x"
 assert_eq "locate无appends目录: phase=metadata" "$_located_phase" "metadata"
+assert_eq "locate无appends目录: bbappend空(metadata)" "$_located_bbappend" ""
 
 # 多 bbappend 匹配同一 recipe → metadata
 ws="$TMP/loc9"; mkdir -p "$ws/appends"
@@ -219,12 +228,14 @@ printf 'EXTERNALSRC:pn-myrecipe = "%s/x"\n' "$TMP" > "$ws/appends/myrecipe_1.0.b
 printf 'EXTERNALSRC:pn-myrecipe = "%s/x"\n' "$TMP" > "$ws/appends/myrecipe_1.2.bbappend"
 call_locate "$ws" "myrecipe" "$TMP/x"
 assert_eq "locate多bbappend: phase=metadata" "$_located_phase" "metadata"
+assert_eq "locate多bbappend: bbappend空(metadata)" "$_located_bbappend" ""
 
 # EXTERNALSRC != status_srctree → metadata
 ws="$TMP/loc10"; mkdir -p "$ws/appends"
 printf 'EXTERNALSRC:pn-myrecipe = "%s/a"\n' "$TMP" > "$ws/appends/myrecipe_1.0.bbappend"
 call_locate "$ws" "myrecipe" "$TMP/different"
 assert_eq "locate EXTERNALSRC!=status: phase=metadata" "$_located_phase" "metadata"
+assert_eq "locate EXTERNALSRC!=status: bbappend空(metadata)" "$_located_bbappend" ""
 
 # --- _devtool_reset_classify <build_dir> <ws_raw> <ws_eff> <srctreebase_raw> <expected_out> <phase_out> ---
 call_classify() {  # <build_dir> <ws_raw> <ws_eff> <srctreebase_raw>
@@ -384,10 +395,10 @@ touch "$BUILD_DIR/conf/local.conf" "$BUILD_DIR/conf/bblayers.conf"
 # call_run <recipe>: 调 devtool_reset_run(生产 receiver _reset_*), 捕获 rc, 清 stderr_file
 call_run() {
     _reset_srctree=""; _reset_srctreebase=""; _reset_disposition=""
-    _reset_destination_parent=""; _reset_phase=""; _reset_stage=""; _reset_stderr_file=""; _runrc=0
+    _reset_destination_parent=""; _reset_cleaned_bbappend=""; _reset_phase=""; _reset_stage=""; _reset_stderr_file=""; _runrc=0
     devtool_reset_run "$MACHINE" "$BUILD_DIR" "$1" \
         _reset_srctree _reset_srctreebase _reset_disposition _reset_destination_parent \
-        _reset_phase _reset_stage _reset_stderr_file || _runrc=$?
+        _reset_cleaned_bbappend _reset_phase _reset_stage _reset_stderr_file || _runrc=$?
     rm -f "$_reset_stderr_file" 2>/dev/null
 }
 
@@ -416,6 +427,7 @@ assert_eq "moved: disposition=moved" "$_reset_disposition" "moved"
 assert_eq "moved: srctree" "$_reset_srctree" "$ws/sources/recipe1"
 assert_eq "moved: srctreebase" "$_reset_srctreebase" "$ws/sources/recipe1"
 assert_eq "moved: destination_parent=ws/attic/sources" "$_reset_destination_parent" "$ws/attic/sources"
+assert_eq "moved: cleaned_bbappend=命中bbappend" "$_reset_cleaned_bbappend" "$ws/appends/recipe1_1.0.bbappend"
 
 # --- retained(外部 srctree, P=false/O=false) ---
 ext="$T3TMP/external-r2"; ws="$T3TMP/ws-ret"
@@ -424,6 +436,7 @@ MOCK_RESET_ACTION=retained call_run "recipe2"
 assert_eq "retained: rc=0" "$_runrc" "0"
 assert_eq "retained: disposition=retained" "$_reset_disposition" "retained"
 assert_eq "retained: destination_parent空" "$_reset_destination_parent" ""
+assert_eq "retained: cleaned_bbappend=命中bbappend" "$_reset_cleaned_bbappend" "$ws/appends/recipe2_1.0.bbappend"
 
 # --- removed(empty_dir, Poky rmdir) ---
 ws="$T3TMP/ws-rem"; setup_modified "recipe3" "$ws/sources/recipe3" "$ws" empty
@@ -431,12 +444,14 @@ MOCK_RESET_ACTION=removed call_run "recipe3"
 assert_eq "removed: rc=0" "$_runrc" "0"
 assert_eq "removed: disposition=removed" "$_reset_disposition" "removed"
 assert_eq "removed: destination_parent空" "$_reset_destination_parent" ""
+assert_eq "removed: cleaned_bbappend=命中bbappend" "$_reset_cleaned_bbappend" "$ws/appends/recipe3_1.0.bbappend"
 
 # --- absent(pre missing) ---
 ws="$T3TMP/ws-abs"; setup_modified "recipe4" "$ws/sources/recipe4" "$ws" missing
 MOCK_RESET_ACTION=absent call_run "recipe4"
 assert_eq "absent: rc=0" "$_runrc" "0"
 assert_eq "absent: disposition=absent" "$_reset_disposition" "absent"
+assert_eq "absent: cleaned_bbappend=命中bbappend" "$_reset_cleaned_bbappend" "$ws/appends/recipe4_1.0.bbappend"
 
 # --- noop(status 无 recipe 行) ---
 ws="$T3TMP/ws-noop"; mkdir -p "$ws/appends"
@@ -447,6 +462,7 @@ assert_eq "noop: disposition=noop" "$_reset_disposition" "noop"
 assert_eq "noop: srctree空" "$_reset_srctree" ""
 assert_eq "noop: srctreebase空" "$_reset_srctreebase" ""
 assert_eq "noop: destination_parent空" "$_reset_destination_parent" ""
+assert_eq "noop: cleaned_bbappend空(未locate)" "$_reset_cleaned_bbappend" ""
 
 # --- postcondition 失败(moved 预期但 reset 未移 → srctreebase 仍存在) ---
 ws="$T3TMP/ws-pf"; setup_modified "recipe6" "$ws/sources/recipe6" "$ws" nonempty

@@ -92,15 +92,15 @@ PY
 }
 
 
-# _devtool_reset_locate_bbappend <workspace> <recipe> <status_srctree> <srctreebase_raw_outvar> <phase_outvar>
+# _devtool_reset_locate_bbappend <workspace> <recipe> <status_srctree> <srctreebase_raw_outvar> <bbappend_outvar> <phase_outvar>
 # 鲁棒定位 recipe 的 bbappend + 取 srctreebase: 扫 <workspace>/appends/*.bbappend, 字面解析
 # EXTERNALSRC:pn-<recipe>(字符串 ==, 不进 grep/awk 正则——PN 含 . 也不误匹配); 校验 EXTERNALSRC==status_srctree;
 # 恰好一个匹配(单文件多冲突行 / 多 bbappend / 零匹配 / EXTERNALSRC 不一致 → phase=metadata, 不降级 noop)。
-# 读匹配 bbappend 的 # srctreebase: 注释; 无注释 → srctreebase_raw=status_srctree。
-# NUL sentinel(srctreebase_raw\0phase\0__OB_NUL_END__\0) + epilogue rm, 不 trap。返回 rc(不 exit)。
+# 命中 → srctreebase_raw(注释或 status_srctree) + bbappend(命中 bbappend 完整路径); 否则两者空。
+# NUL sentinel(srctreebase_raw\0bbappend\0phase\0__OB_NUL_END__\0) + epilogue rm, 不 trap。返回 rc(不 exit)。
 _devtool_reset_locate_bbappend() {
-    local workspace="$1" recipe="$2" status_srctree="$3" srctreebase_raw_out="$4" phase_out="$5"
-    local tempfile pyrc srctreebase_raw="" phase=""
+    local workspace="$1" recipe="$2" status_srctree="$3" srctreebase_raw_out="$4" bbappend_out="$5" phase_out="$6"
+    local tempfile pyrc srctreebase_raw="" bbappend="" phase=""
     tempfile="$(mktemp 2>/dev/null)"
     python3 - "$workspace" "$recipe" "$status_srctree" >"$tempfile" 2>/dev/null <<'PY'
 import glob
@@ -112,6 +112,7 @@ recipe = sys.argv[2]
 status_srctree = sys.argv[3]
 PREFIX = 'EXTERNALSRC:pn-'
 srctreebase_raw = ''
+bbappend_path = ''
 phase = ''
 
 all_matches = []   # [(bb_path, externalsrc_value, srctreebase_comment)]
@@ -154,6 +155,7 @@ else:
         phase = 'metadata'   # EXTERNALSRC 与 status srctree 不一致
     else:
         srctreebase_raw = comment if comment else status_srctree
+        bbappend_path = _bb   # 命中 bbappend 完整路径(reset 后 devtool 删除它 → cleaned_bbappend)
 
 
 def emit(text):
@@ -161,6 +163,7 @@ def emit(text):
 
 
 emit(srctreebase_raw)
+emit(bbappend_path)
 emit(phase)
 emit('__OB_NUL_END__')
 sys.exit(0 if phase == '' else 1)
@@ -171,15 +174,17 @@ PY
     else
         local -a result_fields=()
         mapfile -d '' -t result_fields <"$tempfile"
-        if [[ ${#result_fields[@]} -ne 3 || "${result_fields[2]}" != "__OB_NUL_END__" ]]; then
+        if [[ ${#result_fields[@]} -ne 4 || "${result_fields[3]}" != "__OB_NUL_END__" ]]; then
             phase="metadata"
         else
             srctreebase_raw="${result_fields[0]}"
-            phase="${result_fields[1]}"
+            bbappend="${result_fields[1]}"
+            phase="${result_fields[2]}"
             [[ -n "$phase" ]] && phase="metadata"
         fi
     fi
     printf -v "$srctreebase_raw_out" '%s' "$srctreebase_raw"
+    printf -v "$bbappend_out" '%s' "$bbappend"
     printf -v "$phase_out" '%s' "$phase"
     rm -f -- "$tempfile"
     [[ -z "$phase" ]]
@@ -299,21 +304,23 @@ PY
 
 
 # devtool_reset_run <machine> <build_dir> <recipe> <srctree_outvar> <srctreebase_outvar>
-#                   <disposition_outvar> <destination_parent_outvar> <phase_outvar> <stage_outvar> <stderr_file_outvar>
+#                   <disposition_outvar> <destination_parent_outvar> <cleaned_bbappend_outvar>
+#                   <phase_outvar> <stage_outvar> <stderr_file_outvar>
 # 组装器(默认 source-preserving reset, 无 --remove-work):
-#   resolve_workspace(_resolved_*) → status(无行 noop) → locate_bbappend(srctreebase) →
+#   resolve_workspace(_resolved_*) → status(无行 noop) → locate_bbappend(srctreebase + bbappend) →
 #   classify expected(_classified_*) → 默认 reset → postcondition(二次 status + recipe 退出 workspace + srctreebase vs expected)。
-# 回传 7 outvar(_reset_*); moved 时 destination_parent=<workspace_effective>/attic/sources, 其余空。
+# 回传 8 outvar(_reset_*); moved 时 destination_parent=<workspace_effective>/attic/sources, 其余空;
+# cleaned_bbappend=命中 bbappend 路径(devtool reset 删除它), noop 空。与 disposition 正交。
 # stderr_file 传调用者(不 rm, cmd_dev cat+rm); stage_file/stdout_file 内部 rm。返回 rc(不 exit)。
 devtool_reset_run() {
     local machine="$1" build_dir="$2" recipe="$3"
     local srctree_outvar="$4" srctreebase_outvar="$5" disposition_outvar="$6"
-    local destination_parent_outvar="$7" phase_outvar="$8" stage_outvar="$9" stderr_file_outvar="${10}"
+    local destination_parent_outvar="$7" cleaned_bbappend_outvar="$8" phase_outvar="$9" stage_outvar="${10}" stderr_file_outvar="${11}"
     local stage_file stdout_file stderr_file
     local _resolved_workspace_raw="" _resolved_workspace_effective="" _resolved_phase=""
-    local _located_srctreebase_raw="" _located_phase=""
+    local _located_srctreebase_raw="" _located_bbappend="" _located_phase=""
     local _classified_expected="" _classified_phase=""
-    local srctree="" srctreebase="" disposition="" destination_parent=""
+    local srctree="" srctreebase="" disposition="" destination_parent="" cleaned_bbappend=""
     local phase="" stage="" rc=0 _post_srctree=""
 
     stage_file="$(mktemp 2>/dev/null)"
@@ -345,9 +352,10 @@ devtool_reset_run() {
 
     # 4. locate bbappend(鲁棒; 仅非 noop; outvar _located_*)
     if [[ -z "$phase" && -z "$disposition" ]]; then
-        _devtool_reset_locate_bbappend "$_resolved_workspace_effective" "$recipe" "$srctree" _located_srctreebase_raw _located_phase || rc=$?
+        _devtool_reset_locate_bbappend "$_resolved_workspace_effective" "$recipe" "$srctree" _located_srctreebase_raw _located_bbappend _located_phase || rc=$?
         [[ -n "$_located_phase" ]] && phase="$_located_phase"
         srctreebase="$_located_srctreebase_raw"
+        cleaned_bbappend="$_located_bbappend"
         rc=0
     fi
 
@@ -407,11 +415,12 @@ PY
         rc=0
     fi
 
-    # 末尾统一回传 7 outvar + 清内部 tempfile(stderr_file 传调用者)
+    # 末尾统一回传 8 outvar + 清内部 tempfile(stderr_file 传调用者)
     printf -v "$srctree_outvar" '%s' "$srctree"
     printf -v "$srctreebase_outvar" '%s' "$srctreebase"
     printf -v "$disposition_outvar" '%s' "$disposition"
     printf -v "$destination_parent_outvar" '%s' "$destination_parent"
+    printf -v "$cleaned_bbappend_outvar" '%s' "$cleaned_bbappend"
     printf -v "$phase_outvar" '%s' "$phase"
     printf -v "$stage_outvar" '%s' "$stage"
     printf -v "$stderr_file_outvar" '%s' "$stderr_file"

@@ -43,16 +43,17 @@ devtool_modify_run() {
     return "$MOCK_MODRC"
 }
 
-# reset mock: 10 参数(machine/build_dir/recipe + 7 outvar); 用 MOCK_RST_* 回传, 真实 _reset_*
+# reset mock: 11 参数(machine/build_dir/recipe + 8 outvar); 用 MOCK_RST_* 回传, 真实 _reset_*
 MOCK_RST_SRCTREE=""; MOCK_RST_SRCTREEBASE=""; MOCK_RST_DISPOSITION="moved"
-MOCK_RST_DEST_PARENT=""; MOCK_RST_PHASE=""; MOCK_RST_STAGE=""; MOCK_RST_RC=0
+MOCK_RST_DEST_PARENT=""; MOCK_RST_CLEANED_BBAPPEND=""; MOCK_RST_PHASE=""; MOCK_RST_STAGE=""; MOCK_RST_RC=0
 devtool_reset_run() {
-    local _o_srctree="$4" _o_srctreebase="$5" _o_disposition="$6" _o_dest="$7" _o_phase="$8" _o_stage="$9" _o_stderr="${10}"
+    local _o_srctree="$4" _o_srctreebase="$5" _o_disposition="$6" _o_dest="$7" _o_cleaned="$8" _o_phase="$9" _o_stage="${10}" _o_stderr="${11}"
     touch "$TMP/reset_called" 2>/dev/null || true
     printf -v "$_o_srctree" '%s' "$MOCK_RST_SRCTREE"
     printf -v "$_o_srctreebase" '%s' "$MOCK_RST_SRCTREEBASE"
     printf -v "$_o_disposition" '%s' "$MOCK_RST_DISPOSITION"
     printf -v "$_o_dest" '%s' "$MOCK_RST_DEST_PARENT"
+    printf -v "$_o_cleaned" '%s' "$MOCK_RST_CLEANED_BBAPPEND"
     printf -v "$_o_phase" '%s' "$MOCK_RST_PHASE"
     printf -v "$_o_stage" '%s' "$MOCK_RST_STAGE"
     printf -v "$_o_stderr" '%s' "/dev/null"
@@ -182,15 +183,15 @@ assert_eq "--machine=-d 拒绝" "$RUN_RC" 1
 assert_contains "--machine=-d 诊断" "$RUN_ERR" "invalid --machine value"
 
 # ============================================================================
-# reset: JSON 六字段精确契约 + 原子发布 + phase 映射 + parser + porcelain
+# reset: JSON 七字段精确契约(cleaned_bbappend) + 原子发布 + phase 映射 + parser + porcelain
 # ============================================================================
 
-# assert_reset_json <label> <stdout> <recipe> <srctree> <srctreebase> <disposition> <dest_parent(空=None)>
-# 校验: 恰好一物理行 + 尾换行 + json.loads + 精确六字段 key 集合 + 类型/值
+# assert_reset_json <label> <stdout> <recipe> <srctree> <srctreebase> <disposition> <dest_parent(空=None)> <cleaned_bbappend(空=None)>
+# 校验: 恰好一物理行 + 尾换行 + json.loads + 精确七字段 key 集合 + 类型/值
 assert_reset_json() {
-    local label="$1" out="$2" recipe="$3" srctree="$4" srctreebase="$5" disposition="$6" dest_parent="$7"
+    local label="$1" out="$2" recipe="$3" srctree="$4" srctreebase="$5" disposition="$6" dest_parent="$7" cleaned="$8"
     local jrc=0
-    EXP_RECIPE="$recipe" EXP_ST="$srctree" EXP_SB="$srctreebase" EXP_DISP="$disposition" EXP_DP="$dest_parent" \
+    EXP_RECIPE="$recipe" EXP_ST="$srctree" EXP_SB="$srctreebase" EXP_DISP="$disposition" EXP_DP="$dest_parent" EXP_CB="$cleaned" \
     python3 -c '
 import json, os, sys
 data = sys.stdin.read()
@@ -199,7 +200,7 @@ assert len(lines) == 1, "物理行数=%d (want 1): %r" % (len(lines), data)
 assert data.endswith("\n"), "缺尾换行: %r" % data
 d = json.loads(data)
 keys = sorted(d.keys())
-assert keys == ["destination", "destination_parent", "disposition", "recipe", "srctree", "srctreebase"], "keys=%r" % keys
+assert keys == ["cleaned_bbappend", "destination", "destination_parent", "disposition", "recipe", "srctree", "srctreebase"], "keys=%r" % keys
 assert d["recipe"] == os.environ["EXP_RECIPE"], ("recipe", d["recipe"])
 assert d["srctree"] == os.environ["EXP_ST"], ("srctree", d["srctree"])
 assert d["srctreebase"] == os.environ["EXP_SB"], ("srctreebase", d["srctreebase"])
@@ -207,38 +208,40 @@ assert d["disposition"] == os.environ["EXP_DISP"], ("disposition", d["dispositio
 exp_dp = None if os.environ["EXP_DP"] == "" else os.environ["EXP_DP"]
 assert d["destination_parent"] == exp_dp, ("destination_parent", d["destination_parent"], exp_dp)
 assert d["destination"] is None, ("destination", d["destination"])
+exp_cb = None if os.environ["EXP_CB"] == "" else os.environ["EXP_CB"]
+assert d["cleaned_bbappend"] == exp_cb, ("cleaned_bbappend", d["cleaned_bbappend"], exp_cb)
 ' <<< "$out" || jrc=$?
-    assert_eq "$label (JSON 六字段精确)" "$jrc" "0"
+    assert_eq "$label (JSON 七字段精确)" "$jrc" "0"
 }
 
-# --- moved → destination_parent=<ws>/attic/sources, destination=null ---
+# --- moved → destination_parent=<ws>/attic/sources, destination=null, cleaned_bbappend=bbappend 路径 ---
 MOCK_RST_SRCTREE="/ws/sources/r1"; MOCK_RST_SRCTREEBASE="/ws/sources/r1"
-MOCK_RST_DISPOSITION="moved"; MOCK_RST_DEST_PARENT="/ws/attic/sources"; MOCK_RST_PHASE=""; MOCK_RST_RC=0
+MOCK_RST_DISPOSITION="moved"; MOCK_RST_DEST_PARENT="/ws/attic/sources"; MOCK_RST_CLEANED_BBAPPEND="/ws/appends/r1_1.0.bbappend"; MOCK_RST_PHASE=""; MOCK_RST_RC=0
 run_dev --machine testm reset r1
 assert_eq "reset moved: exit 0" "$RUN_RC" "0"
-assert_reset_json "reset moved" "$RUN_OUT" "r1" "/ws/sources/r1" "/ws/sources/r1" "moved" "/ws/attic/sources"
+assert_reset_json "reset moved" "$RUN_OUT" "r1" "/ws/sources/r1" "/ws/sources/r1" "moved" "/ws/attic/sources" "/ws/appends/r1_1.0.bbappend"
 
-# --- retained/removed/absent → destination_parent=null, destination=null ---
-MOCK_RST_DISPOSITION="retained"; MOCK_RST_DEST_PARENT=""
+# --- retained/removed/absent → destination_parent=null, destination=null, cleaned_bbappend=bbappend 路径 ---
+MOCK_RST_DISPOSITION="retained"; MOCK_RST_DEST_PARENT=""; MOCK_RST_CLEANED_BBAPPEND="/ws/appends/r2_1.0.bbappend"
 run_dev --machine testm reset r2
-assert_reset_json "reset retained" "$RUN_OUT" "r2" "/ws/sources/r1" "/ws/sources/r1" "retained" ""
-MOCK_RST_DISPOSITION="removed"; run_dev --machine testm reset r3
-assert_reset_json "reset removed" "$RUN_OUT" "r3" "/ws/sources/r1" "/ws/sources/r1" "removed" ""
-MOCK_RST_DISPOSITION="absent"; run_dev --machine testm reset r4
-assert_reset_json "reset absent" "$RUN_OUT" "r4" "/ws/sources/r1" "/ws/sources/r1" "absent" ""
+assert_reset_json "reset retained" "$RUN_OUT" "r2" "/ws/sources/r1" "/ws/sources/r1" "retained" "" "/ws/appends/r2_1.0.bbappend"
+MOCK_RST_DISPOSITION="removed"; MOCK_RST_CLEANED_BBAPPEND="/ws/appends/r3_1.0.bbappend"; run_dev --machine testm reset r3
+assert_reset_json "reset removed" "$RUN_OUT" "r3" "/ws/sources/r1" "/ws/sources/r1" "removed" "" "/ws/appends/r3_1.0.bbappend"
+MOCK_RST_DISPOSITION="absent"; MOCK_RST_CLEANED_BBAPPEND="/ws/appends/r4_1.0.bbappend"; run_dev --machine testm reset r4
+assert_reset_json "reset absent" "$RUN_OUT" "r4" "/ws/sources/r1" "/ws/sources/r1" "absent" "" "/ws/appends/r4_1.0.bbappend"
 
-# --- noop → srctree="", srctreebase="" ---
-MOCK_RST_SRCTREE=""; MOCK_RST_SRCTREEBASE=""; MOCK_RST_DISPOSITION="noop"; MOCK_RST_DEST_PARENT=""
+# --- noop → srctree="", srctreebase="", cleaned_bbappend=None ---
+MOCK_RST_SRCTREE=""; MOCK_RST_SRCTREEBASE=""; MOCK_RST_DISPOSITION="noop"; MOCK_RST_DEST_PARENT=""; MOCK_RST_CLEANED_BBAPPEND=""
 run_dev --machine testm reset r5
 assert_eq "reset noop: exit 0" "$RUN_RC" "0"
-assert_reset_json "reset noop" "$RUN_OUT" "r5" "" "" "noop" ""
+assert_reset_json "reset noop" "$RUN_OUT" "r5" "" "" "noop" "" ""
 
 # --- JSON 全链路 round-trip 含特殊字符(引号/反斜杠/真换行) ---
 _weird_st=$'/ws/strange "quote\nline'
 MOCK_RST_SRCTREE="$_weird_st"; MOCK_RST_SRCTREEBASE='/ws/back\slash'
-MOCK_RST_DISPOSITION="retained"; MOCK_RST_DEST_PARENT=""
+MOCK_RST_DISPOSITION="retained"; MOCK_RST_DEST_PARENT=""; MOCK_RST_CLEANED_BBAPPEND="/ws/appends/r6_1.0.bbappend"
 run_dev --machine testm reset r6
-assert_reset_json "reset 特殊字符 round-trip" "$RUN_OUT" "r6" "$_weird_st" '/ws/back\slash' "retained" ""
+assert_reset_json "reset 特殊字符 round-trip" "$RUN_OUT" "r6" "$_weird_st" '/ws/back\slash' "retained" "" "/ws/appends/r6_1.0.bbappend"
 
 # --- JSON 编码失败(REAL_PYTHON fake python 只让 -c 失败) → exit 1 + stdout 空(约束 ④) ---
 REAL_PYTHON="$(command -v python3)"; export REAL_PYTHON

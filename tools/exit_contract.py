@@ -59,6 +59,7 @@ LEAF_EXIT_EXCEPTIONS_BY_BASENAME = {
     'qemu_instance.sh': set(),
     'bare_mirror.sh': set(),
     'devtool_modify.sh': set(),
+    'devtool_porcelain.sh': set(),
     'devtool_reset.sh': set(),
     'devtool_search.sh': set(),
     'devtool_status.sh': set(),

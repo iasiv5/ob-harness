@@ -1075,11 +1075,11 @@ cmd_dev() {
                 exit 0
             fi
             local _reset_srctree="" _reset_srctreebase="" _reset_disposition=""
-            local _reset_destination_parent="" _reset_phase="" _reset_stage="" _reset_stderr_file=""
-            local _reset_rc=0 _json_tmp="" _json_rc=0 _vrf_rc=0
+            local _reset_destination_parent="" _reset_cleaned_bbappend="" _reset_phase="" _reset_stage="" _reset_stderr_file=""
+            local _reset_rc=0 _json_tmp="" _json_rc=0
             devtool_reset_run "$dev_machine" "$dev_build_dir" "$dev_recipe" \
                 _reset_srctree _reset_srctreebase _reset_disposition _reset_destination_parent \
-                _reset_phase _reset_stage _reset_stderr_file || _reset_rc=$?
+                _reset_cleaned_bbappend _reset_phase _reset_stage _reset_stderr_file || _reset_rc=$?
             cat "$_reset_stderr_file" >&2 2>/dev/null || true
             rm -f "$_reset_stderr_file" 2>/dev/null
             case "$_reset_stage" in
@@ -1103,27 +1103,17 @@ cmd_dev() {
                 error "ob dev reset: devtool failed (rc=$_reset_rc, stage=$_reset_stage)." >&2
                 exit 1
             fi
-            # JSON 原子发布: python3 -c + argv(值不插值源码串) → tempfile → rc 校验 → 形状校验 → cat → 删
+            # JSON 原子发布: python3 -c 生成(argv 值不插值源码串) → tempfile → emit 校验+cat+删
             _json_tmp="$(mktemp 2>/dev/null)"
             python3 -c 'import json,sys
-print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.argv[3],"disposition":sys.argv[4],"destination_parent":sys.argv[5] or None,"destination":None}))' \
-                "$dev_recipe" "$_reset_srctree" "$_reset_srctreebase" "$_reset_disposition" "$_reset_destination_parent" > "$_json_tmp" 2>/dev/null || _json_rc=$?
+print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.argv[3],"disposition":sys.argv[4],"destination_parent":sys.argv[5] or None,"destination":None,"cleaned_bbappend":sys.argv[6] or None}))' \
+                "$dev_recipe" "$_reset_srctree" "$_reset_srctreebase" "$_reset_disposition" "$_reset_destination_parent" "$_reset_cleaned_bbappend" > "$_json_tmp" 2>/dev/null || _json_rc=$?
             if [[ "$_json_rc" -ne 0 || ! -s "$_json_tmp" ]]; then
                 rm -f "$_json_tmp" 2>/dev/null
                 error "ob dev reset: failed to encode result JSON." >&2
                 exit 1
             fi
-            python3 -c 'import json,sys
-data=open(sys.argv[1]).read()
-assert len(data.splitlines())==1 and data.endswith("\n"), "bad shape"
-json.loads(data)' "$_json_tmp" 2>/dev/null || _vrf_rc=$?
-            if [[ "$_vrf_rc" -ne 0 ]]; then
-                rm -f "$_json_tmp" 2>/dev/null
-                error "ob dev reset: result JSON malformed." >&2
-                exit 1
-            fi
-            cat "$_json_tmp"
-            rm -f "$_json_tmp" 2>/dev/null
+            devtool_emit_json "$_json_tmp" || { rm -f "$_json_tmp" 2>/dev/null; error "ob dev reset: result JSON malformed." >&2; exit 1; }
             exit 0
             ;;
         status)
@@ -1149,9 +1139,9 @@ json.loads(data)' "$_json_tmp" 2>/dev/null || _vrf_rc=$?
                 warn "No modified recipes for $dev_machine." >&2
                 exit 0
             fi
-            # JSONL 原子发布: 逐行 json.dumps(argv 不插值) → tempfile → 行数+key+json.loads 校验 → cat → 删
-            # (真原子: 记生成 rc + 输出行数==entries 行数, 杜绝 || true 吞错导致的 partial stdout 假成功)
-            local _st_jsonl="" _st_r="" _st_s="" _st_json_rc=0 _st_expected=0 _st_actual=0
+            # JSONL 原子发布: 逐行 json.dumps(argv 不插值) → tempfile → emit 校验(行数+key+json.loads)+cat+删
+            # (真原子: emit 校验 splitlines 行数==expected + 每行合法 + key 集合, 杜绝 partial stdout 假成功)
+            local _st_jsonl="" _st_r="" _st_s="" _st_json_rc=0 _st_expected=0
             _st_jsonl="$(mktemp 2>/dev/null)"
             : > "$_st_jsonl"
             while IFS=$'\t' read -r _st_r _st_s; do
@@ -1160,27 +1150,11 @@ json.loads(data)' "$_json_tmp" 2>/dev/null || _vrf_rc=$?
                 python3 -c 'import json,sys
 print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2]}))' "$_st_r" "$_st_s" >> "$_st_jsonl" 2>/dev/null || _st_json_rc=$?
             done <<< "$_st_entries"
-            _st_actual="$(grep -c . "$_st_jsonl" 2>/dev/null || true)"
-            # 行数全等 + 生成无错(任一行 json.dumps 失败 → 行数不等或 rc!=0 → exit 1, 不 partial 发布)
-            if [[ "$_st_json_rc" -ne 0 || "$_st_actual" -ne "$_st_expected" ]]; then
+            devtool_emit_jsonl "$_st_jsonl" "$_st_expected" '["recipe","srctree"]' || {
                 rm -f "$_st_jsonl" 2>/dev/null
                 error "ob dev status: failed to encode result JSONL." >&2
                 exit 1
-            fi
-            # 形状校验: 每行合法 JSON + key 集合恰为 {recipe,srctree}
-            python3 -c 'import json,sys
-for line in open(sys.argv[1]):
-    line=line.strip()
-    if not line: continue
-    d=json.loads(line)
-    assert set(d.keys()) == {"recipe","srctree"}' "$_st_jsonl" 2>/dev/null || _st_json_rc=$?
-            if [[ "$_st_json_rc" -ne 0 ]]; then
-                rm -f "$_st_jsonl" 2>/dev/null
-                error "ob dev status: result JSONL malformed." >&2
-                exit 1
-            fi
-            cat "$_st_jsonl"
-            rm -f "$_st_jsonl" 2>/dev/null
+            }
             exit 0
             ;;
         *)
