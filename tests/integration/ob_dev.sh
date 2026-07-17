@@ -8,9 +8,12 @@
 set -uo pipefail
 
 HARNESS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-# 仅加载 reset leaf helper(resolve/locate); reset 端到端经 ./ob dev reset
+# 仅加载 reset + finish leaf helper(resolve/locate/classify + parse_status_entry/resolve_layer_root/capture/detect);
+# reset/finish 端到端经 ./ob dev reset|finish
 # shellcheck disable=SC1091
 source "$HARNESS_ROOT/lib/devtool_reset.sh"
+# shellcheck disable=SC1091
+source "$HARNESS_ROOT/lib/devtool_finish.sh"
 
 devtool_in_env() {
     local machine="$1"
@@ -91,6 +94,34 @@ ob_dev_integration_cleanup() {
     fi
     CLEANUP_NEEDED=0
     return 0
+}
+
+# ob_dev_integration_finish_layer_restore <finish_json>
+# 回滚 finish 落回的 layer 改动(recipe_files git restore tracked + patches rm untracked), 相对 OPENBMC_DIR。
+# v6: 无 safety copy, finish 复用 reset disposition; 正常 finish 只动 .patch/.bb/.bbappend。
+# 主仓库非 git / 路径越界 → 跳过(防误删), 记录由 caller 报告。
+ob_dev_integration_finish_layer_restore() {
+    local finish_json="$1"
+    git -C "$OPENBMC_DIR" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+    local _files
+    _files="$(python3 -c '
+import json, sys
+d = json.loads(sys.stdin.read())
+out = []
+for key in ("recipe_files", "patches"):
+    for p in (d.get(key) or []):
+        if isinstance(p, str) and p and not p.startswith("/") and ".." not in p:
+            out.append(p)
+print("\n".join(out))
+' <<<"$finish_json" 2>/dev/null)" || return 0
+    local _f
+    while IFS= read -r _f; do
+        [[ -n "$_f" ]] || continue
+        case "$_f" in
+            *.patch) rm -f -- "$OPENBMC_DIR/$_f" 2>/dev/null || true ;;                   # untracked 新增 patch
+            *.bb|*.bbappend) git -C "$OPENBMC_DIR" restore -- "$_f" 2>/dev/null || true ;; # tracked recipe 改动
+        esac
+    done <<<"$_files"
 }
 
 # _integration_assert_disposition <stdout> <expected_disposition> [expected_dp_suffix]
@@ -293,7 +324,74 @@ print("\n".join(recipes))
     ob_dev_integration_cleanup
     _snap_rc=$?
     [[ "$_snap_rc" -eq 0 ]] || { echo "FAIL: cleanup rc=$_snap_rc (recipe/attic 残留)" >&2; exit 1; }
-    echo "[integration] OK (modify → moved reset → external modify → retained reset → noop)"
+
+    # === finish 段: 同一 RECIPE modify → srctree commit → capture pre → ob dev finish → capture post → 验证 ===
+    # v6: 无 safety copy, finish 复用 reset disposition(devtool finish 内部 _reset 归档 srctreebase)
+    CLEANUP_NEEDED=1
+    trap ob_dev_integration_cleanup EXIT
+    modify_rc=0
+    SRCTREE="$(./ob dev --machine "$MACHINE" modify "$RECIPE" 2>/dev/null)" || modify_rc=$?
+    echo "finish modify rc=$modify_rc srctree=$SRCTREE"
+    [[ "$modify_rc" -eq 0 && -n "$SRCTREE" && -d "$SRCTREE" ]] || { echo "FAIL: finish modify/srctree"; exit 1; }
+
+    # srctree 改动 + git commit(devtool finish 要求 srctree 是 clean git repo, FACT_ round-1)
+    ( cd "$SRCTREE" && printf 'ob dev finish integration marker\n' > ob_finish_integration_marker.txt )
+    git -C "$SRCTREE" add -A 2>/dev/null
+    git -C "$SRCTREE" -c user.email=t@t -c user.name=t commit -q -m "ob dev finish integration" 2>/dev/null || true
+
+    # capture pre(复用 helper, 不手写 snapshot)
+    local _fin_snap_pre _fin_snap_post _fin_cap_phase=""
+    _fin_snap_pre="$(mktemp)"; _fin_snap_post="$(mktemp)"
+    _devtool_finish_capture_landing_snapshot "$OPENBMC_DIR" "$_fin_snap_pre" _fin_cap_phase || true
+    [[ -z "$_fin_cap_phase" ]] || { rm -f "$_fin_snap_pre" "$_fin_snap_post"; echo "FAIL: finish capture pre phase=$_fin_cap_phase"; exit 1; }
+
+    local _fin_out="" _fin_rc=0
+    _fin_out="$(./ob dev --machine "$MACHINE" finish "$RECIPE" 2>/dev/null)" || _fin_rc=$?
+    echo "finish rc=$_fin_rc"
+    [[ "$_fin_rc" -eq 0 ]] || { echo "FAIL: finish rc=$_fin_rc out=$_fin_out"; exit 1; }
+
+    # capture post + detect 独立校验(复用 helper; capture/detect 与 ob stdout 一致性)
+    _fin_cap_phase=""
+    _devtool_finish_capture_landing_snapshot "$OPENBMC_DIR" "$_fin_snap_post" _fin_cap_phase || true
+    local _fd_mode="" _fd_patches="" _fd_recipe_files="" _fd_srcrev="" _fd_layer="" _fd_phase=""
+    if [[ -z "$_fin_cap_phase" ]]; then
+        _devtool_finish_detect_landing "$OPENBMC_DIR" "$_fin_snap_pre" "$_fin_snap_post" \
+            _fd_mode _fd_patches _fd_recipe_files _fd_srcrev _fd_layer _fd_phase || true
+    fi
+    rm -f "$_fin_snap_pre" "$_fin_snap_post"
+
+    # finish JSON 解析 + 按实测 mode 断言(不强制 patch/srcrev 都出现; 区分实测/未实测)
+    local _fin_mode="" _fin_disp=""
+    _fin_mode="$(python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); print(d.get("landing_mode") or "")' <<<"$_fin_out" 2>/dev/null || true)"
+    _fin_disp="$(python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); print(d.get("disposition") or "")' <<<"$_fin_out" 2>/dev/null || true)"
+    echo "finish disposition=$_fin_disp landing_mode=$_fin_mode (detect mode=${_fd_mode:-n/a} phase=${_fd_phase:-n/a})"
+    [[ "$_fin_disp" == "moved" || "$_fin_disp" == "retained" || "$_fin_disp" == "removed" || "$_fin_disp" == "absent" ]] \
+        || { echo "FAIL: finish disposition=$_fin_disp"; exit 1; }
+    if [[ -n "$_fin_mode" ]]; then
+        [[ "$_fin_mode" == "patch" || "$_fin_mode" == "srcrev" ]] || { echo "FAIL: finish landing_mode=$_fin_mode (want patch/srcrev)"; exit 1; }
+    fi
+
+    # disposition 归档实测(moved → attic/sources 单一 <RECIPE>.<ts>; v6 无 .finish-copy 残留)
+    if [[ "$_fin_disp" == "moved" ]]; then
+        local _fin_attic=""
+        _fin_attic="$(find "$_EFF_WS/attic/sources" -maxdepth 1 -mindepth 1 -name "$RECIPE.*" -type d 2>/dev/null | head -1)"
+        [[ -n "$_fin_attic" ]] || { echo "FAIL: finish moved 但 attic/sources 无 $RECIPE.* 归档"; exit 1; }
+        [[ "$_fin_attic" != *.finish-copy ]] || { echo "FAIL: attic 残留 .finish-copy(v6 应无)"; exit 1; }
+        _ATTIC_DIRS+=("$_fin_attic")
+    fi
+
+    # status 确认 recipe 退出 workspace
+    local _fin_post_status="" _fpsrc=0
+    _fin_post_status="$(devtool_in_env "$MACHINE" status)" || _fpsrc=$?
+    [[ "$_fpsrc" -eq 0 ]] || { echo "FAIL: post-finish status rc=$_fpsrc"; exit 1; }
+    ! ob_dev_integration_status_has_recipe "$RECIPE" "$_fin_post_status" || { echo "FAIL: recipe 仍在 workspace after finish"; exit 1; }
+
+    # 清理: attic + reset if modified(复用 cleanup) + 回滚 finish layer 改动(recipe_files git restore + patches rm)
+    CLEANUP_NEEDED=0
+    trap - EXIT
+    ob_dev_integration_cleanup
+    ob_dev_integration_finish_layer_restore "$_fin_out"
+    echo "[integration] OK (modify → moved reset → external → retained reset → noop → modify → finish[$_fin_disp/$_fin_mode])"
 }
 
 if [[ "${OB_DEV_INTEGRATION_NO_MAIN:-0}" != "1" ]]; then

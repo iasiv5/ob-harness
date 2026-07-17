@@ -101,7 +101,7 @@ resolve_workspace(_resolved_*) → devtool status → _devtool_parse_status_entr
 
 - **删**：safety copy 时序实测、无 `<recipe>.<timestamp>.finish-copy` 残留、无双归档、safety copy 兜底项。
 - **改为 disposition 归档实测**：finish 后 srctreebase 按 disposition 五态归档（moved→attic/sources 单一 `<pn>.<timestamp>`；retained→原位），与 reset 同构验证；无 `.finish-copy` 后缀。
-- **safety fault-inject**（保 ADR-0008）：status-fail 不 finish、list-fail 不降级、finish-partial-fail 残留检测（残留=workspace metadata，devtool 不删源故无源丢失风险）。
+- **safety fault-inject**（保 ADR-0008）：status-fail 不 finish、list-fail 不降级、finish-partial-fail 残留检测（残留=workspace metadata，devtool 不删源故无源丢失风险）。**实施偏差（2026-07-17）**：finish-partial-fail 因 safety.sh fake 环境不支持 reset 成功路径（bbappend locate + attic 归档模拟成本高且脆弱）未在该 unit 单测；finish 真实端到端由 ob_dev.sh integration 覆盖（CLEANUP_NEEDED + trap → ob_dev_integration_cleanup），cleanup 函数 fail-safe 已被现有 reset fault-inject（status-fail/list-fail/modify-partial-fail/reset-fail）锁定，finish 复用同一 cleanup。
 - capture 过滤 build/workspace/attic 仍验证（devtool 归档 attic 不算 landing）。
 
 ## 输入工件
