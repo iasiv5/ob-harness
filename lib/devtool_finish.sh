@@ -85,7 +85,7 @@ PY
 
 # _devtool_finish_capture_landing_snapshot <openbmc_dir> <snapshot_outfile> <phase_outvar>
 # python: git -C openbmc_dir status --porcelain=v1 -z --untracked-files=all → 解析 entry(XY+path, rename/copy取dest)
-#   → 过滤 build//workspace//attic/(顶层) → 对 .patch/.bb/.bbappend 算 sha256(文件内容) →
+#   → 过滤 build//workspace//attic/(顶层) → 对 .patch/.bb/.bbappend 算文件内容 sha256(非 git blob hash, 仅 pre/post 内容变化检测) →
 #   JSON {"paths":{relpath:{"status":XY,"sha256":hex}}} 写 snapshot_outfile(relpath 相对 openbmc_dir=git根)。
 #   git rev-parse 不真 / status 失败 / 写失败 → phase=landing(fail closed, landing 观测层失败)。
 #   T5 runtime + T8 integration 复用同一 helper(避免漂移)。leaf-pure 不 trap。返回 rc(不 exit)。

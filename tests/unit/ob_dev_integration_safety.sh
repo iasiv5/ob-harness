@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 # tests/unit/ob_dev_integration_safety.sh — fault-inject the opt-in devtool integration harness.
+# 已知缺口(评审 🟡1): finish-partial-fail 未覆盖——fake 环境不支持 reset 成功路径(bbappend locate + attic
+# 归档模拟成本高); finish 失败的 cleanup 复用 ob_dev_integration_cleanup(已由 status-fail/list-fail/
+# modify-partial-fail/reset-fail 锁定), finish 独有的 layer 残留在无 JSON(phase!=0 不发布)时无法自动回滚
+# (固有限制, 需用户手动检查); finish 真实端到端由 ob_dev.sh integration 兜底。待 fake 框架支持 reset 成功路径后补。
 set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 source "$ROOT/tests/lib/assert.sh"

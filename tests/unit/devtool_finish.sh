@@ -268,6 +268,14 @@ assert_eq "detect srcrev: mode=srcrev" "$_det_mode" "srcrev"
 assert_eq "detect srcrev: srcrev值" "$_det_srcrev" "deadbeef"
 ja_eq "detect srcrev: patches空" "$_det_patches" '[]'
 
+# srcrev 边界(🟢5 评审): recipe_files 有 .bb 但无 ^SRCREV=" → mode 仍 srcrev(按落点判) + srcrev 空(正则未匹配)
+DET="$TMP/det-srcrev-norev"; mk_det "$DET" ""   # recipe 无 SRCREV(只 SUMMARY)
+call_detect "$DET" \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"aaa"}}}' \
+    '{"paths":{"meta-x/recipes/foo/foo.bb":{"status":" M","sha256":"bbb"}}}'
+assert_eq "detect srcrev无SRCREV: mode=srcrev(按落点判, 不因缺 SRCREV 降级)" "$_det_mode" "srcrev"
+assert_eq "detect srcrev无SRCREV: srcrev空(正则未匹配, 下游 null)" "$_det_srcrev" ""
+
 # deleted patch(pre 有 post 无) → phase=landing(fail closed, 不塞进 patches)
 DET="$TMP/det-deleted"; mk_det "$DET" ""
 call_detect "$DET" \

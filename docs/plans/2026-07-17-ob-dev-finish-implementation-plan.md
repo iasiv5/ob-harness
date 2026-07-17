@@ -60,7 +60,7 @@
 
 实测 build env（init-done machine=`b865g8-bytedance`，`devtool finish --help` 完整输出 + `scripts/lib/devtool/standard.py` 源码核验）：
 
-- **FACT_FINISH_DESTINATION=required**：`recipename destination` 是两个 positional argument，destination 不可省略；`finish()` @2178 经 `_get_layer(args.destination, ...)` 解析（layername→BBLAYERS basename 匹配，未命中当路径 `os.path.abspath`），@2183 `os.path.isdir` 校验、@2186 拒绝 workspace 层。ob light resolver（recipefile→`conf/layer.conf`→绝对 layer root）传 `destlayerdir`，命中 _get_layer "path to the base of a layer" 形态。✓ 与计划假设一致。
+- **FACT_FINISH_DESTINATION=required**：`recipename destination` 是两个 positional argument，destination 不可省略；`finish()` @2178 经 `_get_layer(args.destination, ...)`：ob 传**绝对 layer root** → `_get_layer` 的 basename 字典查不到（@2137 `layers.get()` 命中条件是 basename）→ 走 `os.path.abspath` fallback（@2139/2141）→ @2183 `os.path.isdir` 校验、@2186 拒绝 workspace 层。ob light resolver（recipefile→`conf/layer.conf`→绝对 layer root）传 `destlayerdir`；**绝对路径比 basename 更安全**（不受同名层歧义影响）。✓ 与计划假设一致（机制描述据 standard.py:2124-2145 一手核验修正）。
 
 - **FACT_FINISH_SOURCE_POLICY=preserved（与 reset 同构，不删源）**：`finish()` @2323 调 `_reset([recipename], remove_work=args.remove_work=False, ...)`；`_reset()` @2070-2094 source 处置与独立 `reset` **完全同一段代码**：srctreebase 在 `workspace/sources` 下 → `shutil.move` 到 `<workspace>/attic/sources/<pn>.<timestamp>`（`%Y%m%d%H%M%S`，**move 非 copy**，命名与 reset 完全相同）；不在 → 原位 retained；空目录 → rmdir。**默认绝不删源**（仅 `--remove-work`/`-r` 才 rmtree，ob 不传）。`finish()` 与 `reset()` 走同一 `_reset`，srctreebase 物理处置 = reset disposition 五态（moved/retained/removed/absent/noop）。
 
