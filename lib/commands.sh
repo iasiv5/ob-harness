@@ -842,7 +842,7 @@ cmd_dev() {
                     _positional_count=$((_positional_count + 1))
                     case "$dev_subcmd" in
                         list)   [[ -z "$dev_pattern" ]] || { error "ob dev list: too many patterns" >&2; exit 1; }; dev_pattern="$1" ;;
-                        modify|reset) [[ -z "$dev_recipe" ]] || { error "ob dev $dev_subcmd: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
+                        modify|reset|finish) [[ -z "$dev_recipe" ]] || { error "ob dev $dev_subcmd: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
                         *)      error "ob dev $dev_subcmd: unexpected argument '$1'" >&2; exit 1 ;;
                     esac
                 fi
@@ -852,7 +852,7 @@ cmd_dev() {
                 _positional_count=$((_positional_count + 1))
                 case "$dev_subcmd" in
                     list)   [[ -z "$dev_pattern" ]] || { error "ob dev list: too many patterns" >&2; exit 1; }; dev_pattern="$1" ;;
-                    modify|reset) [[ -z "$dev_recipe" ]] || { error "ob dev $dev_subcmd: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
+                    modify|reset|finish) [[ -z "$dev_recipe" ]] || { error "ob dev $dev_subcmd: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
                     *)      error "ob dev: unexpected positional '$1' (need subcommand first)" >&2; exit 1 ;;
                 esac
                 shift ;;
@@ -894,15 +894,16 @@ cmd_dev() {
     # 无子命令 + TTY → 交互引导(选 list/modify/refresh, 按需补 pattern/recipe)。
     # 非 TTY 不进此段, 落到下面 case "" 分支维持 agent/CI 契约(exit 3 + remedy)。
     if [[ -z "$dev_subcmd" && -t 0 ]]; then
-        # 1) 子命令菜单(只列已实现: list/modify/refresh/reset/status; reserved 的 build/deploy/finish 不列)
+        # 1) 子命令菜单(只列已实现: list/modify/refresh/reset/status/finish; reserved 的 build/deploy 不列)
         echo "  ob dev subcommands:"
         echo "    1) list     Search/list recipes (read-only, reads cache)"
         echo "    2) modify   devtool modify a recipe (outputs srctree path)"
         echo "    3) refresh  Regenerate recipe metadata cache"
         echo "    4) reset    devtool reset a recipe (outputs disposition JSON)"
         echo "    5) status   List modified recipes (read-only, outputs JSONL)"
+        echo "    6) finish   devtool finish a recipe (land patches back to layer, outputs JSON)"
         local _sub_choice=""
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select subcommand [1-5] (0 to cancel): ")" _sub_choice; then
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select subcommand [1-6] (0 to cancel): ")" _sub_choice; then
             error "Unable to read subcommand selection from stdin." >&2
             exit 1
         fi
@@ -913,6 +914,7 @@ cmd_dev() {
             3) dev_subcmd="refresh" ;;
             4) dev_subcmd="reset" ;;
             5) dev_subcmd="status" ;;
+            6) dev_subcmd="finish" ;;
             *) error "ob dev: invalid subcommand selection '$_sub_choice'." >&2; exit 1 ;;
         esac
         # 2) 按子命令补必填/可选位置参数
@@ -934,20 +936,20 @@ cmd_dev() {
                     exit 3
                 fi
                 ;;
-            reset)
-                # TTY reset: 跑 devtool status 列已 modify recipe → 空 exit 3 / 非空编号 pick
+            reset|finish)
+                # TTY reset/finish: 跑 devtool status 列已 modify recipe → 空 exit 3 / 非空编号 pick
                 local _rst_entries="" _rst_stage="" _rst_stderr_file="" _rst_rc=0
                 devtool_status_run "$dev_machine" "$dev_build_dir" _rst_entries _rst_stage _rst_stderr_file || _rst_rc=$?
                 cat "$_rst_stderr_file" >&2 2>/dev/null || true
                 rm -f "$_rst_stderr_file" 2>/dev/null
                 case "$_rst_stage" in
                     cd|setup|postcondition)
-                        error "ob dev reset: build env not ready (stage=$_rst_stage)." >&2
+                        error "ob dev $dev_subcmd: build env not ready (stage=$_rst_stage)." >&2
                         exit 1
                         ;;
                 esac
                 if [[ "$_rst_rc" -ne 0 ]]; then
-                    error "ob dev reset: devtool status failed (rc=$_rst_rc)." >&2
+                    error "ob dev $dev_subcmd: devtool status failed (rc=$_rst_rc)." >&2
                     exit 1
                 fi
                 local -a _rst_recipes=()
@@ -965,7 +967,7 @@ cmd_dev() {
                     printf '  %d) %s\n' "$((_rst_i + 1))" "${_rst_recipes[$_rst_i]}" >&2
                 done
                 local _rst_pick_rc=0
-                read_list_choice "$_rst_width" "recipe" "reset" _rst_recipes dev_recipe >&2 || _rst_pick_rc=$?
+                read_list_choice "$_rst_width" "recipe" "$dev_subcmd" _rst_recipes dev_recipe >&2 || _rst_pick_rc=$?
                 if [[ "$_rst_pick_rc" -eq 2 ]]; then exit 2; fi   # cancel
                 if [[ "$_rst_pick_rc" -ne 0 ]]; then exit 1; fi   # read 失败
                 ;;
@@ -1114,6 +1116,64 @@ print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.a
                 exit 1
             fi
             devtool_emit_json "$_json_tmp" || { rm -f "$_json_tmp" 2>/dev/null; error "ob dev reset: result JSON malformed." >&2; exit 1; }
+            exit 0
+            ;;
+        finish)
+            if [[ -z "$dev_recipe" ]]; then
+                error "ob dev finish: no recipe specified." >&2
+                error "Run 'ob dev --machine $dev_machine status' to list modified recipes first." >&2
+                exit 3
+            fi
+            if [[ "${DRY_RUN:-0}" == "1" ]]; then
+                error "[DRY-RUN] ob dev finish $dev_recipe: would devtool finish (land patches to original layer, source-preserving)." >&2
+                exit 0
+            fi
+            local _finish_srctree="" _finish_srctreebase="" _finish_disposition=""
+            local _finish_destination_parent="" _finish_cleaned_bbappend=""
+            local _finish_landing_mode="" _finish_landing_layer="" _finish_patches="" _finish_recipe_files="" _finish_srcrev=""
+            local _finish_phase="" _finish_stage="" _finish_stderr_file=""
+            local _finish_rc=0 _json_tmp="" _json_rc=0
+            devtool_finish_run "$dev_machine" "$dev_build_dir" "$dev_recipe" \
+                _finish_srctree _finish_srctreebase _finish_disposition _finish_destination_parent \
+                _finish_cleaned_bbappend _finish_landing_mode _finish_landing_layer _finish_patches \
+                _finish_recipe_files _finish_srcrev _finish_phase _finish_stage _finish_stderr_file || _finish_rc=$?
+            cat "$_finish_stderr_file" >&2 2>/dev/null || true
+            rm -f "$_finish_stderr_file" 2>/dev/null
+            case "$_finish_stage" in
+                cd|setup|postcondition)
+                    error "ob dev finish: build env not ready (stage=$_finish_stage)." >&2
+                    exit 1
+                    ;;
+            esac
+            if [[ -n "$_finish_phase" ]]; then
+                case "$_finish_phase" in
+                    metadata)      error "ob dev finish: metadata error (phase=metadata); cannot safely finish." >&2 ;;
+                    status)        error "ob dev finish: devtool status failed (phase=status)." >&2 ;;
+                    finish)        error "ob dev finish: devtool finish failed (phase=finish)." >&2 ;;
+                    landing)       error "ob dev finish: landing detection failed (phase=landing); verify patches landed manually." >&2 ;;
+                    postcondition) error "ob dev finish: postcondition failed (phase=postcondition)." >&2 ;;
+                    *)             error "ob dev finish: failed (phase=$_finish_phase)." >&2 ;;
+                esac
+                exit 1
+            fi
+            if [[ "$_finish_rc" -ne 0 ]]; then
+                error "ob dev finish: devtool failed (rc=$_finish_rc, stage=$_finish_stage)." >&2
+                exit 1
+            fi
+            # JSON 原子发布: python3 -c 生成(argv 值不插值; patches/recipe_files 经 argv JSON 字符串 json.loads 合入;
+            # 全可空标量 or None) → emit 校验+cat+删
+            _json_tmp="$(mktemp 2>/dev/null)"
+            python3 -c 'import json,sys
+patches=json.loads(sys.argv[9]) if sys.argv[9] else []
+rf=json.loads(sys.argv[10]) if sys.argv[10] else []
+print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.argv[3],"disposition":sys.argv[4],"destination_parent":sys.argv[5] or None,"destination":None,"cleaned_bbappend":sys.argv[6] or None,"landing_mode":sys.argv[7] or None,"landing_layer":sys.argv[8] or None,"patches":patches,"recipe_files":rf,"srcrev":sys.argv[11] or None}))' \
+                "$dev_recipe" "$_finish_srctree" "$_finish_srctreebase" "$_finish_disposition" "$_finish_destination_parent" "$_finish_cleaned_bbappend" "$_finish_landing_mode" "$_finish_landing_layer" "$_finish_patches" "$_finish_recipe_files" "$_finish_srcrev" > "$_json_tmp" 2>/dev/null || _json_rc=$?
+            if [[ "$_json_rc" -ne 0 || ! -s "$_json_tmp" ]]; then
+                rm -f "$_json_tmp" 2>/dev/null
+                error "ob dev finish: failed to encode result JSON." >&2
+                exit 1
+            fi
+            devtool_emit_json "$_json_tmp" || { rm -f "$_json_tmp" 2>/dev/null; error "ob dev finish: result JSON malformed." >&2; exit 1; }
             exit 0
             ;;
         status)

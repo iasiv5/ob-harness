@@ -60,6 +60,29 @@ devtool_reset_run() {
     return "$MOCK_RST_RC"
 }
 
+# finish mock: 16 参数(machine/build_dir/recipe + 13 outvar); 用 MOCK_FIN_* 回传, 真实 _finish_*
+MOCK_FIN_SRCTREE=""; MOCK_FIN_SRCTREEBASE=""; MOCK_FIN_DISPOSITION="moved"
+MOCK_FIN_DEST_PARENT=""; MOCK_FIN_CLEANED_BBAPPEND=""; MOCK_FIN_LANDING_MODE=""; MOCK_FIN_LANDING_LAYER=""
+MOCK_FIN_PATCHES="[]"; MOCK_FIN_RECIPE_FILES="[]"; MOCK_FIN_SRCREV=""; MOCK_FIN_PHASE=""; MOCK_FIN_STAGE=""; MOCK_FIN_RC=0
+devtool_finish_run() {
+    local _o_srctree="$4" _o_srctreebase="$5" _o_disposition="$6" _o_dest="$7" _o_cleaned="$8" _o_lmode="$9" _o_llayer="${10}" _o_patches="${11}" _o_rfiles="${12}" _o_srcrev="${13}" _o_phase="${14}" _o_stage="${15}" _o_stderr="${16}"
+    touch "$TMP/finish_called" 2>/dev/null || true
+    printf -v "$_o_srctree" '%s' "$MOCK_FIN_SRCTREE"
+    printf -v "$_o_srctreebase" '%s' "$MOCK_FIN_SRCTREEBASE"
+    printf -v "$_o_disposition" '%s' "$MOCK_FIN_DISPOSITION"
+    printf -v "$_o_dest" '%s' "$MOCK_FIN_DEST_PARENT"
+    printf -v "$_o_cleaned" '%s' "$MOCK_FIN_CLEANED_BBAPPEND"
+    printf -v "$_o_lmode" '%s' "$MOCK_FIN_LANDING_MODE"
+    printf -v "$_o_llayer" '%s' "$MOCK_FIN_LANDING_LAYER"
+    printf -v "$_o_patches" '%s' "$MOCK_FIN_PATCHES"
+    printf -v "$_o_rfiles" '%s' "$MOCK_FIN_RECIPE_FILES"
+    printf -v "$_o_srcrev" '%s' "$MOCK_FIN_SRCREV"
+    printf -v "$_o_phase" '%s' "$MOCK_FIN_PHASE"
+    printf -v "$_o_stage" '%s' "$MOCK_FIN_STAGE"
+    printf -v "$_o_stderr" '%s' "/dev/null"
+    return "$MOCK_FIN_RC"
+}
+
 # status mock: 5 参数(machine/build_dir + entries/stage/stderr_file outvar); MOCK_ST_* 控制
 devtool_status_run() {
     printf -v "$3" '%s' "${MOCK_ST_ENTRIES:-}"
@@ -319,6 +342,124 @@ json.loads(data)
 fi
 rm -f "$_jbf"
 assert_eq "JSON 字节: 生产 stdout 恰好一个尾换行" "$_jbrc" "0"
+
+# ============================================================================
+# finish: JSON 12 字段精确契约 + argv JSON array round-trip + null + phase 映射 + parser + DRY_RUN
+# ============================================================================
+
+# assert_finish_json <label> <stdout> <recipe> <srctree> <srctreebase> <disposition> <dest_parent(空=None)>
+#                    <cleaned_bbappend(空=None)> <landing_mode(空=None)> <landing_layer(空=None)>
+#                    <patches_json(空=[])> <recipe_files_json(空=[])> <srcrev(空=None)>
+assert_finish_json() {
+    local label="$1" out="$2" jrc=0
+    EXP_RECIPE="$3" EXP_ST="$4" EXP_SB="$5" EXP_DISP="$6" EXP_DP="$7" EXP_CB="$8" EXP_LM="$9" EXP_LL="${10}" EXP_PA="${11}" EXP_RF="${12}" EXP_SR="${13}" \
+    python3 -c '
+import json, os, sys
+data = sys.stdin.read()
+assert len(data.splitlines()) == 1 and data.endswith("\n"), "shape: %r" % data
+d = json.loads(data)
+keys = sorted(d.keys())
+expect = sorted(["recipe","srctree","srctreebase","disposition","destination_parent","destination","cleaned_bbappend","landing_mode","landing_layer","patches","recipe_files","srcrev"])
+assert keys == expect, ("keys", keys)
+def noneif(v): return None if v == "" else v
+assert d["recipe"] == os.environ["EXP_RECIPE"], ("recipe", d["recipe"])
+assert d["srctree"] == os.environ["EXP_ST"], ("srctree", d["srctree"])
+assert d["srctreebase"] == os.environ["EXP_SB"], ("srctreebase", d["srctreebase"])
+assert d["disposition"] == os.environ["EXP_DISP"], ("disposition", d["disposition"])
+assert d["destination_parent"] == noneif(os.environ["EXP_DP"]), ("dest_parent", d["destination_parent"])
+assert d["destination"] is None, ("destination", d["destination"])
+assert d["cleaned_bbappend"] == noneif(os.environ["EXP_CB"]), ("cleaned_bbappend", d["cleaned_bbappend"])
+assert d["landing_mode"] == noneif(os.environ["EXP_LM"]), ("landing_mode", d["landing_mode"])
+assert d["landing_layer"] == noneif(os.environ["EXP_LL"]), ("landing_layer", d["landing_layer"])
+assert d["patches"] == json.loads(os.environ["EXP_PA"] or "[]"), ("patches", d["patches"])
+assert d["recipe_files"] == json.loads(os.environ["EXP_RF"] or "[]"), ("recipe_files", d["recipe_files"])
+assert d["srcrev"] == noneif(os.environ["EXP_SR"]), ("srcrev", d["srcrev"])
+' <<< "$out" || jrc=$?
+    assert_eq "$label (JSON 12 字段精确)" "$jrc" "0"
+}
+
+# --- patch mode → 12 字段精确(patches/recipe_files array, srcrev null) ---
+MOCK_FIN_SRCTREE="/ws/sources/r1"; MOCK_FIN_SRCTREEBASE="/ws/sources/r1"
+MOCK_FIN_DISPOSITION="moved"; MOCK_FIN_DEST_PARENT="/ws/attic/sources"; MOCK_FIN_CLEANED_BBAPPEND="/ws/appends/r1_1.0.bbappend"
+MOCK_FIN_LANDING_MODE="patch"; MOCK_FIN_LANDING_LAYER="meta-x"
+MOCK_FIN_PATCHES='["meta-x/recipes/r1/0001.patch"]'; MOCK_FIN_RECIPE_FILES='["meta-x/recipes/r1/r1.bb"]'; MOCK_FIN_SRCREV=""
+MOCK_FIN_PHASE=""; MOCK_FIN_RC=0
+run_dev --machine testm finish r1
+assert_eq "finish patch: exit 0" "$RUN_RC" "0"
+assert_finish_json "finish patch" "$RUN_OUT" "r1" "/ws/sources/r1" "/ws/sources/r1" "moved" "/ws/attic/sources" "/ws/appends/r1_1.0.bbappend" "patch" "meta-x" '["meta-x/recipes/r1/0001.patch"]' '["meta-x/recipes/r1/r1.bb"]' ""
+
+# --- noop → landing_mode/layer/srcrev/cleaned_bbappend None, patches/recipe_files [] ---
+MOCK_FIN_SRCTREE=""; MOCK_FIN_SRCTREEBASE=""; MOCK_FIN_DISPOSITION="noop"
+MOCK_FIN_DEST_PARENT=""; MOCK_FIN_CLEANED_BBAPPEND=""; MOCK_FIN_LANDING_MODE=""; MOCK_FIN_LANDING_LAYER=""
+MOCK_FIN_PATCHES="[]"; MOCK_FIN_RECIPE_FILES="[]"; MOCK_FIN_SRCREV=""; MOCK_FIN_PHASE=""; MOCK_FIN_RC=0
+run_dev --machine testm finish r5
+assert_eq "finish noop: exit 0" "$RUN_RC" "0"
+assert_finish_json "finish noop" "$RUN_OUT" "r5" "" "" "noop" "" "" "" "" "[]" "[]" ""
+
+# --- argv JSON array round-trip 含特殊字符(空格 + 引号 + 反斜杠, 经 argv 不插值) ---
+_wpatches='["meta-x/p q.patch","meta-x/p\"q\\s.patch"]'
+MOCK_FIN_SRCTREE="/ws/sources/r1"; MOCK_FIN_SRCTREEBASE="/ws/sources/r1"; MOCK_FIN_DISPOSITION="moved"
+MOCK_FIN_DEST_PARENT="/ws/attic/sources"; MOCK_FIN_CLEANED_BBAPPEND="/ws/appends/r1.bbappend"
+MOCK_FIN_LANDING_MODE="patch"; MOCK_FIN_LANDING_LAYER="meta-x"
+MOCK_FIN_PATCHES="$_wpatches"; MOCK_FIN_RECIPE_FILES='[]'; MOCK_FIN_SRCREV=""; MOCK_FIN_PHASE=""; MOCK_FIN_RC=0
+run_dev --machine testm finish rw
+assert_eq "finish argv round-trip: exit 0" "$RUN_RC" "0"
+_wwrc=0
+EXP_W="$_wpatches" python3 -c '
+import json, os, sys
+d = json.loads(sys.stdin.read())
+assert d["patches"] == json.loads(os.environ["EXP_W"]), (d["patches"], json.loads(os.environ["EXP_W"]))
+' <<< "$RUN_OUT" || _wwrc=$?
+assert_eq "finish argv round-trip: patches 逐元素精确(含空格/引号/反斜杠)" "$_wwrc" "0"
+
+# --- 编码失败(REAL_PYTHON fake -c 失败) → exit 1 + stdout 空 ---
+REAL_PYTHON="$(command -v python3)"; export REAL_PYTHON
+_PYDB="$(mktemp -d)"; mkfake_bin "$_PYDB" python3
+stub_script "$_PYDB" python3 'if [[ "$1" == "-c" ]]; then exit 1; fi
+exec "$REAL_PYTHON" "$@"'
+MOCK_FIN_DISPOSITION="moved"; MOCK_FIN_DEST_PARENT="/ws/attic/sources"; MOCK_FIN_PHASE=""; MOCK_FIN_RC=0
+MOCK_FIN_LANDING_MODE="patch"; MOCK_FIN_LANDING_LAYER="meta-x"; MOCK_FIN_PATCHES='["x.patch"]'; MOCK_FIN_RECIPE_FILES='[]'
+_jerr="$(mktemp)"; _jrc=0
+RUN_OUT="$(with_stub "$_PYDB" -- cmd_dev --machine testm finish rfail 2>"$_jerr" </dev/null)" && _jrc=0 || _jrc=$?
+RUN_RC=$_jrc; RUN_ERR="$(cat "$_jerr")"; rm -f "$_jerr"
+assert_false "finish 编码失败: exit 1" test "$RUN_RC" -eq 0
+assert_eq "finish 编码失败: stdout 空" "$RUN_OUT" ""
+rm -rf "$_PYDB"
+
+# --- phase 映射(metadata/status/finish/landing/postcondition → exit 1, 诊断含 phase) ---
+MOCK_FIN_SRCTREE="/ws/s"; MOCK_FIN_DISPOSITION="moved"; MOCK_FIN_DEST_PARENT=""; MOCK_FIN_RC=1
+MOCK_FIN_STAGE=""; MOCK_FIN_PHASE="metadata"; run_dev --machine testm finish rmeta
+assert_eq "finish phase=metadata: exit 1" "$RUN_RC" "1"
+assert_contains "finish phase=metadata 诊断" "$RUN_ERR" "metadata"
+MOCK_FIN_PHASE="status"; run_dev --machine testm finish rstat
+assert_contains "finish phase=status 诊断" "$RUN_ERR" "status"
+MOCK_FIN_PHASE="finish"; run_dev --machine testm finish rfin
+assert_contains "finish phase=finish 诊断" "$RUN_ERR" "phase=finish"
+MOCK_FIN_PHASE="landing"; run_dev --machine testm finish rland
+assert_contains "finish phase=landing 诊断" "$RUN_ERR" "landing"
+MOCK_FIN_PHASE="postcondition"; run_dev --machine testm finish rpost
+assert_contains "finish phase=postcondition 诊断" "$RUN_ERR" "postcondition"
+
+# --- parser + 前置 ---
+MOCK_FIN_PHASE=""; MOCK_FIN_RC=0; MOCK_FIN_DISPOSITION="noop"; MOCK_FIN_SRCTREE=""
+run_dev --machine testm finish
+assert_eq "finish 无recipe: exit 3" "$RUN_RC" "3"
+assert_contains "finish 无recipe remedy(status)" "$RUN_ERR" "ob dev --machine testm status"
+rm -f "$TMP/finish_called"
+run_dev --machine testm finish rr --dry-run
+assert_eq "finish 尾随dry-run: exit 0" "$RUN_RC" "0"
+assert_false "finish dry-run 不调 devtool_finish_run" test -f "$TMP/finish_called"
+run_dev --machine testm finish r1 r2
+assert_false "finish 双recipe 拒绝" test "$RUN_RC" -eq 0
+
+# --- porcelain: stdout 只 JSON, 无 [ERROR]/logo ---
+MOCK_FIN_DISPOSITION="moved"; MOCK_FIN_DEST_PARENT="/ws/attic/sources"; MOCK_FIN_PHASE=""; MOCK_FIN_RC=0
+MOCK_FIN_SRCTREE="/ws/sources/rp"; MOCK_FIN_SRCTREEBASE="/ws/sources/rp"
+MOCK_FIN_LANDING_MODE="patch"; MOCK_FIN_LANDING_LAYER="meta-x"; MOCK_FIN_PATCHES='["p.patch"]'; MOCK_FIN_RECIPE_FILES='[]'
+run_dev --machine testm finish rporc
+assert_eq "finish porcelain: exit 0" "$RUN_RC" "0"
+assert_false "finish stdout 纯(无 [ERROR])" grep -q "\[ERROR\]" <<<"$RUN_OUT"
+assert_eq "finish stdout 恰好一行 JSON" "$(grep -c . <<<"$RUN_OUT")" "1"
 
 # ============================================================================
 # status: JSONL 列表/空/失败/dry-run/编码失败(镜像 reset 的原子发布契约)
