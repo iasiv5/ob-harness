@@ -204,6 +204,16 @@ NOGIT="$TMP/cap-nogit"; mkdir -p "$NOGIT/sub"; : > "$NOGIT/sub/f.bb"
 call_capture "$NOGIT"
 assert_false "capture非git: phase非空(fail closed)" test -z "$_cap_phase"
 
+# openbmc_dir 是 git 仓库子目录(toplevel != openbmc_dir) → phase=landing(M2 fail closed)
+# porcelain 路径相对 toplevel, 若 toplevel!=openbmc_dir 则 join(openbmc_dir,relpath) 错位 → digest 静默空
+SUBGIT="$TMP/cap-subgit"; mkdir -p "$SUBGIT/realroot/openbmc/meta-x/conf"
+git -C "$SUBGIT/realroot" init -q
+: > "$SUBGIT/realroot/openbmc/meta-x/conf/layer.conf"
+git -C "$SUBGIT/realroot" add -A && git -C "$SUBGIT/realroot" -c user.email=t@t -c user.name=t commit -q -m init
+echo dirty >> "$SUBGIT/realroot/openbmc/meta-x/conf/layer.conf"   # 制造 dirty 让 status 有内容
+call_capture "$SUBGIT/realroot/openbmc"
+assert_false "capture toplevel!=openbmc_dir: phase非空(M2 fail closed, 不静默降级)" test -z "$_cap_phase"
+
 # --- _devtool_finish_detect_landing <openbmc_dir> <pre_json> <post_json> <mode><patches><recipe_files><srcrev><landing_layer><phase> ---
 call_detect() {  # <openbmc_dir> <pre_json_str> <post_json_str>
     printf '%s' "$2" > "$PREJ"

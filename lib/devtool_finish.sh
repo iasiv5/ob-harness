@@ -87,7 +87,7 @@ PY
 # python: git -C openbmc_dir status --porcelain=v1 -z --untracked-files=all → 解析 entry(XY+path, rename/copy取dest)
 #   → 过滤 build//workspace//attic/(顶层) → 对 .patch/.bb/.bbappend 算文件内容 sha256(非 git blob hash, 仅 pre/post 内容变化检测) →
 #   JSON {"paths":{relpath:{"status":XY,"sha256":hex}}} 写 snapshot_outfile(relpath 相对 openbmc_dir=git根)。
-#   git rev-parse 不真 / status 失败 / 写失败 → phase=landing(fail closed, landing 观测层失败)。
+#   git rev-parse 不真 / toplevel != openbmc_dir / status 失败 / 写失败 → phase=landing(fail closed, landing 观测层失败)。
 #   T5 runtime + T8 integration 复用同一 helper(避免漂移)。leaf-pure 不 trap。返回 rc(不 exit)。
 _devtool_finish_capture_landing_snapshot() {
     local openbmc_dir="$1" snapshot_outfile="$2" phase_out="$3"
@@ -108,6 +108,15 @@ try:
                          capture_output=True)
     if rev.returncode != 0 or rev.stdout.strip() != b'true':
         phase = 'landing'
+    if not phase:
+        # porcelain 路径相对 git toplevel, 非 CWD; 隐式地基 toplevel==openbmc_dir(否则 join(openbmc_dir,relpath)
+        # 错位 → digest 静默变空 → landing 退化为纯 status diff 漏报)。FACT_GIT_BASELINE 核实当前布局成立,
+        # 但布局变动须显式 fail closed(不静默降级)。
+        toplevel = subprocess.run(['git', '-C', openbmc_dir, 'rev-parse', '--show-toplevel'],
+                                  capture_output=True)
+        tl = toplevel.stdout.decode('utf-8', 'surrogateescape').strip()
+        if toplevel.returncode != 0 or os.path.realpath(tl) != os.path.realpath(openbmc_dir):
+            phase = 'landing'
     if not phase:
         st = subprocess.run(['git', '-C', openbmc_dir, 'status', '--porcelain=v1', '-z',
                              '--untracked-files=all'], capture_output=True)
@@ -242,6 +251,8 @@ if not phase:
         phase = 'landing'   # 增量但非 patch/recipe(异常)
 
     if not phase and changed:
+        # 遍历全部 changed(含被分类为非 patch/recipe 的杂项) 求层 root: 单 writer 下 changed 只含落地文件,
+        # 实际不触发; 任一跨 layer → phase=landing(过严 fail-closed, 方向正确, 见 review L4)。
         roots = set()
         for p in changed:
             r = find_layer_root(p)
