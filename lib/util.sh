@@ -11,6 +11,8 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 
+notice() { echo -e "${CYAN}[NOTICE]${NC} $*" >&2; }
+
 verbose() { if [[ "$VERBOSE" -eq 1 ]]; then echo -e "[DEBUG] $*"; fi; }
 
 # Print the 3-line confirmation banner (visual only — no confirmation logic).

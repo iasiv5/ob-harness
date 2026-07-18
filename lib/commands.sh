@@ -978,7 +978,7 @@ cmd_dev() {
     case "$dev_subcmd" in
         list)
             if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                error "[DRY-RUN] ob dev list: would read recipe cache + output JSONL (pattern='$dev_pattern')." >&2
+                notice "[DRY-RUN] ob dev list: would read recipe cache + output JSONL (pattern='$dev_pattern')." >&2
                 exit 0
             fi
             local _state="" _read_rc=0
@@ -1026,7 +1026,7 @@ cmd_dev() {
                 exit 3
             fi
             if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                error "[DRY-RUN] ob dev modify $dev_recipe: would devtool modify (srctree preview: $dev_build_dir/workspace/sources/$dev_recipe)." >&2
+                notice "[DRY-RUN] ob dev modify $dev_recipe: would devtool modify (srctree preview: $dev_build_dir/workspace/sources/$dev_recipe)." >&2
                 exit 0
             fi
             local _srctree="" _stage="" _stderr_file="" _mrc=0
@@ -1048,7 +1048,7 @@ cmd_dev() {
             ;;
         refresh)
             if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                error "[DRY-RUN] ob dev refresh: would regenerate recipe cache via tinfoil." >&2
+                notice "[DRY-RUN] ob dev refresh: would regenerate recipe cache via tinfoil." >&2
                 exit 0
             fi
             local _rstage="" _rstderr="" _rrc=0
@@ -1073,7 +1073,7 @@ cmd_dev() {
                 exit 3
             fi
             if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                error "[DRY-RUN] ob dev reset $dev_recipe: would devtool reset (source-preserving, no --remove-work)." >&2
+                notice "[DRY-RUN] ob dev reset $dev_recipe: would devtool reset (source-preserving, no --remove-work)." >&2
                 exit 0
             fi
             local _reset_srctree="" _reset_srctreebase="" _reset_disposition=""
@@ -1125,7 +1125,7 @@ print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.a
                 exit 3
             fi
             if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                error "[DRY-RUN] ob dev finish $dev_recipe: would devtool finish (land patches to original layer, source-preserving)." >&2
+                notice "[DRY-RUN] ob dev finish $dev_recipe: would devtool finish (land patches to original layer, source-preserving)." >&2
                 exit 0
             fi
             local _finish_srctree="" _finish_srctreebase="" _finish_disposition=""
@@ -1178,7 +1178,7 @@ print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.a
             ;;
         status)
             if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                error "[DRY-RUN] ob dev status: would list modified recipes via devtool status." >&2
+                notice "[DRY-RUN] ob dev status: would list modified recipes via devtool status." >&2
                 exit 0
             fi
             local _st_entries="" _st_stage="" _st_stderr_file="" _st_rc=0
