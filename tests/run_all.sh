@@ -8,16 +8,48 @@
 set -uo pipefail
 DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$DIR/.." || exit 1   # 切到仓库根,使 expect 脚本的 spawn ./ob 成立
+usage() { echo "Usage: tests/run_all.sh [--full] [--integration]" >&2; }
 FULL=0; INTEGRATION=0
 for arg in "$@"; do
     case "$arg" in
         --full) FULL=1 ;;
         --integration) INTEGRATION=1 ;;
-        *) echo "unknown: $arg" >&2 ;;
+        *) echo "unknown: $arg" >&2; usage; exit 1 ;;
     esac
 done
 LAYERS=(protocol unit orchestration); [[ "$INTEGRATION" == 1 ]] && LAYERS+=(integration)
 FAILED=()
+run_sh() { # <file>
+    local file base output rc tmp_root
+    file="$1"
+    base="$(basename "$file")"
+    tmp_root="${TMPDIR:-/tmp}"
+    output="$(mktemp "$tmp_root/ob-run-sh.XXXXXX")" || { echo "FAIL $base (mktemp failed)"; FAILED+=("$file"); return; }
+    bash "$file" >"$output" 2>&1
+    rc=$?
+    if [[ "$rc" -eq 77 ]]; then
+        if grep -q '^SKIP: ' "$output"; then
+            cat "$output"
+            echo "skip $base"
+        else
+            echo "FAIL $base (rc=77 without SKIP: protocol marker)"
+            sed 's/^/  | /' "$output"
+            FAILED+=("$file")
+        fi
+        rm -f "$output"
+        return
+    fi
+    if [[ "$rc" -eq 0 ]]; then
+        cat "$output"
+        echo "ok   $base"
+        rm -f "$output"
+        return
+    fi
+    echo "FAIL $base (rc=$rc)"
+    sed 's/^/  | /' "$output"
+    FAILED+=("$file")
+    rm -f "$output"
+}
 run_exp() { # <file>
     local file base output rc tmp_root
     file="$1"
@@ -48,7 +80,7 @@ for layer in "${LAYERS[@]}"; do
     echo "=== $layer ==="
     shopt -s nullglob
     for f in "tests/$layer"/*.sh; do
-        if bash "$f"; then echo "ok   $(basename "$f")"; else echo "FAIL $(basename "$f")"; FAILED+=("$f"); fi
+        run_sh "$f"
     done
     # .exp 慢(manual_matrix 的 start-qemu cancel 需 bitbake -e):默认跳过
     if [[ "$FULL" == 1 ]] || { [[ "$INTEGRATION" == 1 ]] && [[ "$layer" == "integration" ]]; }; then

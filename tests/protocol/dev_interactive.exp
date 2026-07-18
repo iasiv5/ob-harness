@@ -1,0 +1,161 @@
+#!/usr/bin/env expect
+#
+# ob dev 交互引导回归 —— 覆盖 cmd_dev 的 TTY 子命令引导分支(.sh 单测不及: 非 TTY 走不到)。
+#
+# 【什么时候用】
+#   - 改了 ob dev 的交互引导 / 子命令菜单 / 取消逻辑 / 退出码协议后, 验证行为没变
+#   - 想确认 "选完 machine 后弹子命令菜单(而非直接 no subcommand)" 这个闭环没破
+#
+# 【怎么用】
+#   前提: 装了 expect + workspace 有 init-done machine(无则自动 skip+warn, 不假失败)。
+#   $ expect tests/protocol/dev_interactive.exp
+#   退出: FAIL=0 → exit 0; FAIL>0 → exit 1。
+#
+# 【覆盖项】(退出码协议: 0=成功 / 1=硬错误 / 2=用户取消 / 3=前提不满足)
+#   引导(PTY):   子命令菜单出现 · cancel(2) · modify 空 recipe(3) · 非法子命令选择(1)
+#
+# 【原理/注意】
+#   - ob dev 在 dev_subcmd 空 + TTY 时弹 list/modify/refresh 菜单(commit cf3e8b2 修复:
+#     修复前是选完 machine 直接报 no subcommand)。本脚本用 spawn 伪 TTY 驱动。
+#   - 每个场景先断言 "Select subcommand" 菜单出现(核心修复点), 再走该场景退出码。
+#     菜单未出现(回归成 no subcommand) → 直接判 FAIL, 不再 send 子命令。
+#   - 交互用内联 spawn(manual_matrix 实测: proc 包装 spawn 的 spawn_id 作用域不可靠)。
+#   - 不测 list/refresh 的完整执行(依赖 recipe cache, 慢且与本次改动无关——选完走已有
+#     case 分支, 已有 .sh 单测覆盖)。本脚本只锁定 "交互引导" 这一层。
+#
+# 【由来】cmd_dev 交互引导的 TTY 路径无 .sh 覆盖(pick_machine 同策略), 本脚本补齐 TTY 回归。
+
+set timeout 30
+log_user 0
+set PASS 0; set FAIL 0; set SKIP 0
+
+proc chk {label got exp} {
+    global PASS FAIL
+    if {$got == $exp} { incr PASS; puts "ok   $label => exit $got" } else { incr FAIL; puts "FAIL $label => exit $got (expected $exp)" }
+}
+
+# 前提: workspace 有 init-done machine(dev 引导需 initialized machine 列表非空)
+set has_machine 0
+if {![catch {exec sh -c {ls workspace/configs/*.init-done >/dev/null 2>&1}}]} {
+    set has_machine 1
+}
+
+if {!$has_machine} {
+    incr SKIP 3
+    puts "skip dev 交互引导（workspace 无 init-done machine）"
+} else {
+    # === 引导菜单 + cancel: ./ob dev → 选 machine(1) → 选 subcmd 0 → exit 2 ===
+    spawn ./ob dev
+    expect -re "Select a machine for Develop"; send "1\r"
+    set _ok 1
+    expect {
+        -re "Select subcommand.*0 to cancel"   { }
+        -re "no subcommand"                     { incr FAIL; puts "FAIL dev cancel: 引导菜单未出现(仍报 no subcommand)"; set _ok 0 }
+        timeout                                 { incr FAIL; puts "FAIL dev cancel: 超时未见子命令菜单"; set _ok 0 }
+    }
+    if {$_ok} {
+        send "0\r"
+        expect "cancelled"
+        expect eof; catch wait r
+        chk "dev cancel → 2" [lindex $r 3] 2
+    } else {
+        catch {close}; catch {wait}
+    }
+
+    # === modify 空 recipe: ./ob dev → 选 machine(1) → subcmd 2 → recipe 空 → exit 3 ===
+    spawn ./ob dev
+    expect -re "Select a machine for Develop"; send "1\r"
+    set _ok 1
+    expect {
+        -re "Select subcommand.*0 to cancel"   { }
+        -re "no subcommand"                     { incr FAIL; puts "FAIL dev modify-empty: 引导菜单未出现"; set _ok 0 }
+        timeout                                 { incr FAIL; puts "FAIL dev modify-empty: 超时"; set _ok 0 }
+    }
+    if {$_ok} {
+        send "2\r"
+        expect "recipe name"
+        send "\r"
+        expect "no recipe specified"
+        expect eof; catch wait r
+        chk "dev modify 空 recipe → 3" [lindex $r 3] 3
+    } else {
+        catch {close}; catch {wait}
+    }
+
+    # === 非法子命令选择: ./ob dev → 选 machine(1) → subcmd 9 → exit 1 ===
+    spawn ./ob dev
+    expect -re "Select a machine for Develop"; send "1\r"
+    set _ok 1
+    expect {
+        -re "Select subcommand.*0 to cancel"   { }
+        -re "no subcommand"                     { incr FAIL; puts "FAIL dev invalid-subcmd: 引导菜单未出现"; set _ok 0 }
+        timeout                                 { incr FAIL; puts "FAIL dev invalid-subcmd: 超时"; set _ok 0 }
+    }
+    if {$_ok} {
+        send "9\r"
+        expect "invalid subcommand selection"
+        expect eof; catch wait r
+        chk "dev 非法子命令 → 1" [lindex $r 3] 1
+    } else {
+        catch {close}; catch {wait}
+    }
+
+    # === reset 空 recipe 段已移除(改为下方 wrapper mock 场景: reset TTY 列表 pick) ===
+}
+
+# === reset TTY 空列表 + 菜单 [1-5](wrapper mock, 不依赖真实 devtool) ===
+# 移出 has_machine gate 无条件跑: mock 了 machine_state_*, 不依赖真实 init-done machine
+spawn bash -c {OB_NO_MAIN=1 source ./ob 2>/dev/null
+machine_state_initialized_machines() { echo testm; }
+machine_state_is_initialized() { return 0; }
+detect_harness_root() { return 0; }
+devtool_status_run() { local _f; _f="$(mktemp)"; printf -v "$3" '%s' ''; printf -v "$4" '%s' 'command'; printf -v "$5" '%s' "$_f"; : >"$_f"; return 0; }
+main dev
+}
+expect -re "Select a machine for Develop"; send "1\r"
+# 先匹配菜单项 5) status(它出现在 prompt 之前), 再匹配 prompt——
+# 反序会先消费掉 prompt、把 5) status 从 buffer 吃掉, 后续 expect "5) status" 必超时
+expect "5) status"
+expect "6) finish"
+set _ok 1
+expect {
+    -re {Select subcommand.*\[1-6\].*0 to cancel}   { }
+    -re "no subcommand"                              { incr FAIL; puts "FAIL dev reset-mock: 引导菜单未出现"; set _ok 0 }
+    timeout                                          { incr FAIL; puts "FAIL dev reset-mock: 超时"; set _ok 0 }
+}
+if {$_ok} {
+    send "4\r"
+    expect "No modified recipes"
+    expect eof; catch wait r
+    chk "dev reset 空列表(mock) → 3" [lindex $r 3] 3
+} else {
+    catch {close}; catch {wait}
+}
+
+# === finish TTY 空列表 + 菜单 [1-6](wrapper mock, 照 reset 场景) ===
+spawn bash -c {OB_NO_MAIN=1 source ./ob 2>/dev/null
+machine_state_initialized_machines() { echo testm; }
+machine_state_is_initialized() { return 0; }
+detect_harness_root() { return 0; }
+devtool_status_run() { local _f; _f="$(mktemp)"; printf -v "$3" '%s' ''; printf -v "$4" '%s' 'command'; printf -v "$5" '%s' "$_f"; : >"$_f"; return 0; }
+main dev
+}
+expect -re "Select a machine for Develop"; send "1\r"
+expect "6) finish"
+set _ok 1
+expect {
+    -re {Select subcommand.*\[1-6\].*0 to cancel}   { }
+    -re "no subcommand"                              { incr FAIL; puts "FAIL dev finish-mock: 引导菜单未出现"; set _ok 0 }
+    timeout                                          { incr FAIL; puts "FAIL dev finish-mock: 超时"; set _ok 0 }
+}
+if {$_ok} {
+    send "6\r"
+    expect "No modified recipes"
+    expect eof; catch wait r
+    chk "dev finish 空列表(mock) → 3" [lindex $r 3] 3
+} else {
+    catch {close}; catch {wait}
+}
+
+puts "\nPASS=$PASS FAIL=$FAIL SKIP=$SKIP"
+exit [expr {$FAIL > 0 ? 1 : 0}]

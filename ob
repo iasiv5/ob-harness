@@ -19,6 +19,7 @@ SOURCE_LABEL=""
 VERBOSE=0
 DRY_RUN=0
 SKIP_DEPS=0
+DEV_ARGS=()
 
 # QEMU-related (start-qemu / stop-qemu)
 QEMU_SSH_PORT=""
@@ -76,6 +77,7 @@ done
 # === 入口 (parse_args / usage / main) ===
 
 parse_args() {
+    DEV_ARGS=()   # 重置(OB_NO_MAIN 多次调用测试防残留)
     if [[ $# -lt 1 ]]; then
         COMMAND=""
         return 0
@@ -120,6 +122,12 @@ parse_args() {
                 MACHINE="$1"
                 shift
             fi
+            ;;
+        dev)
+            # dev 子命令的私有参数(--machine/二级子命令)透传给 cmd_dev;
+            # set -- 清空,防下面的全局 option while 把 --machine 当未知选项退出
+            DEV_ARGS=("$@")
+            set --
             ;;
         *)
             error "Unknown command: $COMMAND"
@@ -178,6 +186,7 @@ Commands:
   status                      Show current OpenBMC source binding status
   start-qemu   [<machine>]    Launch QEMU with built BMC image
   stop-qemu    [<machine>]    Stop a running QEMU instance
+  dev          [--machine <machine>] <list|modify|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
 
 Global Options:
   -d, --dry-run         Print actions without executing
@@ -227,6 +236,13 @@ Examples:
   ob start-qemu romulus --ssh-port 22223
   ob stop-qemu romulus             # Stop romulus QEMU instance
   ob stop-qemu --all               # Stop all running instances
+  ob dev --machine romulus list ipmi    # Search recipes matching 'ipmi'
+  ob dev --machine romulus modify phosphor-ipmi-host   # devtool modify, outputs srctree
+  ob dev --machine romulus refresh     # Regenerate recipe metadata cache
+  ob dev --machine romulus reset phosphor-ipmi-host  # devtool reset, outputs disposition JSON
+  ob dev --machine romulus finish phosphor-ipmi-host  # devtool finish, lands patches to layer, outputs JSON
+  ob dev --machine romulus status             # List modified recipes (outputs JSONL)
+  ob dev                               # Interactive: pick machine, then pick subcommand (TTY)
 EOF
 }
 
@@ -241,6 +257,11 @@ main() {
     fi
 
     # CLI mode
+    # ob dev 是 porcelain agent-facing 命令: dispatch 在 show_logo 前(跳过 logo, stdout 只输出 JSONL/srctree)
+    if [[ "$COMMAND" == "dev" ]]; then
+        cmd_dev "${DEV_ARGS[@]}"
+        return $?
+    fi
     show_logo
 
     if [[ "$COMMAND" == "status" ]]; then
