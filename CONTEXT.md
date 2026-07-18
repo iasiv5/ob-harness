@@ -139,7 +139,7 @@ _Avoid_: recipe 索引, recipe list, 把 stale 当 missing（exit 码与 remedy 
 _Avoid_: machine-readable output, JSON output（泛称；list JSONL 与 reset 单行 JSON 是两种具体形态）
 
 **ob dev cleanup/收尾语义**:
-ob dev 收尾动作（`reset` 丢弃 / `finish` 落回 / integration harness 回滚）共享的故障安全不变量：cleanup target 由 `devtool status` 权威 recheck（不缓存/不推断），cleanup-needed 标志在产生副作用（`modify`）之前设置，`status`/`list` 失败是真失败不降级，环境不具备/无候选 `exit 77` SKIP。详见 [ADR-0008](docs/adr/0008-ob-dev-cleanup-fail-safe.md)。收尾命令（reset/finish）当前为 workspace 单 writer 假设、无 workspace 级互斥；锁协议触发条件是 `--remove-work`，见 [ADR-0009](docs/adr/0009-ob-dev-workspace-single-writer.md)。
+ob dev 收尾动作（`reset` 丢弃 / `finish` 落回 / integration harness 回滚）共享的故障安全不变量：cleanup target 由 `devtool status` 权威 recheck（不缓存/不推断），cleanup-needed 标志在产生副作用（`modify`）之前设置，`status`/`list` 失败是真失败不降级。**收尾命令**（reset/finish）对未 modified recipe 返回 `exit 0` + `disposition=noop`（良性，主契约 0/1/2/3 内）；**integration harness** 在环境不具备/无安全候选时用 `exit 77` SKIP（测试协议码，非主契约）。详见 [ADR-0008](docs/adr/0008-ob-dev-cleanup-fail-safe.md)。收尾命令（reset/finish）当前为 workspace 单 writer 假设、无 workspace 级互斥；锁协议触发条件是 `--remove-work`，见 [ADR-0009](docs/adr/0009-ob-dev-workspace-single-writer.md)。
 _Avoid_: cleanup 逻辑（实现口语）, rollback（仅收尾的一种场景）
 
 **ob dev finish**:
