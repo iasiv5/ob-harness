@@ -1149,6 +1149,8 @@ cmd_dev() {
                 exit 0
             fi
             local _b_stage="" _b_stderr="" _b_notmod="" _b_rc=0
+            # devtool_build_run 内 status-first 非 TTY 选号 status 的冗余——是选号→build 的 TOCTOU 纵深校验
+            # (防 recipe 被并发 reset), 并产 not_modified 信号 + stage/rc 回传; TTY 段 status 只为列 recipe 选号(UX)。
             devtool_build_run "$dev_machine" "$dev_build_dir" "$dev_recipe" _b_stage _b_stderr _b_notmod || _b_rc=$?
             if [[ "$_b_notmod" == "1" ]]; then
                 # not_modified: status 成功(stage=command/rc=0)但 recipe 不在 modified 列表。

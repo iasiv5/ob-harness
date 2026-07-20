@@ -7,6 +7,7 @@ Date: 2026-07-19
 ## 修订记录
 
 - v1：grill-with-docs 共识初稿。10 个决策经一对一 grilling 锁定（范围 / 交付粒度 / exit 归属 / encoder 形状 / 文件归属 / build 语义 / porcelain / 前置 / 注册 / 测试矩阵）。
+- v1.1（实现期同步，2026-07-20）：build 分支 not_modified 路径伪代码改显式 cat+rm（实现 v2.1 澄清：不经 relay，避免依赖"三条件都不触发表"隐式行为；强化 ADR-0010 的"porcelain 副作用是 cmd_dev 显式决策"）。A1 relay per-subcmd verbatim 表 / B1 镜像 modify_run / 4 处执行期笔误修正详见 plan v2/v2.1。
 
 ## 背景与目标
 
@@ -137,7 +138,8 @@ build)
   [[ "${DRY_RUN:-0}" == "1" ]] && { notice "[DRY-RUN] ob dev build $dev_recipe: would devtool build (do_build)." >&2; exit 0; }
   devtool_build_run "$dev_machine" "$dev_build_dir" "$dev_recipe" _b_stage _b_stderr _b_notmod || _b_rc=$?
   if [[ "$_b_notmod" == "1" ]]; then
-      dev_relay_result build "$_b_stderr" "$_b_stage" "" 0 >/dev/null 2>&1 || true   # cat+rm stderr
+      cat -- "$_b_stderr" >&2 2>/dev/null || true   # 显式 cat+rm(not_modified 路径不经 relay, v2.1)
+      rm -f -- "$_b_stderr" 2>/dev/null || true
       error "Recipe '$dev_recipe' is not modified (not in devtool workspace)." >&2
       error "Run 'ob dev --machine $dev_machine modify $dev_recipe' first." >&2
       exit 3
