@@ -92,6 +92,18 @@ devtool_status_run() {
     return "${MOCK_ST_RC:-0}"
 }
 
+# build mock: 6 参数(machine/build_dir/recipe + stage/stderr_file/not_modified outvar); MOCK_BUILD_* 控制
+MOCK_BUILD_NOTMOD=""; MOCK_BUILD_STAGE="command"; MOCK_BUILD_RC=0
+devtool_build_run() {
+    local _o_stage="$4" _o_stderr="$5" _o_notmod="$6"
+    touch "$TMP/build_called" 2>/dev/null || true
+    printf -v "$_o_stage" '%s' "$MOCK_BUILD_STAGE"
+    printf -v "$_o_stderr" '%s' "$TMP/build_stderr"
+    : > "$TMP/build_stderr"
+    printf -v "$_o_notmod" '%s' "$MOCK_BUILD_NOTMOD"
+    return "$MOCK_BUILD_RC"
+}
+
 # run_dev <args...>: 跑 cmd_dev(子 shell 捕获 exit), 设 RUN_RC/RUN_OUT/RUN_ERR
 run_dev() {
     local err
@@ -508,5 +520,52 @@ unset -f python3
 assert_eq "status 编码失败 exit 1" "$RUN_RC" "1"
 assert_eq "status 编码失败 stdout 空(不 partial 发布)" "$RUN_OUT" ""
 assert_contains "status 编码失败 stderr 诊断" "$RUN_ERR" "result JSONL"
+
+# ============================================================================
+# build: not-modified → exit 3 + modify remedy; success → exit 0 空 stdout; stage/rc fail → exit 1; DRY_RUN
+# ============================================================================
+
+# build 无 recipe → exit 3 + status remedy
+run_dev --machine testm build
+assert_eq "build 无 recipe: exit 3" "$RUN_RC" "3"
+assert_contains "build 无 recipe remedy(status)" "$RUN_ERR" "ob dev --machine testm status"
+
+# build not-modified(notmod=1) → exit 3 + modify remedy + "not modified" 诊断
+rm -f "$TMP/build_called"
+MOCK_BUILD_NOTMOD="1"; MOCK_BUILD_STAGE="command"; MOCK_BUILD_RC=0
+run_dev --machine testm build phosphor-ipmi-host
+assert_eq "build not-modified: exit 3" "$RUN_RC" "3"
+assert_contains "build not-modified 诊断(not modified)" "$RUN_ERR" "not modified"
+assert_contains "build not-modified remedy(modify)" "$RUN_ERR" "ob dev --machine testm modify"
+
+# build 成功(notmod="", stage=command, rc=0) → exit 0 + stdout 空(exit code 承载成败)
+MOCK_BUILD_NOTMOD=""; MOCK_BUILD_STAGE="command"; MOCK_BUILD_RC=0
+run_dev --machine testm build phosphor-ipmi-host
+assert_eq "build 成功: exit 0" "$RUN_RC" "0"
+assert_eq "build 成功: stdout 空" "$RUN_OUT" ""
+
+# build stage=postcondition → exit 1 + build env 诊断(relay stage 表)
+MOCK_BUILD_NOTMOD=""; MOCK_BUILD_STAGE="postcondition"; MOCK_BUILD_RC=1
+run_dev --machine testm build phosphor-ipmi-host
+assert_eq "build stage=postcondition: exit 1" "$RUN_RC" "1"
+assert_contains "build stage=postcondition 诊断(build env)" "$RUN_ERR" "build env"
+
+# build stage=command rc=2 → exit 1 + devtool 诊断(relay rc default 表)
+MOCK_BUILD_STAGE="command"; MOCK_BUILD_RC=2
+run_dev --machine testm build phosphor-ipmi-host
+assert_eq "build command 失败: exit 1" "$RUN_RC" "1"
+assert_contains "build command 失败诊断(devtool)" "$RUN_ERR" "devtool"
+
+# build dry-run → exit 0 + 不调 devtool_build_run + stderr 提示
+rm -f "$TMP/build_called"
+DRY_RUN=1 run_dev --machine testm build somerecipe
+assert_eq "build dry-run exit 0" "$RUN_RC" "0"
+assert_false "build dry-run 不调 devtool_build_run" test -f "$TMP/build_called"
+assert_contains "build dry-run stderr 提示" "$RUN_ERR" "[DRY-RUN] ob dev build"
+unset DRY_RUN
+
+# build parser: 双 recipe 拒绝(共享 modify|reset|finish|build 内层 case, 🔴3)
+run_dev --machine testm build r1 r2
+assert_false "build 双recipe 拒绝" test "$RUN_RC" -eq 0
 
 assert_summary

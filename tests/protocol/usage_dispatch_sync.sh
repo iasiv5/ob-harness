@@ -108,4 +108,17 @@ _dispatch_out3="$(main dev --machine m finish myrecipe 2>/dev/null)"
 assert_contains "main dev finish 调 cmd_dev(finish)" "$_dispatch_out3" "GOT:finish"
 assert_contains "main dev finish 调 cmd_dev(recipe)" "$_dispatch_out3" "GOT:myrecipe"
 
+# === ob dev build 登记: usage 含 build + DEV_ARGS 交接 + 真实 dispatch(照 finish 段) ===
+_usage_out3="$(usage 2>/dev/null)"
+assert_contains "usage dev 行含 build" "$_usage_out3" "build"
+assert_contains "usage dev 行枚举含 modify|build" "$_usage_out3" "modify|build"
+parse_args dev --machine m build myrecipe
+assert_eq "DEV_ARGS build [2]=build" "${DEV_ARGS[2]}" "build"
+assert_eq "DEV_ARGS build [3]=myrecipe" "${DEV_ARGS[3]}" "myrecipe"
+
+cmd_dev() { printf 'GOT:%s\n' "$@"; return 0; }
+_dispatch_out_build="$(main dev --machine m build myrecipe 2>/dev/null)"
+assert_contains "main dev build 调 cmd_dev(build)" "$_dispatch_out_build" "GOT:build"
+assert_contains "main dev build 调 cmd_dev(recipe)" "$_dispatch_out_build" "GOT:myrecipe"
+
 assert_summary

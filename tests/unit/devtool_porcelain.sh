@@ -169,4 +169,82 @@ _trap_state="$(trap -p EXIT)"
 assert_contains "emit_json失败trap不变" "$_trap_state" "TEST_TRAP"
 trap - EXIT
 
+# ============================================================================
+# dev_emit_reset_json / dev_emit_finish_json / dev_emit_status_jsonl
+#   per-shape encoder(leaf-pure): python json.dumps 建 dict(字段序与 cmd_dev inline 逐字一致) → tempfile →
+#   复用 devtool_emit_json/jsonl 发布。空值→null; finish patches/recipe_files 经 argv JSON 串 json.loads 合入。
+#   字段序 + None 规则字节 faithful(Commit A 约束); 编码失败 → 删 tempfile + return 1 + stdout 空。
+# ============================================================================
+
+# --- dev_emit_reset_json: 7 字段序 + None 规则(destination_parent 空→null, destination 恒 null) ---
+_out="$(dev_emit_reset_json recipeA /src/A /base/A moved "" cleaned.bbappend)"; _rc=$?
+assert_eq "reset encoder rc=0" "$_rc" "0"
+_json_rc=0
+EXP_KEYS='["recipe","srctree","srctreebase","disposition","destination_parent","destination","cleaned_bbappend"]' \
+python3 -c 'import json,os,sys
+d=json.loads(sys.stdin.read())
+assert list(d.keys())==json.loads(os.environ["EXP_KEYS"]), list(d.keys())
+assert d=={"recipe":"recipeA","srctree":"/src/A","srctreebase":"/base/A","disposition":"moved","destination_parent":None,"destination":None,"cleaned_bbappend":"cleaned.bbappend"}, d
+' <<<"$_out" || _json_rc=$?
+assert_eq "reset encoder 7 字段序 + None 规则" "$_json_rc" "0"
+
+# --- dev_emit_reset_json: destination_parent 非空 → 保留 ---
+_out="$(dev_emit_reset_json recipeA /src/A /base/A moved /ws/attic/sources cleaned.bbappend)"; _rc=$?
+assert_eq "reset encoder dest_parent 非空 rc=0" "$_rc" "0"
+_json_rc=0
+python3 -c 'import json,sys
+d=json.loads(sys.stdin.read())
+assert d["destination_parent"]=="/ws/attic/sources", d
+assert d["destination"] is None, d
+' <<<"$_out" || _json_rc=$?
+assert_eq "reset encoder dest_parent 非空保留" "$_json_rc" "0"
+
+# --- dev_emit_finish_json: 12 字段序 + patches/recipe_files array + srcrev ---
+_out="$(dev_emit_finish_json r1 /src/r1 /base/r1 moved /ws/attic /ws/app/r1.bbappend patch meta-x '["a.patch"]' '["r.bb"]' abc123)"; _rc=$?
+assert_eq "finish encoder rc=0" "$_rc" "0"
+_json_rc=0
+EXP_KEYS='["recipe","srctree","srctreebase","disposition","destination_parent","destination","cleaned_bbappend","landing_mode","landing_layer","patches","recipe_files","srcrev"]' \
+python3 -c 'import json,os,sys
+d=json.loads(sys.stdin.read())
+assert list(d.keys())==json.loads(os.environ["EXP_KEYS"]), list(d.keys())
+assert d["patches"]==["a.patch"], d
+assert d["recipe_files"]==["r.bb"], d
+assert d["srcrev"]=="abc123", d
+assert d["landing_mode"]=="patch" and d["landing_layer"]=="meta-x", d
+' <<<"$_out" || _json_rc=$?
+assert_eq "finish encoder 12 字段序 + list/srcrev" "$_json_rc" "0"
+
+# --- dev_emit_finish_json: 空 patches/recipe_files/srcrev → []/[]/null ---
+_out="$(dev_emit_finish_json r2 "" "" noop "" "" "" "" "" "" "")"; _rc=$?
+assert_eq "finish encoder 空值 rc=0" "$_rc" "0"
+_json_rc=0
+python3 -c 'import json,sys
+d=json.loads(sys.stdin.read())
+assert d["patches"]==[], d
+assert d["recipe_files"]==[], d
+assert d["srcrev"] is None, d
+assert d["landing_mode"] is None and d["landing_layer"] is None, d
+' <<<"$_out" || _json_rc=$?
+assert_eq "finish encoder 空值 → []/null" "$_json_rc" "0"
+
+# --- dev_emit_status_jsonl: 两行 JSONL, key 集 {recipe,srctree} ---
+_entries=$'recipeA\t/src/A\nrecipeB\t/src/B'
+_out="$(dev_emit_status_jsonl "$_entries")"; _rc=$?
+assert_eq "status encoder rc=0" "$_rc" "0"
+assert_eq "status encoder 两行 JSONL" "$(grep -c . <<<"$_out")" "2"
+_json_rc=0
+python3 -c 'import json,sys
+for ln in sys.stdin:
+    ln=ln.strip()
+    if not ln: continue
+    d=json.loads(ln)
+    assert set(d.keys())=={"recipe","srctree"}, d.keys()
+' <<<"$_out" || _json_rc=$?
+assert_eq "status encoder 每行 key 集 {recipe,srctree}" "$_json_rc" "0"
+
+# --- 失败路径: finish patches_json 非法 JSON → json.loads 抛错 → return 1 + stdout 空 ---
+_out="$(dev_emit_finish_json r3 /src /base moved "" "" patch meta-x '[oops' '[]' "" 2>/dev/null)"; _rc=$?
+assert_false "finish encoder 非法 patches JSON: rc 非0" test "$_rc" -eq 0
+assert_eq "finish encoder 非法 patches JSON: stdout 空" "$_out" ""
+
 assert_summary
