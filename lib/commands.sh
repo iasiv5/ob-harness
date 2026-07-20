@@ -1031,18 +1031,7 @@ cmd_dev() {
             fi
             local _srctree="" _stage="" _stderr_file="" _mrc=0
             devtool_modify_run "$dev_machine" "$dev_build_dir" "$dev_recipe" _srctree _stage _stderr_file || _mrc=$?
-            cat "$_stderr_file" >&2 2>/dev/null || true
-            rm -f "$_stderr_file" 2>/dev/null
-            case "$_stage" in
-                cd|setup|postcondition)
-                    error "ob dev modify: build env not ready (stage=$_stage)." >&2
-                    exit 1
-                    ;;
-            esac
-            if [[ "$_mrc" -ne 0 ]]; then
-                error "ob dev modify: devtool failed (rc=$_mrc, stage=$_stage)." >&2
-                exit 1
-            fi
+            dev_relay_result modify "$_stderr_file" "$_stage" "" "$_mrc" || exit 1
             printf '%s\n' "$_srctree"
             exit 0
             ;;
@@ -1078,44 +1067,12 @@ cmd_dev() {
             fi
             local _reset_srctree="" _reset_srctreebase="" _reset_disposition=""
             local _reset_destination_parent="" _reset_cleaned_bbappend="" _reset_phase="" _reset_stage="" _reset_stderr_file=""
-            local _reset_rc=0 _json_tmp="" _json_rc=0
+            local _reset_rc=0
             devtool_reset_run "$dev_machine" "$dev_build_dir" "$dev_recipe" \
                 _reset_srctree _reset_srctreebase _reset_disposition _reset_destination_parent \
                 _reset_cleaned_bbappend _reset_phase _reset_stage _reset_stderr_file || _reset_rc=$?
-            cat "$_reset_stderr_file" >&2 2>/dev/null || true
-            rm -f "$_reset_stderr_file" 2>/dev/null
-            case "$_reset_stage" in
-                cd|setup|postcondition)
-                    error "ob dev reset: build env not ready (stage=$_reset_stage)." >&2
-                    exit 1
-                    ;;
-            esac
-            if [[ -n "$_reset_phase" ]]; then
-                case "$_reset_phase" in
-                    metadata)      error "ob dev reset: metadata error (phase=metadata); cannot safely reset." >&2 ;;
-                    status)        error "ob dev reset: devtool status failed (phase=status)." >&2 ;;
-                    reset)         error "ob dev reset: devtool reset failed (phase=reset)." >&2
-                        ;;
-                    postcondition) error "ob dev reset: postcondition failed (phase=postcondition)." >&2 ;;
-                    *)             error "ob dev reset: failed (phase=$_reset_phase)." >&2 ;;
-                esac
-                exit 1
-            fi
-            if [[ "$_reset_rc" -ne 0 ]]; then
-                error "ob dev reset: devtool failed (rc=$_reset_rc, stage=$_reset_stage)." >&2
-                exit 1
-            fi
-            # JSON 原子发布: python3 -c 生成(argv 值不插值源码串) → tempfile → emit 校验+cat+删
-            _json_tmp="$(mktemp 2>/dev/null)"
-            python3 -c 'import json,sys
-print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.argv[3],"disposition":sys.argv[4],"destination_parent":sys.argv[5] or None,"destination":None,"cleaned_bbappend":sys.argv[6] or None}))' \
-                "$dev_recipe" "$_reset_srctree" "$_reset_srctreebase" "$_reset_disposition" "$_reset_destination_parent" "$_reset_cleaned_bbappend" > "$_json_tmp" 2>/dev/null || _json_rc=$?
-            if [[ "$_json_rc" -ne 0 || ! -s "$_json_tmp" ]]; then
-                rm -f "$_json_tmp" 2>/dev/null
-                error "ob dev reset: failed to encode result JSON." >&2
-                exit 1
-            fi
-            devtool_emit_json "$_json_tmp" || { rm -f "$_json_tmp" 2>/dev/null; error "ob dev reset: result JSON malformed." >&2; exit 1; }
+            dev_relay_result reset "$_reset_stderr_file" "$_reset_stage" "$_reset_phase" "$_reset_rc" || exit 1
+            dev_emit_reset_json "$dev_recipe" "$_reset_srctree" "$_reset_srctreebase" "$_reset_disposition" "$_reset_destination_parent" "$_reset_cleaned_bbappend" || { error "ob dev reset: result JSON malformed." >&2; exit 1; }
             exit 0
             ;;
         finish)
@@ -1132,48 +1089,13 @@ print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.a
             local _finish_destination_parent="" _finish_cleaned_bbappend=""
             local _finish_landing_mode="" _finish_landing_layer="" _finish_patches="" _finish_recipe_files="" _finish_srcrev=""
             local _finish_phase="" _finish_stage="" _finish_stderr_file=""
-            local _finish_rc=0 _json_tmp="" _json_rc=0
+            local _finish_rc=0
             devtool_finish_run "$dev_machine" "$dev_build_dir" "$dev_recipe" \
                 _finish_srctree _finish_srctreebase _finish_disposition _finish_destination_parent \
                 _finish_cleaned_bbappend _finish_landing_mode _finish_landing_layer _finish_patches \
                 _finish_recipe_files _finish_srcrev _finish_phase _finish_stage _finish_stderr_file || _finish_rc=$?
-            cat "$_finish_stderr_file" >&2 2>/dev/null || true
-            rm -f "$_finish_stderr_file" 2>/dev/null
-            case "$_finish_stage" in
-                cd|setup|postcondition)
-                    error "ob dev finish: build env not ready (stage=$_finish_stage)." >&2
-                    exit 1
-                    ;;
-            esac
-            if [[ -n "$_finish_phase" ]]; then
-                case "$_finish_phase" in
-                    metadata)      error "ob dev finish: metadata error (phase=metadata); cannot safely finish." >&2 ;;
-                    status)        error "ob dev finish: devtool status failed (phase=status)." >&2 ;;
-                    finish)        error "ob dev finish: devtool finish failed (phase=finish)." >&2 ;;
-                    landing)       error "ob dev finish: landing detection failed (phase=landing); verify patches landed manually." >&2 ;;
-                    postcondition) error "ob dev finish: postcondition failed (phase=postcondition)." >&2 ;;
-                    *)             error "ob dev finish: failed (phase=$_finish_phase)." >&2 ;;
-                esac
-                exit 1
-            fi
-            if [[ "$_finish_rc" -ne 0 ]]; then
-                error "ob dev finish: devtool failed (rc=$_finish_rc, stage=$_finish_stage)." >&2
-                exit 1
-            fi
-            # JSON 原子发布: python3 -c 生成(argv 值不插值; patches/recipe_files 经 argv JSON 字符串 json.loads 合入;
-            # 全可空标量 or None) → emit 校验+cat+删
-            _json_tmp="$(mktemp 2>/dev/null)"
-            python3 -c 'import json,sys
-patches=json.loads(sys.argv[9]) if sys.argv[9] else []
-rf=json.loads(sys.argv[10]) if sys.argv[10] else []
-print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.argv[3],"disposition":sys.argv[4],"destination_parent":sys.argv[5] or None,"destination":None,"cleaned_bbappend":sys.argv[6] or None,"landing_mode":sys.argv[7] or None,"landing_layer":sys.argv[8] or None,"patches":patches,"recipe_files":rf,"srcrev":sys.argv[11] or None}))' \
-                "$dev_recipe" "$_finish_srctree" "$_finish_srctreebase" "$_finish_disposition" "$_finish_destination_parent" "$_finish_cleaned_bbappend" "$_finish_landing_mode" "$_finish_landing_layer" "$_finish_patches" "$_finish_recipe_files" "$_finish_srcrev" > "$_json_tmp" 2>/dev/null || _json_rc=$?
-            if [[ "$_json_rc" -ne 0 || ! -s "$_json_tmp" ]]; then
-                rm -f "$_json_tmp" 2>/dev/null
-                error "ob dev finish: failed to encode result JSON." >&2
-                exit 1
-            fi
-            devtool_emit_json "$_json_tmp" || { rm -f "$_json_tmp" 2>/dev/null; error "ob dev finish: result JSON malformed." >&2; exit 1; }
+            dev_relay_result finish "$_finish_stderr_file" "$_finish_stage" "$_finish_phase" "$_finish_rc" || exit 1
+            dev_emit_finish_json "$dev_recipe" "$_finish_srctree" "$_finish_srctreebase" "$_finish_disposition" "$_finish_destination_parent" "$_finish_cleaned_bbappend" "$_finish_landing_mode" "$_finish_landing_layer" "$_finish_patches" "$_finish_recipe_files" "$_finish_srcrev" || { error "ob dev finish: result JSON malformed." >&2; exit 1; }
             exit 0
             ;;
         status)
@@ -1183,38 +1105,12 @@ print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2],"srctreebase":sys.a
             fi
             local _st_entries="" _st_stage="" _st_stderr_file="" _st_rc=0
             devtool_status_run "$dev_machine" "$dev_build_dir" _st_entries _st_stage _st_stderr_file || _st_rc=$?
-            cat "$_st_stderr_file" >&2 2>/dev/null || true
-            rm -f "$_st_stderr_file" 2>/dev/null
-            case "$_st_stage" in
-                cd|setup|postcondition)
-                    error "ob dev status: build env not ready (stage=$_st_stage)." >&2
-                    exit 1
-                    ;;
-            esac
-            if [[ "$_st_rc" -ne 0 ]]; then
-                error "ob dev status: devtool status failed (rc=$_st_rc)." >&2
-                exit 1
-            fi
+            dev_relay_result status "$_st_stderr_file" "$_st_stage" "" "${_st_rc:-0}" || exit 1
             if [[ -z "$_st_entries" ]]; then
                 warn "No modified recipes for $dev_machine." >&2
                 exit 0
             fi
-            # JSONL 原子发布: 逐行 json.dumps(argv 不插值) → tempfile → emit 校验(行数+key+json.loads)+cat+删
-            # (真原子: emit 校验 splitlines 行数==expected + 每行合法 + key 集合, 杜绝 partial stdout 假成功)
-            local _st_jsonl="" _st_r="" _st_s="" _st_json_rc=0 _st_expected=0
-            _st_jsonl="$(mktemp 2>/dev/null)"
-            : > "$_st_jsonl"
-            while IFS=$'\t' read -r _st_r _st_s; do
-                [[ -z "$_st_r" ]] && continue
-                _st_expected=$((_st_expected + 1))
-                python3 -c 'import json,sys
-print(json.dumps({"recipe":sys.argv[1],"srctree":sys.argv[2]}))' "$_st_r" "$_st_s" >> "$_st_jsonl" 2>/dev/null || _st_json_rc=$?
-            done <<< "$_st_entries"
-            devtool_emit_jsonl "$_st_jsonl" "$_st_expected" '["recipe","srctree"]' || {
-                rm -f "$_st_jsonl" 2>/dev/null
-                error "ob dev status: failed to encode result JSONL." >&2
-                exit 1
-            }
+            dev_emit_status_jsonl "$_st_entries" || { error "ob dev status: failed to encode result JSONL." >&2; exit 1; }
             exit 0
             ;;
         *)
