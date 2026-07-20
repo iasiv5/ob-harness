@@ -25,6 +25,8 @@ devtool_build_run() {
         return "$rc"
     fi
     entries="$(_devtool_parse_status_all "$stdout_file")"
+    # trailing tab 锚定: "$recipe"<TAB> 固定子串匹配, 防 foo vs foo-dev 互为前缀误判
+    # (entries 每行 "recipe<TAB>srctree"; grep -qF 字面 + trailing tab 只命中完整 recipe 行)
     if ! grep -qF "$recipe"$'\t' <<<"$entries"; then
         printf -v "$not_modified_outvar" '%s' "1"
         printf -v "$stage_outvar" '%s' "$(cat "$stage_file" 2>/dev/null || true)"
