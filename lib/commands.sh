@@ -681,6 +681,13 @@ cmd_stop_qemu() {
     done
 }
 
+cmd_deploy_to_qemu() {
+    detect_harness_root
+    # T1 骨架: T3 填完整编排(build-first + 端口复用 + confirm + stage 标记)
+    notice "ob deploy-to-qemu: skeleton (not yet implemented)" >&2
+    exit 0
+}
+
 cmd_init() {
     # Step 1/8: 前置检查。
     prerequisites_check

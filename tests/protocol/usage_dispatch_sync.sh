@@ -121,4 +121,22 @@ _dispatch_out_build="$(main dev --machine m build myrecipe 2>/dev/null)"
 assert_contains "main dev build 调 cmd_dev(build)" "$_dispatch_out_build" "GOT:build"
 assert_contains "main dev build 调 cmd_dev(recipe)" "$_dispatch_out_build" "GOT:myrecipe"
 
+# === ob deploy-to-qemu 顶层登记: usage 含 deploy-to-qemu + parse_args 顶层 COMMAND/MACHINE + main dispatch 真调 cmd_deploy_to_qemu ===
+#   注: deploy-to-qemu 是顶层命令(同 init/status/build/start-qemu/stop-qemu), 不走 DEV_ARGS;
+#   顶部 awk 自动断言(:19-43) 已覆盖 dispatch case 集合 == usage 集合, 本段额外锁 main→cmd 通路。
+#   parse_args/main 在子 shell 跑: 实现前 deploy-to-qemu 走 *) → exit 1(Unknown command),
+#   子 shell 隔离 exit 不杀主脚本, 三条断言得以 clean FAIL(红灯); 实现后 clean PASS(绿灯)。
+_usage_out_deploy="$(usage 2>/dev/null)"
+assert_contains "usage 含 deploy-to-qemu" "$_usage_out_deploy" "deploy-to-qemu"
+
+_pm_out="$(parse_args deploy-to-qemu romulus 2>/dev/null; printf '|CMD:%s|MACHINE:%s' "$COMMAND" "$MACHINE")" || true
+assert_contains "parse_args deploy-to-qemu 设 COMMAND" "$_pm_out" "|CMD:deploy-to-qemu"
+assert_contains "parse_args deploy-to-qemu 设 MACHINE" "$_pm_out" "|MACHINE:romulus"
+
+# main 顶层命令无参调用(同 cmd_start_qemu/cmd_stop_qemu, 靠全局 MACHINE 非 $@);
+# mock 读 $MACHINE 验证 main 调 cmd_deploy_to_qemu + MACHINE 正确传递到函数内。
+cmd_deploy_to_qemu() { printf 'DEPLOY_CALLED machine=%s\n' "$MACHINE"; return 0; }
+_dispatch_out_deploy="$(main deploy-to-qemu romulus 2>/dev/null)" || true
+assert_contains "main deploy-to-qemu 调 cmd_deploy_to_qemu(MACHINE 传递)" "$_dispatch_out_deploy" "DEPLOY_CALLED machine=romulus"
+
 assert_summary
