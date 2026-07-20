@@ -835,7 +835,7 @@ cmd_dev() {
                 dev_machine="${1#--machine=}"; shift
                 [[ -z "$dev_machine" || "$dev_machine" == -* ]] && { error "ob dev: invalid --machine value '$dev_machine'" >&2; exit 1; } ;;
             -d|-D|--dry-run) DRY_RUN=1; shift ;;
-            list|modify|refresh|build|deploy|finish|reset|status)
+            list|modify|refresh|build|finish|reset|status)
                 if [[ -z "$dev_subcmd" ]]; then
                     dev_subcmd="$1"
                 else
@@ -894,7 +894,7 @@ cmd_dev() {
     # 无子命令 + TTY → 交互引导(选 list/modify/refresh, 按需补 pattern/recipe)。
     # 非 TTY 不进此段, 落到下面 case "" 分支维持 agent/CI 契约(exit 3 + remedy)。
     if [[ -z "$dev_subcmd" && -t 0 ]]; then
-        # 1) 子命令菜单(只列已实现: list/modify/refresh/reset/status/finish; reserved 的 build/deploy 不列)
+        # 1) 子命令菜单(列已实现 7 个: list/modify/refresh/reset/status/finish/build; deploy 已退役, 迁至 ob deploy-to-qemu)
         echo "  ob dev subcommands:"
         echo "    1) list     Search/list recipes (read-only, reads cache)"
         echo "    2) modify   devtool modify a recipe (outputs srctree path)"
