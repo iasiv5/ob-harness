@@ -842,7 +842,7 @@ cmd_dev() {
                     _positional_count=$((_positional_count + 1))
                     case "$dev_subcmd" in
                         list)   [[ -z "$dev_pattern" ]] || { error "ob dev list: too many patterns" >&2; exit 1; }; dev_pattern="$1" ;;
-                        modify|reset|finish) [[ -z "$dev_recipe" ]] || { error "ob dev $dev_subcmd: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
+                        modify|reset|finish|build) [[ -z "$dev_recipe" ]] || { error "ob dev $dev_subcmd: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
                         *)      error "ob dev $dev_subcmd: unexpected argument '$1'" >&2; exit 1 ;;
                     esac
                 fi
@@ -852,7 +852,7 @@ cmd_dev() {
                 _positional_count=$((_positional_count + 1))
                 case "$dev_subcmd" in
                     list)   [[ -z "$dev_pattern" ]] || { error "ob dev list: too many patterns" >&2; exit 1; }; dev_pattern="$1" ;;
-                    modify|reset|finish) [[ -z "$dev_recipe" ]] || { error "ob dev $dev_subcmd: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
+                    modify|reset|finish|build) [[ -z "$dev_recipe" ]] || { error "ob dev $dev_subcmd: too many recipes" >&2; exit 1; }; dev_recipe="$1" ;;
                     *)      error "ob dev: unexpected positional '$1' (need subcommand first)" >&2; exit 1 ;;
                 esac
                 shift ;;
@@ -902,8 +902,9 @@ cmd_dev() {
         echo "    4) reset    devtool reset a recipe (outputs disposition JSON)"
         echo "    5) status   List modified recipes (read-only, outputs JSONL)"
         echo "    6) finish   devtool finish a recipe (land patches back to layer, outputs JSON)"
+        echo "    7) build   devtool build a recipe (outputs nothing on stdout, exit code carries result)"
         local _sub_choice=""
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select subcommand [1-6] (0 to cancel): ")" _sub_choice; then
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select subcommand [1-7] (0 to cancel): ")" _sub_choice; then
             error "Unable to read subcommand selection from stdin." >&2
             exit 1
         fi
@@ -915,6 +916,7 @@ cmd_dev() {
             4) dev_subcmd="reset" ;;
             5) dev_subcmd="status" ;;
             6) dev_subcmd="finish" ;;
+            7) dev_subcmd="build" ;;
             *) error "ob dev: invalid subcommand selection '$_sub_choice'." >&2; exit 1 ;;
         esac
         # 2) 按子命令补必填/可选位置参数
@@ -970,6 +972,29 @@ cmd_dev() {
                 read_list_choice "$_rst_width" "recipe" "$dev_subcmd" _rst_recipes dev_recipe >&2 || _rst_pick_rc=$?
                 if [[ "$_rst_pick_rc" -eq 2 ]]; then exit 2; fi   # cancel
                 if [[ "$_rst_pick_rc" -ne 0 ]]; then exit 1; fi   # read 失败
+                ;;
+            build)
+                # TTY build: 跑 devtool status 列已 modify recipe → 空 exit 3 / 非空编号 pick(照 reset|finish)
+                local _bst_entries="" _bst_stage="" _bst_stderr_file="" _bst_rc=0
+                devtool_status_run "$dev_machine" "$dev_build_dir" _bst_entries _bst_stage _bst_stderr_file || _bst_rc=$?
+                cat "$_bst_stderr_file" >&2 2>/dev/null || true
+                rm -f "$_bst_stderr_file" 2>/dev/null
+                case "$_bst_stage" in cd|setup|postcondition) error "ob dev build: build env not ready (stage=$_bst_stage)." >&2; exit 1;; esac
+                if [[ "$_bst_rc" -ne 0 ]]; then error "ob dev build: devtool status failed (rc=$_bst_rc)." >&2; exit 1; fi
+                local -a _bst_recipes=()
+                local _bst_r=""
+                while IFS=$'\t' read -r _bst_r _; do [[ -n "$_bst_r" ]] && _bst_recipes+=("$_bst_r"); done <<< "$_bst_entries"
+                if [[ ${#_bst_recipes[@]} -eq 0 ]]; then
+                    warn "No modified recipes for $dev_machine." >&2
+                    error "Run 'ob dev --machine $dev_machine modify <recipe>' first." >&2
+                    exit 3
+                fi
+                local _bst_i _bst_w=${#_bst_recipes[@]}
+                for (( _bst_i=0; _bst_i<_bst_w; _bst_i++ )); do printf '  %d) %s\n' "$((_bst_i + 1))" "${_bst_recipes[$_bst_i]}" >&2; done
+                local _bst_prc=0
+                read_list_choice "$_bst_w" "recipe" "build" _bst_recipes dev_recipe >&2 || _bst_prc=$?
+                if [[ "$_bst_prc" -eq 2 ]]; then exit 2; fi
+                if [[ "$_bst_prc" -ne 0 ]]; then exit 1; fi
                 ;;
             refresh|status) ;;
         esac
@@ -1112,6 +1137,30 @@ cmd_dev() {
             fi
             dev_emit_status_jsonl "$_st_entries" || { error "ob dev status: failed to encode result JSONL." >&2; exit 1; }
             exit 0
+            ;;
+        build)
+            if [[ -z "$dev_recipe" ]]; then
+                error "ob dev build: no recipe specified." >&2
+                error "Run 'ob dev --machine $dev_machine status' to list modified recipes first." >&2
+                exit 3
+            fi
+            if [[ "${DRY_RUN:-0}" == "1" ]]; then
+                notice "[DRY-RUN] ob dev build $dev_recipe: would devtool build (do_build)." >&2
+                exit 0
+            fi
+            local _b_stage="" _b_stderr="" _b_notmod="" _b_rc=0
+            devtool_build_run "$dev_machine" "$dev_build_dir" "$dev_recipe" _b_stage _b_stderr _b_notmod || _b_rc=$?
+            if [[ "$_b_notmod" == "1" ]]; then
+                # not_modified: status 成功(stage=command/rc=0)但 recipe 不在 modified 列表。
+                # 显式 cat+rm stderr, 不经 relay(避免依赖"三条件都不触发表"的隐式行为, v2.1)。
+                cat -- "$_b_stderr" >&2 2>/dev/null || true
+                rm -f -- "$_b_stderr" 2>/dev/null || true
+                error "Recipe '$dev_recipe' is not modified (not in devtool workspace)." >&2
+                error "Run 'ob dev --machine $dev_machine modify $dev_recipe' first." >&2
+                exit 3
+            fi
+            dev_relay_result build "$_b_stderr" "$_b_stage" "" "${_b_rc:-0}" || exit 1
+            exit 0   # 空 stdout(exit code 承载成败)
             ;;
         *)
             error "ob dev $dev_subcmd: reserved, not implemented yet." >&2

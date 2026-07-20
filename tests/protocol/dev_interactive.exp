@@ -119,7 +119,7 @@ expect "5) status"
 expect "6) finish"
 set _ok 1
 expect {
-    -re {Select subcommand.*\[1-6\].*0 to cancel}   { }
+    -re {Select subcommand.*\[1-7\].*0 to cancel}   { }
     -re "no subcommand"                              { incr FAIL; puts "FAIL dev reset-mock: 引导菜单未出现"; set _ok 0 }
     timeout                                          { incr FAIL; puts "FAIL dev reset-mock: 超时"; set _ok 0 }
 }
@@ -144,7 +144,7 @@ expect -re "Select a machine for Develop"; send "1\r"
 expect "6) finish"
 set _ok 1
 expect {
-    -re {Select subcommand.*\[1-6\].*0 to cancel}   { }
+    -re {Select subcommand.*\[1-7\].*0 to cancel}   { }
     -re "no subcommand"                              { incr FAIL; puts "FAIL dev finish-mock: 引导菜单未出现"; set _ok 0 }
     timeout                                          { incr FAIL; puts "FAIL dev finish-mock: 超时"; set _ok 0 }
 }

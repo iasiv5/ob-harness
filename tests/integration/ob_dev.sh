@@ -252,6 +252,17 @@ print("\n".join(recipes))
     echo "modify rc=$modify_rc srctree=$SRCTREE"
     [[ "$modify_rc" -eq 0 && -n "$SRCTREE" && -d "$SRCTREE" ]] || { echo "FAIL: modify/srctree"; exit 1; }
 
+    # === build 段: modify 后单 recipe 编译(ob rc 反映 devtool build 实际结果, 非"必须成功") ===
+    CLEANUP_NEEDED=1   # modify 已置; build 不改 workspace, 但 recipe 仍 modified 需下游 reset 清
+    local _build_rc=0
+    ./ob dev --machine "$MACHINE" build "$RECIPE" >/dev/null 2>&1 || _build_rc=$?
+    echo "build rc=$_build_rc (ob relay; 0=devtool build 成功 / 1=失败, 均合法)"
+    # build 不改 workspace 状态, 不断言"必须编通"(recipe 自身依赖问题与 ob 正确性无关);
+    # 只断言 ob 没误报 exit 2/3(build 无取消/前置缺失路径: recipe 已 modified, machine 已 init)。
+    # 若 rc=3: status 自身 rc!=0 时 ob 走 relay exit 1(不到 rc=3), 故 rc=3 必是 status rc=0 但 ob 漏判
+    #   recipe 未 modified; 这不是 B1 🔴2 回归(那是 status-fail 路径)。
+    [[ "$_build_rc" -eq 0 || "$_build_rc" -eq 1 ]] || { echo "FAIL: build rc=$_build_rc (want 0/1; rc=3 见上方提示)"; exit 1; }
+
     # reset 前 attic/sources 空集合快照(tempfile + find rc 校验; 不存在→空)
     local _snap_file _snap_rc
     _snap_file="$(mktemp)"
