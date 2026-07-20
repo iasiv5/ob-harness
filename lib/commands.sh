@@ -683,9 +683,143 @@ cmd_stop_qemu() {
 
 cmd_deploy_to_qemu() {
     detect_harness_root
-    # T1 骨架: T3 填完整编排(build-first + 端口复用 + confirm + stage 标记)
-    notice "ob deploy-to-qemu: skeleton (not yet implemented)" >&2
-    exit 0
+
+    # ── Resolve machine(cmd_start_qemu :422-460 模式; deploy 自己 build, 用 initialized 不要求 image-ready) ──
+    #   评审 G3: 先判空 machines 数组再 pick_machine, 与 pick_machine 内部再拉一次 list_source 是二次拉取
+    #   —— 有意为之(判空/TTY 检测在前, pick_machine 自渲染列表在后), 与 cmd_start_qemu 同构, 不去重。
+    if [[ -z "$MACHINE" ]]; then
+        local -a machines=()
+        local _machine
+        while IFS= read -r _machine; do
+            [[ -n "$_machine" ]] && machines+=("$_machine")
+        done < <(machine_state_initialized_machines)
+        if [[ ${#machines[@]} -eq 0 ]]; then
+            error "No initialized machines found."
+            error "Run 'ob init <machine>' first."
+            exit 3
+        fi
+        if [[ ! -t 0 ]]; then
+            error "No interactive terminal. Specify machine: ob deploy-to-qemu <machine>"
+            exit 3
+        fi
+        local pm_rc=0
+        pick_machine machine_state_initialized_machines "Deploy to QEMU" || pm_rc=$?
+        exit_on_user_cancel "$pm_rc" "Deploy to QEMU"
+    fi
+
+    BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
+    SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
+
+    # ── 前置: init-done(约束: 前置 = init-done) ──
+    if ! machine_state_is_initialized "$MACHINE"; then
+        error "Machine '$MACHINE' has not been initialized."
+        error "Run 'ob init $MACHINE' first."
+        exit 3
+    fi
+
+    # ── DRY-RUN 短路(评审 Y2: 前移到探测 QEMU 前, 避免 DRY-RUN + QEMU 在跑时弹 confirm 交互;
+    #   v3/G-new2: 前移后 DRY-RUN 也不探测 QEMU / 不读旧端口 / 不弹 banner, 输出仅 notice 一行) ──
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+        notice "[DRY-RUN] would bitbake obmc-phosphor-image + restart QEMU for '$MACHINE'" >&2
+        exit 0
+    fi
+
+    derive_qemu_paths   # 算 QEMU_PID_FILE 等(qemu.sh:6)
+
+    # ── 探测 QEMU 在跑 + 预读旧端口(必须在 stop 前, 约束 2) ──
+    local qemu_running=0
+    local old_ssh_port="" old_redfish_port="" old_ipmi_port="" old_http_port=""
+    if qemu_instance_load "$MACHINE"; then
+        # if 包裹 is_alive 防御 set -e(计划伪代码裸调 + $? 在 ob 直接 set -e 下 return 1 会中止)
+        if qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
+            qemu_running=1
+            old_ssh_port="$PIDFILE_SSH_PORT"
+            old_redfish_port="$PIDFILE_REDFISH_PORT"
+            old_ipmi_port="$PIDFILE_IPMI_PORT"
+            old_http_port="$PIDFILE_HTTP_PORT"
+        else
+            qemu_instance_clean_stale "$MACHINE"
+        fi
+    fi
+
+    # ── confirm: 仅 QEMU 在跑时 banner(约束 4, 路径风险原则) ──
+    if [[ $qemu_running -eq 1 ]]; then
+        echo ""
+        warn "QEMU instance running for '$MACHINE' — deploy will kill it, rebuild image, and restart."
+        qemu_instance_summarize_full
+        print_confirm_banner "rebuild image and restart QEMU for" "$MACHINE"
+        local answer
+        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Kill + rebuild + restart? [y/N]: ")" answer; then
+            exit 1
+        fi
+        [[ "$answer" == [yY] ]] || { info "Aborted."; exit 2; }
+    fi
+
+    # ── Step 1: build(build-first, 约束 3 — QEMU 在跑也不停) ──
+    echo ""
+    step_header "Building $MACHINE (image rebuild)"
+    info "Running: bitbake obmc-phosphor-image"
+    info "Estimated time: 1-4 hours depending on machine and cache state."
+
+    build_env_enter "$MACHINE" "$BUILD_DIR" 2>/dev/null
+    resolve_npm_registry
+    # npm vars export(复用 cmd_build :343-358, ~20 行; 技术债: 后续抽 build_obmc_image helper)
+    if [[ "$NPM_REGISTRY_RESOLVED" != "skip" ]]; then
+        export npm_config_registry="$NPM_REGISTRY_RESOLVED"
+        export npm_config_fetch_timeout=600000
+        export npm_config_fetch_retry_maxtimeout=120000
+        export npm_config_fetch_retry_mintimeout=30000
+        export npm_config_fetch_retry_factor=2
+        local _npm_vars="npm_config_registry npm_config_fetch_timeout npm_config_fetch_retry_maxtimeout npm_config_fetch_retry_mintimeout npm_config_fetch_retry_factor"
+        local _existing="${BB_ENV_PASSTHROUGH_ADDITIONS:-}"
+        BB_ENV_PASSTHROUGH_ADDITIONS="$_npm_vars"
+        [[ -n "$_existing" ]] && BB_ENV_PASSTHROUGH_ADDITIONS="$_existing $BB_ENV_PASSTHROUGH_ADDITIONS"
+        export BB_ENV_PASSTHROUGH_ADDITIONS
+    fi
+
+    if ! bitbake obmc-phosphor-image; then
+        echo ""
+        step_header "Build Failed"
+        error "bitbake failed — image not rebuilt, QEMU unchanged (build-first)."
+        exit 1                       # 约束 3: build 失败 QEMU 不动
+    fi
+
+    # ── build 成功 stage 标记(约束 6; 评审 Y3: 简化版——只 Machine/Image 两行) ──
+    #   cmd_build 的 Size/Deploy 行不复制——deploy 语境已隐含 build 成功 + 即将重启,
+    #   size/deploy dir 冗余; 若未来要 build 族输出对称再复刻(技术债)。
+    local image_file=""
+    image_file=$(machine_state_firmware_image_path "$MACHINE" 2>/dev/null || true)
+    step_header "Image Rebuilt"
+    echo "  Machine: $MACHINE"
+    echo "  Image  : ${image_file:-<not found>}"
+
+    # ── Step 2: stop 旧 QEMU(若在跑) + 端口复用注入(约束 2) ──
+    if [[ $qemu_running -eq 1 ]]; then
+        echo ""
+        warn "Stopping old QEMU (PID $PIDFILE_PID)..."
+        qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
+        info "Old QEMU stopped."
+        QEMU_SSH_PORT="$old_ssh_port"
+        QEMU_REDFISH_PORT="$old_redfish_port"
+        QEMU_IPMI_PORT="$old_ipmi_port"
+        [[ -n "$old_http_port" && "$old_http_port" != "none" ]] && QEMU_HTTP_PORT="$old_http_port"
+    fi
+
+    # ── Step 3: start 新 QEMU(端口复用) + 恢复引导(约束 5/6) ──
+    echo ""
+    step_header "Starting new QEMU for '$MACHINE'"
+    info "If start fails, image is already rebuilt — recover manually: ob start-qemu $MACHINE"
+
+    qemu_prepare_launch "$MACHINE" "$image_file"
+    echo "  Machine   : $QEMU_LAUNCH_MACHINE_NAME"
+    echo "  SoC       : $QEMU_LAUNCH_SOC_TYPE"
+    echo "  Binary    : $QEMU_BIN_FILE"
+    echo "  Image     : $image_file"
+    echo "  Serial log: $QEMU_LAUNCH_SERIAL_LOG"
+    echo ""
+
+    qemu_execute_launch        # setsid + PID 写 + BMC-ready 等待(超时仅 warn 不中止) + hostkey + summary
+    # 到此返回 0(QEMU 启动即成功, 约束 5); setsid 失败时 execute_launch 自己退出 1
 }
 
 cmd_init() {
