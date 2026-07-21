@@ -15,6 +15,7 @@
   - 修复: cmd_start_qemu:489 用 if 包裹 is_alive(照 cmd_deploy_to_qemu:733, 只区分 alive vs stale); cmd_stop_qemu:621 用 `local pid_status=0; is_alive || pid_status=$?`(保留 0/1/2 区分 + set -e 安全, 因 cmd_stop_qemu DRY_RUN case + exited/recycled 分支需区分三种)。
   - 加 2 orchestration 测试(start_qemu_stale_pid.sh / stop_qemu_stale_pid.sh): source ob(OB_NO_MAIN)不经 ob_loader 保留 ob:4 set -euo + () 子 shell 隔离 abort + 断言 stale .pid 被 clean_stale 清理。
   - **实测关键发现**: bash 5.x 下 cmd_start_qemu 的 sourced 嵌套函数 is_alive return 1 **未触发 set -e abort**(trace: is_alive → pid_status=1 → clean_stale 正常执行 → prepare_launch exit 3)。简单 fake 函数 abort(评审 bash 5.2.15 复现 `set -e; q(){return 1;}; if true; then q; ps=$?; echo; fi`→exit 成立), 但 cmd_start_qemu sourced 嵌套上下文不触发——bash 5.x 微妙规则(嵌套 sourced 函数 + local + if 的交互)。故 set -e 债**理论存在但实际不触发**, 用户不被坑(clean_stale 正常清理 stale .pid)。修复无害(行为不变) + 命令族一致(与 cmd_deploy_to_qemu:733 同款) + 防御(未来 bash/上下文变化时已 set -e 安全)。测试验证 clean_stale 功能(stale .pid 清理), 非暴露 set -e 债(债不触发无法暴露)——评审的"暴露债"测试目标调整为"验证 clean_stale 功能回归锁"。
+- v6（后续 TODO, 评审 round-3 小观察, 不阻塞合入）: start_qemu_stale_pid.sh 测试锐利度增量——stage 拓展 +`$OPENBMC_DIR/setup`(让 cmd_start_qemu 跑过 stale 段到 prepare_launch/confirm, 不在 require_path setup 处提前 exit 3) + 加 `grep -q qemu_instance_clean_stale "$TMP/out"` 显式断言(() 内 set -x trace 里 clean_stale 真发生)。当前 `.pid removed` 断言已验证 clean_stale 功能(stale .pid 唯一 rm 源: 只被 qemu_instance_clean_stale rm, 路径错或 clean_stale 没跑都→.pid 残留→断言 FAIL), 此为覆盖锐利度增量, 非功能修复。
 
 ## 目标
 
