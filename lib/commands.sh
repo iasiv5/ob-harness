@@ -487,10 +487,11 @@ cmd_start_qemu() {
     #     same-machine instance first avoids a spurious port-conflict exit) ──
     derive_qemu_paths
     if qemu_instance_load "$MACHINE"; then
-        # if 包裹 is_alive: 明确意图(alive vs stale) + 防御 set -e, 与 cmd_deploy_to_qemu:733 同款。
-        # 注: 实测 bash 5.x 下 sourced 嵌套函数 is_alive return 1 未触发 set -e abort(见
-        # start_qemu_stale_pid 测试 trace: is_alive → pid_status=1 → clean_stale 正常执行),
-        # 但 if 包裹无害且命令族一致; 未来 bash/上下文变化时此处已 set -e 安全。
+        # if 包裹 is_alive: 明确意图(alive vs stale) + 必须 set -e 安全, 与 cmd_deploy_to_qemu 同款。
+        # 注: is_alive 是多态返回函数(0=running/1=exited/2=recycled), 裸调 + $? 读在 ob set -euo 下
+        # 死实例(return 1)与 PID recycled(return 2)都会 abort、clean_stale 走不到(bash 5.2.15 实测
+        # 顶层/嵌套/sourced/子shell 四上下文裸调 return 1 全部 abort, 见 start_qemu_stale_pid.sh);
+        # if 包裹消费 rc 才能落到 clean_stale, 是必需而非"无害防御"。
         if qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
             # Instance is running and valid
             if [[ "$QEMU_FORCE" -eq 1 ]]; then
