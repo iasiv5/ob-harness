@@ -11,6 +11,10 @@
   ② **T2/T3 合并 commit 12297b3**：计划要求分步 commit，实际合并为一个 TDD commit（红灯基线只在 commit 内部存在过）。最终代码质量无影响。
   ③ **场景② port 2222→29222**：旧 .pid `ssh_port=2222`（== qemu_prepare_launch 默认）无法分辨"注入复用"vs"默认"；改 `29222`（非默认）+ 检查新 .pid `pid=12345`（分辨旧/新 .pid）。
   ④ **qemu_instance_is_alive if 包裹**：计划伪代码裸调 + `$?` 读，ob `set -euo` 下死实例 `return 1` 会 abort——实测 `set -e; f(){return 1;}; f; echo` → exit（不达 `$?` 读）。if 包裹规避。**附带既有债**：`cmd_start_qemu:491` / `cmd_stop_qemu:622` 同款裸调有同类 set -e 隐患（死实例 clean_stale 路径 abort, 既有测试用活实例未暴露）, 属独立既有债, 不在本次范围（约束 1 不改 cmd_*）, 建议独立 PR 修。
+- v5（评审 round-3 既有 set-e 债同 PR 修复 + 实测, 2026-07-21）: 评审接受附带发现, 建议同 PR 修(非独立)。
+  - 修复: cmd_start_qemu:489 用 if 包裹 is_alive(照 cmd_deploy_to_qemu:733, 只区分 alive vs stale); cmd_stop_qemu:621 用 `local pid_status=0; is_alive || pid_status=$?`(保留 0/1/2 区分 + set -e 安全, 因 cmd_stop_qemu DRY_RUN case + exited/recycled 分支需区分三种)。
+  - 加 2 orchestration 测试(start_qemu_stale_pid.sh / stop_qemu_stale_pid.sh): source ob(OB_NO_MAIN)不经 ob_loader 保留 ob:4 set -euo + () 子 shell 隔离 abort + 断言 stale .pid 被 clean_stale 清理。
+  - **实测关键发现**: bash 5.x 下 cmd_start_qemu 的 sourced 嵌套函数 is_alive return 1 **未触发 set -e abort**(trace: is_alive → pid_status=1 → clean_stale 正常执行 → prepare_launch exit 3)。简单 fake 函数 abort(评审 bash 5.2.15 复现 `set -e; q(){return 1;}; if true; then q; ps=$?; echo; fi`→exit 成立), 但 cmd_start_qemu sourced 嵌套上下文不触发——bash 5.x 微妙规则(嵌套 sourced 函数 + local + if 的交互)。故 set -e 债**理论存在但实际不触发**, 用户不被坑(clean_stale 正常清理 stale .pid)。修复无害(行为不变) + 命令族一致(与 cmd_deploy_to_qemu:733 同款) + 防御(未来 bash/上下文变化时已 set -e 安全)。测试验证 clean_stale 功能(stale .pid 清理), 非暴露 set -e 债(债不触发无法暴露)——评审的"暴露债"测试目标调整为"验证 clean_stale 功能回归锁"。
 
 ## 目标
 

@@ -487,11 +487,11 @@ cmd_start_qemu() {
     #     same-machine instance first avoids a spurious port-conflict exit) ──
     derive_qemu_paths
     if qemu_instance_load "$MACHINE"; then
-        local pid_status
-        qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"
-        pid_status=$?
-
-        if [[ $pid_status -eq 0 ]]; then
+        # if 包裹 is_alive: 明确意图(alive vs stale) + 防御 set -e, 与 cmd_deploy_to_qemu:733 同款。
+        # 注: 实测 bash 5.x 下 sourced 嵌套函数 is_alive return 1 未触发 set -e abort(见
+        # start_qemu_stale_pid 测试 trace: is_alive → pid_status=1 → clean_stale 正常执行),
+        # 但 if 包裹无害且命令族一致; 未来 bash/上下文变化时此处已 set -e 安全。
+        if qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
             # Instance is running and valid
             if [[ "$QEMU_FORCE" -eq 1 ]]; then
                 warn "Killing existing QEMU instance (PID $PIDFILE_PID)..."
@@ -618,9 +618,10 @@ cmd_stop_qemu() {
             continue
         fi
 
-        local pid_status
-        qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"
-        pid_status=$?
+        # || pid_status=$? 保留 0/1/2 区分(DRY_RUN case + exited/recycled 分支)且 set -e 安全
+        # (裸调 + $? 读在 set -euo 下死实例 return 1/2 会 abort — 既有债, 此处照 cmd_deploy_to_qemu:733 修)
+        local pid_status=0
+        qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE" || pid_status=$?
 
         if [[ "$DRY_RUN" -eq 1 ]]; then
             case "$pid_status" in
