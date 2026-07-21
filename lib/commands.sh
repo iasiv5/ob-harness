@@ -1081,63 +1081,26 @@ cmd_dev() {
                     exit 3
                 fi
                 ;;
-            reset|finish)
-                # TTY reset/finish: 跑 devtool status 列已 modify recipe → 空 exit 3 / 非空编号 pick
-                local _rst_entries="" _rst_stage="" _rst_stderr_file="" _rst_rc=0
-                devtool_status_run "$dev_machine" "$dev_build_dir" _rst_entries _rst_stage _rst_stderr_file || _rst_rc=$?
-                cat "$_rst_stderr_file" >&2 2>/dev/null || true
-                rm -f "$_rst_stderr_file" 2>/dev/null
-                case "$_rst_stage" in
-                    cd|setup|postcondition)
-                        error "ob dev $dev_subcmd: build env not ready (stage=$_rst_stage)." >&2
-                        exit 1
-                        ;;
+            reset|finish|build)
+                # TTY 选 modified recipe → helper(leaf-pure, 5 态 status_outvar) + exit-code 映射留 cmd_dev
+                local _pick_st=""
+                devtool_pick_modified_recipe "$dev_machine" "$dev_build_dir" "$dev_subcmd" _pick_st
+                case "$_pick_st" in
+                    ok:*)
+                        dev_recipe="${_pick_st#ok:}" ;;
+                    empty)
+                        warn "No modified recipes for $dev_machine." >&2
+                        error "Run 'ob dev --machine $dev_machine modify <recipe>' first." >&2
+                        exit 3 ;;
+                    cancel)
+                        exit 2 ;;
+                    read-fail|status-failed)
+                        # read-fail: read_list_choice 读失败; status-failed: 文案已由 dev_relay_result 打印
+                        exit 1 ;;
                 esac
-                if [[ "$_rst_rc" -ne 0 ]]; then
-                    error "ob dev $dev_subcmd: devtool status failed (rc=$_rst_rc)." >&2
-                    exit 1
-                fi
-                local -a _rst_recipes=()
-                local _rst_r=""
-                while IFS=$'\t' read -r _rst_r _; do
-                    [[ -n "$_rst_r" ]] && _rst_recipes+=("$_rst_r")
-                done <<< "$_rst_entries"
-                if [[ ${#_rst_recipes[@]} -eq 0 ]]; then
-                    warn "No modified recipes for $dev_machine." >&2
-                    error "Run 'ob dev --machine $dev_machine modify <recipe>' first." >&2
-                    exit 3
-                fi
-                local _rst_i _rst_width=${#_rst_recipes[@]}
-                for (( _rst_i=0; _rst_i<_rst_width; _rst_i++ )); do
-                    printf '  %d) %s\n' "$((_rst_i + 1))" "${_rst_recipes[$_rst_i]}" >&2
-                done
-                local _rst_pick_rc=0
-                read_list_choice "$_rst_width" "recipe" "$dev_subcmd" _rst_recipes dev_recipe >&2 || _rst_pick_rc=$?
-                if [[ "$_rst_pick_rc" -eq 2 ]]; then exit 2; fi   # cancel
-                if [[ "$_rst_pick_rc" -ne 0 ]]; then exit 1; fi   # read 失败
-                ;;
-            build)
-                # TTY build: 跑 devtool status 列已 modify recipe → 空 exit 3 / 非空编号 pick(照 reset|finish)
-                local _bst_entries="" _bst_stage="" _bst_stderr_file="" _bst_rc=0
-                devtool_status_run "$dev_machine" "$dev_build_dir" _bst_entries _bst_stage _bst_stderr_file || _bst_rc=$?
-                cat "$_bst_stderr_file" >&2 2>/dev/null || true
-                rm -f "$_bst_stderr_file" 2>/dev/null
-                case "$_bst_stage" in cd|setup|postcondition) error "ob dev build: build env not ready (stage=$_bst_stage)." >&2; exit 1;; esac
-                if [[ "$_bst_rc" -ne 0 ]]; then error "ob dev build: devtool status failed (rc=$_bst_rc)." >&2; exit 1; fi
-                local -a _bst_recipes=()
-                local _bst_r=""
-                while IFS=$'\t' read -r _bst_r _; do [[ -n "$_bst_r" ]] && _bst_recipes+=("$_bst_r"); done <<< "$_bst_entries"
-                if [[ ${#_bst_recipes[@]} -eq 0 ]]; then
-                    warn "No modified recipes for $dev_machine." >&2
-                    error "Run 'ob dev --machine $dev_machine modify <recipe>' first." >&2
-                    exit 3
-                fi
-                local _bst_i _bst_w=${#_bst_recipes[@]}
-                for (( _bst_i=0; _bst_i<_bst_w; _bst_i++ )); do printf '  %d) %s\n' "$((_bst_i + 1))" "${_bst_recipes[$_bst_i]}" >&2; done
-                local _bst_prc=0
-                read_list_choice "$_bst_w" "recipe" "build" _bst_recipes dev_recipe >&2 || _bst_prc=$?
-                if [[ "$_bst_prc" -eq 2 ]]; then exit 2; fi
-                if [[ "$_bst_prc" -ne 0 ]]; then exit 1; fi
+                # ok 选号成功: dev_recipe 已填, fall through 出 TTY 引导段(fi);
+                # 下游 dispatch case(reset/finish/build 各自跑 devtool_*_run + DRY_RUN/recipe 再校验)继续执行,
+                # dev_recipe 非空 → 下游 [[ -z "$dev_recipe" ]] exit 3 check 不误触发。
                 ;;
             refresh|status) ;;
         esac

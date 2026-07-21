@@ -62,6 +62,7 @@ LEAF_EXIT_EXCEPTIONS_BY_BASENAME = {
     'devtool_dispatch.sh': set(),
     'devtool_finish.sh': set(),
     'devtool_modify.sh': set(),
+    'devtool_pick.sh': set(),
     'devtool_porcelain.sh': set(),
     'devtool_reset.sh': set(),
     'devtool_search.sh': set(),
