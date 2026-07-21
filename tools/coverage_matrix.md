@@ -45,7 +45,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
-| TTY modified recipe selection(reset/finish/build 共享选号前置) | devtool_pick_modified_recipe | unit/devtool_pick.sh;protocol/dev_interactive.exp | TTY(选号靠 expect);恒返回码 5 态 status_outvar, exit-code 映射在 cmd_dev |
+| TTY modified recipe selection(reset/finish/build 共享选号前置) | devtool_pick_modified_recipe | unit/devtool_pick.sh | 选号往返靠 unit(here-string 喂 stdin, 非真实 PTY);protocol/dev_interactive.exp 仅锁 reset/finish empty 路径(不锁选号往返/build); 恒返回码 5 态 status_outvar, exit-code 映射在 cmd_dev |
 | 子命令 dispatch(list/modify/refresh/reset/finish/build/status) | cmd_dev;devtool_modify_run;devtool_build_run;devtool_reset_run;devtool_finish_run;devtool_search_read;devtool_search_refresh;devtool_status_run | orchestration/cmd_dev.sh | exit 函数,radar 低估;非 TTY dispatch 路径 |
 | status 阶段失败 relay(stage/rc/phase verbatim 诊断) | dev_relay_result | unit/devtool_dispatch.sh | per-subcmd 文案表,服务 modify/status/reset/finish/build |
 

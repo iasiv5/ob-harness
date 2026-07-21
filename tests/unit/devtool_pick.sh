@@ -8,6 +8,7 @@
 # outvar 回传: helper 经 printf -v "$status_outvar" 写 caller 作用域, 必须当前 shell 跑;
 #              ①② 用文件捕获 stderr(2>"$_err") 而非 $() 子 shell(否则 _pick_st 不回传)。
 # leaf-pure: 失败态(①②) helper 恒返回 0(|| rc=$? 捕获, 能跑到 assert 即证明 return 非 exit); exit_contract Y 静态守卫。
+# nameref 同名负向 case 故意不测: bash printf -v 遮蔽不触发 circular 报错(语义模糊, 易写错期望); 正向约束已由 caller _pick_st(不与 helper 内 local 同名)固化。
 source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
 assert_reset
