@@ -1,7 +1,7 @@
 interface:
   display_name: "Handoff 交接"
-  short_description: "为新的 GitHub Copilot chat 生成面向下一任务的接续上下文"
-  default_prompt: "使用 $handoff，围绕我接下来要继续的任务，为新的 GitHub Copilot chat 生成接续上下文。"
+  short_description: "为新的 chat / 新会话生成面向下一任务的接续上下文（GitHub Copilot Chat、Claude Code、Cursor 等 agent runtime 通用）"
+  default_prompt: "使用 $handoff，围绕我接下来要继续的任务，为新的 chat / 新会话生成接续上下文。"
 compatibility:
   canonical_format: "agent-skills"
   adapter_targets:

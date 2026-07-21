@@ -1,4 +1,4 @@
-# Cleanup 规范执行审计细则（GitHub Copilot 版）
+# Cleanup 规范执行审计细则
 
 这份 reference 只定义审计方法，不复制任何具体仓库规则。具体规则永远以现场读到的 `AGENTS.md`、`CLAUDE.md`、`.github/copilot-instructions.md`、范围化 instruction、README、manifest 或用户明确指定文件为准。
 

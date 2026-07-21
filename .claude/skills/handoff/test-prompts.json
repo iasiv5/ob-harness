@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "name": "happy-path-typical-handoff",
+    "prompt": "【模拟当前 chat 上下文】我们刚才在这个 chat 里给 handoff skill 增加了 agents/interface.yaml 子 agent 配置，并改了 SKILL.md 的 description，让它明确何时触发、何时不触发。改完后跑了 git status，工作树有这两个改动但还没 commit，也还没加任何测试。现在我想新开一个 chat 接着做：为 handoff skill 设计 test-prompts 并跑一遍 darwin 评估。请生成 handoff。",
+    "expected": "产出完整模板：单个外层代码块包裹 HANDOFF CONTEXT 正文，含 用户请求原话/目标/已完成工作/当前状态(git 未提交)/待办/关键文件(interface.yaml+SKILL.md)/重要决策/显式约束/建议技能/续接上下文(第一个具体动作指向加 test-prompts)；说明区在代码块外；优先第一人称但行为主体明确"
+  },
+  {
+    "id": 2,
+    "name": "boundary-should-not-route-recap",
+    "prompt": "总结一下你刚才都做了什么",
+    "expected": "不应产出 handoff 代码块——这是 recap/回顾请求，属于『不要路由到 handoff』。应直接简短回顾或引导用户说明是否真要切到新 chat"
+  },
+  {
+    "id": 4,
+    "name": "boundary-low-content-early-exit",
+    "prompt": "【模拟当前 chat 上下文】用户刚打开这个 chat，只说了一句『你好』，agent 回了一句问候，没有任何具体任务或工作。",
+    "expected": "触发 PHASE 0 早退分支：明确说明当前 chat 没有实质内容可交接，不强行编造 handoff 代码块、不杜撰待办/决策/文件"
+  },
+  {
+    "id": 3,
+    "name": "explicit-goal-drives-materiality",
+    "prompt": "【模拟当前 chat 上下文】刚才讨论了三种缓存失效策略 A(全量清除)/B(懒删除)/C(TTL)，最后决定用 B 懒删除，改了 src/cache.ts 的 invalidate 分支，但有个 // TODO: unit test for lazy invalidation 还没写。另外还顺手讨论了 README 措辞但没改。请围绕『给缓存模块补单元测试』生成到新 chat 的 handoff。",
+    "expected": "materiality 筛选生效：聚焦『补单测』目标，保留 src/cache.ts、决策 B、TODO、第一个动作(打开 src/cache.ts invalidate 分支写测试)；省略与单测无关的 README 措辞讨论；用户请求/显式约束先过滤再 verbatim"
+  }
+]

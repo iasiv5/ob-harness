@@ -112,7 +112,7 @@
 使用说明 / INSTRUCTIONS (NOT PART OF HANDOFF)
 ---------------------------------------------------------------------
 
-1. 在 GitHub Copilot 中打开一个新的 chat 或者新建会话。
+1. 在你的 agent runtime 中打开一个新的 chat 或者新建会话（GitHub Copilot Chat、Claude Code、Cursor 等均可）。
 2. 直接复制上面的『交接上下文』。
 3. 再补一句你的请求，例如：**基于上面的交接上下文：[你的下一个任务]**。
 

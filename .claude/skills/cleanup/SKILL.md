@@ -57,10 +57,10 @@ argument-hint: 请说明要沉淀的任务、范围或收尾目标；可留空
 - 不要把中间态判断、尚未验证的猜测或临时计划写进长期知识
 - 不要把普通总结、handoff 内容或一次性叙事直接复制进长期载体
 - 做规范审计时，规则真身永远在当前仓库、工作区或用户明确指定的指令文件里；不要把具体规则复制进 cleanup，只现场读取规则、提取可核验项、核对实践、处置结果
-- 默认只自动修安全、可逆、纯补齐的问题；目录重命名、删除资产、合并分叉规则入口、修改用户级全局配置等有外部影响的动作，列为“待你拍板”
+- 🔴 默认只自动修安全、可逆、纯补齐的问题；目录重命名、删除资产、合并分叉规则入口、修改用户级全局配置等有外部影响的动作，列为“待你拍板”，不要自动执行
 - 不要为了审计规范扩到整个用户目录或全盘仓库；默认只看当前仓库、当前任务触及资产，以及必要的直接上级规则
 
-## 三层分工
+## 分层与横切
 
 ### 1. 会话连续性层
 
@@ -134,7 +134,7 @@ argument-hint: 请说明要沉淀的任务、范围或收尾目标；可留空
 
 如果用户只要求做规范审计，额外要求是：审计范围明确，且主要对象能通过读取文件、目录、metadata 或引用关系机械核验。
 
-如果以上条件不满足，就不要直接进入正常 cleanup。
+🛑 如果以上条件不满足，就不要直接进入正常 cleanup——先告诉用户当前任务还不够稳定，或改用 `handoff`。
 
 ## 正常 cleanup 流程
 
@@ -148,6 +148,12 @@ argument-hint: 请说明要沉淀的任务、范围或收尾目标；可留空
 
 如果请求本质上是“继续做”或“交接到下一轮”，改用 `handoff`。
 
+如果用户只敲了 `/cleanup`、没说明要沉淀什么（裸调用或 argument 为空）：
+- 先从最近会话和仓库最近变更（最近提交、当前工作区改动、刚稳定的文件）判断哪些任务已经收尾、值得沉淀
+- 把推断出的沉淀范围在摘要里明确写出，让用户一眼能看出沉淀了什么、有没有漏
+- 如果读完最近变更仍然判断不出稳定范围，先简短问用户一两个问题（例如“这次主要沉淀哪个任务 / 要不要顺带做规范审计”）再进入盘点；不要在范围不明时大范围改文件
+- 不要因为“没说清楚”就直接拒绝、空转或敷衍
+
 ### PHASE 1: 盘点长期知识载体
 
 只读取与当前任务长期沉淀直接相关的最小范围：
@@ -157,12 +163,12 @@ argument-hint: 请说明要沉淀的任务、范围或收尾目标；可留空
 - 仓库记忆（如果当前环境支持）
 - 当前任务明确触及的文件和变更事实
 
-如果暂时拿不准 GitHub Copilot 仓库里哪些路径属于长期知识载体，先读取 [references/agent-paths.md](references/agent-paths.md) 再决定扫描面。
+如果暂时拿不准当前 runtime 仓库里哪些路径属于长期知识载体，先读取 [references/agent-paths.md](references/agent-paths.md) 再决定扫描面。
 不要为了“显得完整”而扫描整个仓库。
 
 ### PHASE 1B: 规范执行审计（按需）
 
-当用户明确要求规范审计，或本次 cleanup 涉及仓库规则、Copilot customization、插件发布面、README / CHANGELOG / metadata 等长期资产时，执行这一段。
+当用户明确要求规范审计，或本次 cleanup 涉及仓库规则、agent runtime 定制（custom instructions / rules / skills 等任何 runtime 的指令面）、插件发布面、README / CHANGELOG / metadata 等长期资产时，执行这一段。
 
 先读取 [references/governance.md](references/governance.md)，再按下面顺序做：
 1. 读取当前仓库和必要直接上级的规则入口，确认哪个文件是权威来源
@@ -195,7 +201,7 @@ argument-hint: 请说明要沉淀的任务、范围或收尾目标；可留空
 2. 合并已有条目，避免并排堆积同义内容
 3. 只补真正缺失且已稳定的长期信息
 
-如果这次 cleanup 涉及 GitHub Copilot skill、agent、prompt、instruction、README、metadata 或 CHANGELOG，同步面优先按 [references/sync-matrix.md](references/sync-matrix.md) 检查，不要只改单一入口。
+如果这次 cleanup 涉及 skill、agent、prompt、instruction、README、metadata 或 CHANGELOG（任何 agent runtime 的资产），同步面优先按 [references/sync-matrix.md](references/sync-matrix.md) 检查，不要只改单一入口。
 
 编辑原则：
 - 删旧优于追加
@@ -219,14 +225,14 @@ argument-hint: 请说明要沉淀的任务、范围或收尾目标；可留空
 
 ### PHASE F0: 明确提示风险
 
-必须先明确告诉用户：
+🔴 CHECKPOINT · 🛑 STOP：进入强制 cleanup 前，必须先明确告诉用户：
 - 当前任务仍处于中间态
 - 现在直接沉淀可能污染长期知识
 - 如果只是想切到下一 chat 继续做，更适合使用 `handoff`
 
 ### PHASE F1: 允许用户坚持执行
 
-如果用户在看过风险提示后仍然明确要求继续，可以进入强制 cleanup。
+🛑 只有当用户在看过上面的风险提示后仍然明确要求继续，才进入强制 cleanup；否则停在 F0，不要自行推进。
 
 ### PHASE F2: 收紧默认写入边界
 

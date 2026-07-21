@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "scenario": "happy-path 沉淀",
+    "prompt": "我们刚把日志模块从 winston 迁移到 pino 并稳定上线一周了，没有回滚。做一次 cleanup，把该沉淀的长期知识沉淀好。",
+    "expected": "走正常 cleanup PHASE 0-4：先确认任务稳定、盘点仓库内长期载体、判断值得保留的信息、删过期/去重/补缺失、输出简洁摘要。不应写成流水账，不应默认写用户记忆，不应路由到 handoff。"
+  },
+  {
+    "id": 2,
+    "scenario": "规范审计",
+    "prompt": "审计一下这个仓库的规则执行情况，重点看 README 里的 skill 清单和 plugin manifest、marketplace metadata 的资产描述跟实际目录是不是一致。",
+    "expected": "走 PHASE 1B 规范审计：读取 references/governance.md，提取可机械核验项，用 ls/读取/grep 核验现实，安全可逆的直接修，破坏性/有外部影响的列入「待你拍板」。规则真身现场读取，不把具体规则复制进 cleanup。"
+  },
+  {
+    "id": 3,
+    "scenario": "反触发/资格门",
+    "prompt": "帮我把当前这个还没做完的功能交接给下一个 chat，总结下进展让我能接着做。",
+    "expected": "不应路由到 cleanup——这是会话连续性请求，应改用 handoff。测试 skill 的触发判别能力：任务未稳定 + 请求是续接/交接 → 命中反触发或资格门拒绝，而不是进入正常 cleanup。"
+  },
+  {
+    "id": 4,
+    "scenario": "null extra prompt（最常见的真实调用）",
+    "prompt": "/cleanup",
+    "expected": "用户只敲了 /cleanup、没给任何额外提示。skill 不应直接拒绝或空转：应主动从当前会话和仓库最近变更里判断哪些是已稳定、值得沉淀的长期知识；范围拿不准时先简短问用户要沉淀什么，而不是臆测大范围改文件。同时不路由到 handoff、不默认写用户记忆。"
+  }
+]

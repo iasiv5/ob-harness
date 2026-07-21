@@ -1,13 +1,24 @@
-# GitHub Copilot 路径速查
+# Agent Runtime 路径速查
 
-这份参考只保留 GitHub Copilot 相关路径，用于 `cleanup` 在终态沉淀时盘点仓库内长期知识载体。
+这份参考用于 `cleanup` 在终态沉淀时盘点仓库内长期知识载体。下面以 GitHub Copilot 仓库的路径为**示例**展开细节；Claude Code、Cursor、Codex、OpenCode 等其他 runtime 的等价入口见「跨 runtime 路径对照」。
 
 默认目标是仓库内知识，不是用户全局知识。
 如果用户没有明确要求，不要把扫描范围扩到用户级长期记忆或全局 skills。
 
-## 项目级主指令
+## 跨 runtime 路径对照
 
-GitHub Copilot 项目里，主指令入口优先看下面两个位置：
+不同 runtime 的长期知识载体位置不同。先按下表定位当前 runtime 的入口，再按后面 Copilot 示例表展开细节。非 Copilot 仓库只参考本表定位自己的入口，不要照搬后面 Copilot 示例表里的路径。
+
+| 用途 | Claude Code | Cursor | Copilot | Codex / 通用 |
+|---|---|---|---|---|
+| 项目级主指令 | `CLAUDE.md` | `.cursor/rules/*.mdc` | `.github/copilot-instructions.md` | `AGENTS.md` |
+| 范围化指令 / skills | `.claude/skills/`、`.claude/commands/` | `.cursor/rules/` | `.github/instructions/`、`.github/skills/` | `AGENTS.md` 片段、`.agents/skills/` |
+| agents | `.claude/agents/` | — | `.github/agents/*.agent.md` | `.agents/agents/` |
+| 用户级 | `~/.claude/skills/` | `~/.cursor/rules/` | `~/.copilot/skills/`、`~/.agents/skills/` | `~/.agents/skills/` |
+
+## 项目级主指令（Copilot 示例）
+
+以 GitHub Copilot 仓库为例，主指令入口优先看下面两个位置：
 
 | 用途 | 路径 | 处理建议 |
 |---|---|---|
@@ -33,7 +44,7 @@ GitHub Copilot 项目里，主指令入口优先看下面两个位置：
 
 ## 用户级 assets
 
-GitHub Copilot 相关用户级 assets 常见于：
+各 runtime 的用户级 assets 常见于：
 
 - `~/.copilot/skills/<name>/SKILL.md`
 - `~/.agents/skills/<name>/SKILL.md`
@@ -44,7 +55,7 @@ GitHub Copilot 相关用户级 assets 常见于：
 
 ## 插件 / marketplace 仓库的额外盘点面
 
-如果当前仓库不是普通应用仓库，而是像 `m/plugins/<plugin>` 这样的 Copilot 插件打包仓库，还要额外盘点：
+如果当前仓库不是普通应用仓库，而是像 `m/plugins/<plugin>` 这样的插件 / marketplace 打包仓库（Copilot 插件或其它 runtime 的等价打包形式），还要额外盘点：
 
 | 类型 | 路径 |
 |---|---|
@@ -56,9 +67,9 @@ GitHub Copilot 相关用户级 assets 常见于：
 
 这类仓库里，`cleanup` 不应只看代码和 docs，还要同步 published surface 的说明与元数据。
 
-## 推荐盘点顺序
+## 推荐盘点顺序（Copilot 示例）
 
-在 GitHub Copilot 仓库里执行 `cleanup` 时，推荐按下面顺序盘点：
+以 GitHub Copilot 仓库为例，执行 `cleanup` 时推荐按下面顺序盘点（其他 runtime 把对应入口替换成「跨 runtime 路径对照」里的等价路径）：
 
 1. 先确认项目级主指令到底是 `AGENTS.md`、`CLAUDE.md` 还是 `.github/copilot-instructions.md`，以及是否存在明确同源 / 转发关系
 2. 再检查 `.github/instructions/` 是否有范围化规则已经过期

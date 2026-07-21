@@ -1,4 +1,4 @@
-# Cleanup 变更影响矩阵（GitHub Copilot 版）
+# Cleanup 变更影响矩阵
 
 遇到不确定“这次稳定结论该补到哪些长期知识载体，哪些旧信息又该删”时，先查这张表。
 
@@ -59,7 +59,7 @@
 | 新增术语 / 改命名 | 术语表、README、长期规则文档中的命名约束 |
 | 部署参数 / 基础设施变化 | runbook、README、项目根规则文档的部署边界 |
 
-## GitHub Copilot 资产变更 → 长期知识同步面
+## skill / agent / prompt / hook 资产变更 → 长期知识同步面
 
 | 本次变化 | 需要同步的文件 |
 |---|---|
@@ -72,7 +72,7 @@
 
 ## 插件 / marketplace 仓库的额外检查
 
-如果当前仓库是 Copilot 插件仓库，还要额外检查：
+如果当前仓库是插件 / marketplace 打包仓库（如 Copilot 插件或其它 runtime 的等价形式），还要额外检查：
 
 - README 的资产清单和结构树是否仍然准确
 - plugin manifest 和 marketplace metadata 的 description / version 是否一致
