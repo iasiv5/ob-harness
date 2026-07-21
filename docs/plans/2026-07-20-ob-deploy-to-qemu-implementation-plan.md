@@ -6,6 +6,11 @@
 - v2（review feedback，2026-07-20）：吸收评审 Y1-Y5 + G1-G3（8 条），**反驳 R1**（评审证据错误——见下）。逐条落位：Y1→T1 Step 1（usage_dispatch_sync 改顶层 echelon，不照 dev build DEV_ARGS）；Y2→T3 伪代码（DRY-RUN 前移到探测 QEMU 前，不交互）；Y3→T3 伪代码（image stage 明确简化版，只 Machine/Image 两行）；Y4→T2 Step 1（stage helper 拆 `stage_initialized_machine` + `stage_running_qemu` + 场景组合表）；Y5→T1 Step 4（空壳抽检改 OB_NO_MAIN source 模式）；G1→文件结构与职责（落位核对）；G2→T5 Step 3（抽检前置隔离）；G3→T3 Step 1（pick_machine 二次拉取说明）。
   - **R1 反驳**：评审称"integration 层无 exit 77/SKIP 惯例，grep 返回空"——独立 `grep -rn -E "exit 77|SKIP:" tests/integration/` 命中 **ob_dev.sh:172/177/241 三处** SKIP 门（`no init machine` / `refresh rc≠0` / `no safe candidate` → `echo SKIP: ...; exit 77`），run_all.sh:30 认 rc=77+`SKIP:`。评审只读 ob_dev.sh 1-45 行（SKIP 门在 172+）+ grep_search 返回空（工具问题），误判。T4 "照 ob_dev.sh SKIP 门模式"**正确，不修**。
 - v3（review round-2 🟢 收尾，2026-07-20）：R1 反驳获评审接受撤回（评审确认 ob_dev.sh:172/177/241 SKIP 门，自承上轮只读 1-45 行失误）。新发现落位：G-new1→T1 Step 4（`cmd_build_bitbake_handoff` 行号 :33-36 订正为 `run_cmd_build` :35-44，实测 `run_cmd_build` 在 :35、`OB_NO_MAIN` 在 :39）；G-new2→T3 DRY-RUN 注释（补"前移后也不探测 QEMU / 不读旧端口 / 不弹 banner"）。Y-new（design 控制流图 DRY-RUN 顺序与伪代码对齐）在 design v3 侧改，**本计划无改动**——T3 按伪代码实现即可。
+- v4（实施完成 + review 🟢 放行，2026-07-21）：T1-T5 全落地（feature/ob-deploy-to-qemu, commits b8520c6→d1770c9; ob_check ALL GREEN + run_all --full ALL GREEN + T4 e2e 真跑 romulus rc=0/BMC SSH ready）。实施期 4 处 deviation（供后人 replicate）:
+  ① **T1 Step1 vs Step3c 自相矛盾**：Step1 测试 mock 用 `$@`（`GOT:romulus`, dev DEV_ARGS 模式）vs Step3c main dispatch 无参调用（cmd_start/stop_qemu 惯例, 靠全局 MACHINE）——不可能同时满足。实施选"无参 + 读 `$MACHINE`"路线（与同级 cmd 同构），mock 改 `DEPLOY_CALLED machine=%s`。
+  ② **T2/T3 合并 commit 12297b3**：计划要求分步 commit，实际合并为一个 TDD commit（红灯基线只在 commit 内部存在过）。最终代码质量无影响。
+  ③ **场景② port 2222→29222**：旧 .pid `ssh_port=2222`（== qemu_prepare_launch 默认）无法分辨"注入复用"vs"默认"；改 `29222`（非默认）+ 检查新 .pid `pid=12345`（分辨旧/新 .pid）。
+  ④ **qemu_instance_is_alive if 包裹**：计划伪代码裸调 + `$?` 读，ob `set -euo` 下死实例 `return 1` 会 abort——实测 `set -e; f(){return 1;}; f; echo` → exit（不达 `$?` 读）。if 包裹规避。**附带既有债**：`cmd_start_qemu:491` / `cmd_stop_qemu:622` 同款裸调有同类 set -e 隐患（死实例 clean_stale 路径 abort, 既有测试用活实例未暴露）, 属独立既有债, 不在本次范围（约束 1 不改 cmd_*）, 建议独立 PR 修。
 
 ## 目标
 
