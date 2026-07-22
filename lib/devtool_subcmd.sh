@@ -116,3 +116,22 @@ dev_subcmd_reset() {
     dev_emit_reset_json "$recipe" "$_reset_srctree" "$_reset_srctreebase" "$_reset_disposition" "$_reset_destination_parent" "$_reset_cleaned_bbappend" || { error "ob dev reset: result JSON malformed." >&2; return 1; }
     return 0
 }
+
+# dev_subcmd_finish <machine> <build_dir> <recipe> <pattern> <dry_run> → return 0/1/3
+dev_subcmd_finish() {
+    local machine="$1" build_dir="$2" recipe="$3" pattern="$4" dry_run="$5"
+    _dev_recipe_precondition "$machine" "$recipe" finish || return 3
+    _dev_dryrun_gate "$dry_run" "[DRY-RUN] ob dev finish $recipe: would devtool finish (land patches to original layer, source-preserving)." && return 0
+    local _finish_srctree="" _finish_srctreebase="" _finish_disposition=""
+    local _finish_destination_parent="" _finish_cleaned_bbappend=""
+    local _finish_landing_mode="" _finish_landing_layer="" _finish_patches="" _finish_recipe_files="" _finish_srcrev=""
+    local _finish_phase="" _finish_stage="" _finish_stderr_file=""
+    local _finish_rc=0
+    devtool_finish_run "$machine" "$build_dir" "$recipe" \
+        _finish_srctree _finish_srctreebase _finish_disposition _finish_destination_parent \
+        _finish_cleaned_bbappend _finish_landing_mode _finish_landing_layer _finish_patches \
+        _finish_recipe_files _finish_srcrev _finish_phase _finish_stage _finish_stderr_file || _finish_rc=$?
+    dev_relay_result finish "$_finish_stderr_file" "$_finish_stage" "$_finish_phase" "$_finish_rc" || return 1
+    dev_emit_finish_json "$recipe" "$_finish_srctree" "$_finish_srctreebase" "$_finish_disposition" "$_finish_destination_parent" "$_finish_cleaned_bbappend" "$_finish_landing_mode" "$_finish_landing_layer" "$_finish_patches" "$_finish_recipe_files" "$_finish_srcrev" || { error "ob dev finish: result JSON malformed." >&2; return 1; }
+    return 0
+}

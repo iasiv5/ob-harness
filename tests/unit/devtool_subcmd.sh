@@ -69,6 +69,30 @@ dev_emit_reset_json() {
     printf '%s\n' "${MOCK_EMIT_RESET_OUT:-$_d}"
     return "${MOCK_EMIT_RESET_RC:-0}"
 }
+devtool_finish_run() {
+    # $1=machine $2=build_dir $3=recipe $4=srctree $5=srctreebase $6=disposition
+    # $7=dest_parent $8=cleaned_bbappend $9=landing_mode $10=landing_layer $11=patches
+    # $12=recipe_files $13=srcrev $14=phase $15=stage $16=stderr
+    printf -v "$4"  '%s' "${MOCK_F_SRCTREE:-/src}"
+    printf -v "$5"  '%s' "${MOCK_F_SRCTREEBASE:-/srcbase}"
+    printf -v "$6"  '%s' "${MOCK_F_DISP:-moved}"
+    printf -v "$7"  '%s' "${MOCK_F_DEST_PARENT:-/attic}"
+    printf -v "$8"  '%s' "${MOCK_F_CLEANED:-}"
+    printf -v "$9"  '%s' "${MOCK_F_LMODE:-patch}"
+    printf -v "${10}" '%s' "${MOCK_F_LLAYER:-/layer}"
+    printf -v "${11}" '%s' "${MOCK_F_PATCHES:-[]}"
+    printf -v "${12}" '%s' "${MOCK_F_RFILES:-[]}"
+    printf -v "${13}" '%s' "${MOCK_F_SREV:-abc}"
+    printf -v "${14}" '%s' "${MOCK_F_PHASE:-}"
+    printf -v "${15}" '%s' "${MOCK_F_STAGE:-command}"
+    printf -v "${16}" '%s' "${MOCK_F_STDERR:-}"
+    return "${MOCK_FINISH_RC:-0}"
+}
+dev_emit_finish_json() {
+    local _d='{"recipe":"x","landing_mode":"patch"}'
+    printf '%s\n' "${MOCK_EMIT_FINISH_OUT:-$_d}"
+    return "${MOCK_EMIT_FINISH_RC:-0}"
+}
 
 # === ① dry_run=1 → return 0 + stderr 含 [DRY-RUN] notice，relay 未被调 ===
 RELAY_CALLED=0; _err="$(mktemp)"
@@ -247,6 +271,44 @@ dev_subcmd_reset "$MACHINE" "$TMP/build" "x" "" 0 >"$_out" 2>"$_err"
 rc=$?
 assert_eq "㉒ reset 正常: return 0" "$rc" "0"
 assert_eq "㉒ reset 正常: stdout = emit 输出" "$(cat "$_out")" '{"recipe":"x","disposition":"moved"}'
+rm -f "$_out" "$_err"
+
+# ========== finish handler ==========
+# === ㉓ finish recipe 空 → return 3 + remedy "status"（list modified recipes）===
+_err="$(mktemp)"
+dev_subcmd_finish "$MACHINE" "$TMP/build" "" "" 0 2>"$_err" >/dev/null
+rc=$?
+assert_eq "㉓ finish recipe 空: return 3" "$rc" "3"
+assert_contains "㉓ finish recipe 空: remedy status" "$(cat "$_err")" "list modified recipes"
+rm -f "$_err"
+
+# === ㉔ finish dry_run → return 0 + stderr [DRY-RUN] ===
+_err="$(mktemp)"
+dev_subcmd_finish "$MACHINE" "$TMP/build" "x" "" 1 2>"$_err" >/dev/null
+rc=$?
+assert_eq "㉔ finish dry_run: return 0" "$rc" "0"
+assert_contains "㉔ finish dry_run: stderr [DRY-RUN]" "$(cat "$_err")" "[DRY-RUN] ob dev finish"
+rm -f "$_err"
+
+# === ㉕ finish relay rc=1 → return 1 ===
+MOCK_FINISH_RC=0; MOCK_RELAY_RC=1; RELAY_CALLED=0
+dev_subcmd_finish "$MACHINE" "$TMP/build" "x" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "㉕ finish relay rc=1: return 1" "$rc" "1"
+
+# === ㉖ finish emit rc=1 → return 1 ===
+MOCK_FINISH_RC=0; MOCK_RELAY_RC=0; MOCK_EMIT_FINISH_RC=1; RELAY_CALLED=0
+dev_subcmd_finish "$MACHINE" "$TMP/build" "x" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "㉖ finish emit rc=1: return 1" "$rc" "1"
+
+# === ㉗ finish 正常 → return 0 + stdout = emit 输出 ===
+MOCK_FINISH_RC=0; MOCK_RELAY_RC=0; MOCK_EMIT_FINISH_RC=0; MOCK_EMIT_FINISH_OUT='{"recipe":"x","landing_mode":"patch"}'; RELAY_CALLED=0
+_out="$(mktemp)"; _err="$(mktemp)"
+dev_subcmd_finish "$MACHINE" "$TMP/build" "x" "" 0 >"$_out" 2>"$_err"
+rc=$?
+assert_eq "㉗ finish 正常: return 0" "$rc" "0"
+assert_eq "㉗ finish 正常: stdout = emit 输出" "$(cat "$_out")" '{"recipe":"x","landing_mode":"patch"}'
 rm -f "$_out" "$_err"
 
 assert_summary

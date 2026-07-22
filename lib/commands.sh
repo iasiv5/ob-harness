@@ -1171,27 +1171,9 @@ cmd_dev() {
             case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
             ;;
         finish)
-            if [[ -z "$dev_recipe" ]]; then
-                error "ob dev finish: no recipe specified." >&2
-                error "Run 'ob dev --machine $dev_machine status' to list modified recipes first." >&2
-                exit 3
-            fi
-            if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                notice "[DRY-RUN] ob dev finish $dev_recipe: would devtool finish (land patches to original layer, source-preserving)." >&2
-                exit 0
-            fi
-            local _finish_srctree="" _finish_srctreebase="" _finish_disposition=""
-            local _finish_destination_parent="" _finish_cleaned_bbappend=""
-            local _finish_landing_mode="" _finish_landing_layer="" _finish_patches="" _finish_recipe_files="" _finish_srcrev=""
-            local _finish_phase="" _finish_stage="" _finish_stderr_file=""
-            local _finish_rc=0
-            devtool_finish_run "$dev_machine" "$dev_build_dir" "$dev_recipe" \
-                _finish_srctree _finish_srctreebase _finish_disposition _finish_destination_parent \
-                _finish_cleaned_bbappend _finish_landing_mode _finish_landing_layer _finish_patches \
-                _finish_recipe_files _finish_srcrev _finish_phase _finish_stage _finish_stderr_file || _finish_rc=$?
-            dev_relay_result finish "$_finish_stderr_file" "$_finish_stage" "$_finish_phase" "$_finish_rc" || exit 1
-            dev_emit_finish_json "$dev_recipe" "$_finish_srctree" "$_finish_srctreebase" "$_finish_disposition" "$_finish_destination_parent" "$_finish_cleaned_bbappend" "$_finish_landing_mode" "$_finish_landing_layer" "$_finish_patches" "$_finish_recipe_files" "$_finish_srcrev" || { error "ob dev finish: result JSON malformed." >&2; exit 1; }
-            exit 0
+            local _rc=0
+            dev_subcmd_finish "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
+            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
             ;;
         status)
             local _rc=0
