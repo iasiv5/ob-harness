@@ -44,6 +44,13 @@ devtool_modify_run() {
     printf -v "$6" '%s' "${MOCK_M_STDERR:-}"
     return "${MOCK_MODIFY_RC:-0}"
 }
+devtool_build_run() {
+    # $1=machine $2=build_dir $3=recipe $4=stage_outvar $5=stderr_outvar $6=notmod_outvar
+    printf -v "$4" '%s' "${MOCK_B_STAGE:-command}"
+    printf -v "$5" '%s' "${MOCK_B_STDERR:-}"
+    printf -v "$6" '%s' "${MOCK_B_NOTMOD:-0}"
+    return "${MOCK_BUILD_RC:-0}"
+}
 
 # === ① dry_run=1 → return 0 + stderr 含 [DRY-RUN] notice，relay 未被调 ===
 RELAY_CALLED=0; _err="$(mktemp)"
@@ -143,6 +150,47 @@ dev_subcmd_modify "$MACHINE" "$TMP/build" "x" "" 0 >"$_out" 2>"$_err"
 rc=$?
 assert_eq "⑫ modify 正常: return 0" "$rc" "0"
 assert_eq "⑫ modify 正常: stdout = srctree" "$(cat "$_out")" "/src/phosphor"
+rm -f "$_out" "$_err"
+
+# ========== build handler（D5 not_mod 冻结） ==========
+# === ⑬ build recipe 空 → return 3 + remedy "status"（list modified recipes）===
+_err="$(mktemp)"
+dev_subcmd_build "$MACHINE" "$TMP/build" "" "" 0 2>"$_err" >/dev/null
+rc=$?
+assert_eq "⑬ build recipe 空: return 3" "$rc" "3"
+assert_contains "⑬ build recipe 空: remedy status" "$(cat "$_err")" "list modified recipes"
+rm -f "$_err"
+
+# === ⑭ build dry_run → return 0 + stderr [DRY-RUN] ===
+_err="$(mktemp)"
+dev_subcmd_build "$MACHINE" "$TMP/build" "x" "" 1 2>"$_err" >/dev/null
+rc=$?
+assert_eq "⑭ build dry_run: return 0" "$rc" "0"
+assert_contains "⑭ build dry_run: stderr [DRY-RUN]" "$(cat "$_err")" "[DRY-RUN] ob dev build"
+rm -f "$_err"
+
+# === ⑮ build not_mod（stub notmod=1 + run rc=0）→ return 3 + relay 未被调（D5 核心锁）===
+MOCK_BUILD_RC=0; MOCK_B_NOTMOD=1; MOCK_B_STDERR="some build stderr"; RELAY_CALLED=0; _err="$(mktemp)"
+dev_subcmd_build "$MACHINE" "$TMP/build" "x" "" 0 2>"$_err" >/dev/null
+rc=$?
+assert_eq "⑮ build not_mod: return 3" "$rc" "3"
+assert_eq "⑮ build not_mod: relay 未被调(D5 锁)" "$RELAY_CALLED" "0"
+assert_contains "⑮ build not_mod: stderr not modified" "$(cat "$_err")" "not modified"
+rm -f "$_err"
+
+# === ⑯ build relay rc=1 → return 1 ===
+MOCK_BUILD_RC=0; MOCK_B_NOTMOD=0; MOCK_RELAY_RC=1; RELAY_CALLED=0
+dev_subcmd_build "$MACHINE" "$TMP/build" "x" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "⑯ build relay rc=1: return 1" "$rc" "1"
+
+# === ⑰ build 正常 → return 0 + stdout 空 ===
+MOCK_BUILD_RC=0; MOCK_B_NOTMOD=0; MOCK_RELAY_RC=0; RELAY_CALLED=0
+_out="$(mktemp)"; _err="$(mktemp)"
+dev_subcmd_build "$MACHINE" "$TMP/build" "x" "" 0 >"$_out" 2>"$_err"
+rc=$?
+assert_eq "⑰ build 正常: return 0" "$rc" "0"
+assert_eq "⑰ build 正常: stdout 空" "$(cat "$_out")" ""
 rm -f "$_out" "$_err"
 
 assert_summary

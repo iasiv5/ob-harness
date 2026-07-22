@@ -78,3 +78,25 @@ dev_subcmd_modify() {
     printf '%s\n' "$_srctree"
     return 0
 }
+
+# dev_subcmd_build <machine> <build_dir> <recipe> <pattern> <dry_run> → return 0/1/3
+dev_subcmd_build() {
+    local machine="$1" build_dir="$2" recipe="$3" pattern="$4" dry_run="$5"
+    _dev_recipe_precondition "$machine" "$recipe" build || return 3
+    _dev_dryrun_gate "$dry_run" "[DRY-RUN] ob dev build $recipe: would devtool build (do_build)." && return 0
+    local _b_stage="" _b_stderr="" _b_notmod="" _b_rc=0
+    # devtool_build_run 内 status-first 是选号→build 的 TOCTOU 纵深校验(防 recipe 被并发 reset),
+    # 并产 not_modified 信号 + stage/rc 回传; TTY 段 status 只为列 recipe 选号(UX)。
+    devtool_build_run "$machine" "$build_dir" "$recipe" _b_stage _b_stderr _b_notmod || _b_rc=$?
+    if [[ "$_b_notmod" == "1" ]]; then
+        # not_modified: status 成功(stage=command/rc=0)但 recipe 不在 modified 列表。
+        # 🔴 显式 cat+rm stderr, 不经 relay(避免依赖"三条件都不触发表"的隐式行为, v2.1)。[D5 冻结: 勿并入 relay]
+        cat -- "$_b_stderr" >&2 2>/dev/null || true
+        rm -f -- "$_b_stderr" 2>/dev/null || true
+        error "Recipe '$recipe' is not modified (not in devtool workspace)." >&2
+        error "Run 'ob dev --machine $machine modify $recipe' first." >&2
+        return 3
+    fi
+    dev_relay_result build "$_b_stderr" "$_b_stage" "" "${_b_rc:-0}" || return 1
+    return 0   # 空 stdout(exit code 承载成败)
+}
