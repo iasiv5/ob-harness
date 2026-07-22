@@ -38,7 +38,7 @@
 
 **技术与编排决策自己推到底。** 怎么拆任务、用不用 workflow 或 sub-agent、并行还是串行、方案与工具选型、先做什么后做什么，这些决策不要停下来问。纯技术正确性问题用工具验证到底，给结论而非选项。
 
-**只在三类点浮出来等用户：** 第一，不可逆或外发的操作（`git push` 到上游、提交 patch 到 Gerrit 或 mailing list、force push 重写 working tree 历史、删除 `.init-done` / `.lock` / bare mirror 等构建态文件、修改 common 层影响未验证的 machine；working tree 内的 commit 是安全的迭代手段，不在此列）。第二，未授权的 scope 变更（跨 common / platform / customer / project 改动，或改动目标 machine 之外的 recipe / config）。第三，需要用户领域判断的决定（build-time vs boot-time vs runtime 取舍、跨 layer 的依赖决策、defconfig / Kconfig 选项增删）。
+**只在三类点浮出来等用户：** 第一，不可逆或外发的操作（`git push` 到上游、提交 patch 到 Gerrit 或 mailing list、force push 重写 working tree 历史、删除 `.init-done` / `<machine>.snapshot` / bare mirror 等构建态文件、修改 common 层影响未验证的 machine；working tree 内的 commit 是安全的迭代手段，不在此列）。第二，未授权的 scope 变更（跨 common / platform / customer / project 改动，或改动目标 machine 之外的 recipe / config）。第三，需要用户领域判断的决定（build-time vs boot-time vs runtime 取舍、跨 layer 的依赖决策、defconfig / Kconfig 选项增删）。
 
 **不确定时选一条路执行。** 在两条合理路径之间犹豫时，选一条做下去，把没走的路在当前会话内记一句，不要排队提问。高意外的发现（比如抽检大面积失败、`ob init` 在多个 machine 上行为不一致）是更新方法论继续迭代的信号，不是暂停的理由。带 ceiling 的多轮迭代任务（比如反复跑 `ob build` 直到收敛），默认跑到收敛或 ceiling 再汇报，每轮在 working tree 内 commit 和记录以便回滚。
 

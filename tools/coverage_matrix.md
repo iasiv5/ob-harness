@@ -46,8 +46,13 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
 | TTY modified recipe selection(reset/finish/build 共享选号前置) | devtool_pick_modified_recipe | unit/devtool_pick.sh | 选号往返靠 unit(here-string 喂 stdin, 非真实 PTY);protocol/dev_interactive.exp 仅锁 reset/finish empty 路径(不锁选号往返/build); 恒返回码 5 态 status_outvar, exit-code 映射在 cmd_dev |
-| 子命令 dispatch(list/modify/refresh/reset/finish/build/status) | cmd_dev;devtool_modify_run;devtool_build_run;devtool_reset_run;devtool_finish_run;devtool_search_read;devtool_search_refresh;devtool_status_run | orchestration/cmd_dev.sh | exit 函数,radar 低估;非 TTY dispatch 路径 |
-| status 阶段失败 relay(stage/rc/phase verbatim 诊断) | dev_relay_result | unit/devtool_dispatch.sh | per-subcmd 文案表,服务 modify/status/reset/finish/build |
+| subcommand handler 编排(precondition→dry-run gate→execute→relay→emit→exit 映射) | dev_dispatch_subcmd;dev_subcmd_modify;dev_subcmd_refresh;dev_subcmd_status;dev_subcmd_reset;dev_subcmd_finish;dev_subcmd_build;dev_subcmd_list | unit/devtool_subcmd.sh | leaf-pure(ADR-0012),return exit-code 契约值 0/1/2/3,cmd_dev 字面 case 收口 exit |
+| execute module(devtool_*_run 单步执行) | devtool_modify_run;devtool_build_run;devtool_reset_run;devtool_finish_run;devtool_status_run | unit/devtool_modify.sh;unit/devtool_build.sh;unit/devtool_reset.sh;unit/devtool_finish.sh;unit/devtool_status.sh | leaf-pure;各 run 单测钉 status-first + rc 回传 |
+| recipe 元数据检索/缓存三态 | devtool_search_read;devtool_search_refresh | unit/devtool_search.sh | fresh/missing/stale 三态 |
+| porcelain JSON/JSONL 编码+原子发布 | devtool_emit_json;devtool_emit_jsonl;dev_emit_reset_json;dev_emit_finish_json;dev_emit_status_jsonl | unit/devtool_porcelain.sh | leaf-pure(ADR-0010),cat+rm 原子发布 |
+| 失败 relay(stage/rc/phase verbatim 诊断) | dev_relay_result | unit/devtool_dispatch.sh | per-subcmd 文案表,服务 modify/status/reset/finish/build |
+| workspace 交互原语(env_exec/parse srctree/status) | _devtool_env_exec;_devtool_parse_srctree;_devtool_parse_status_all;_devtool_parse_status_entry | unit/devtool_workspace.sh | leaf-pure |
+| cmd_dev dispatch 非 TTY 路径 | cmd_dev | orchestration/cmd_dev.sh | exit 函数,radar 低估;非 TTY dispatch 路径 |
 
 ## start-qemu
 
@@ -78,13 +83,20 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 取消/正常停止 | cmd_stop_qemu | integration/manual_matrix_qemu.exp | integration |
 | 统一 stop(kill+wait+SIGKILL+rm) | qemu_instance_stop | orchestration/qemu_stop_instance.sh | start 冲突 kill + cmd_stop_qemu 复用 |
 
+## deploy-to-qemu
+
+| 功能点 | 涉及函数 | 覆盖 test | 备注 |
+|---|---|---|---|
+| build-first 编排(image 重建 + QEMU 重启,端口复用) | cmd_deploy_to_qemu | orchestration/deploy_to_qemu.sh;integration/ob_deploy_to_qemu.sh | exit 函数,radar 低估;build-first 链 + QEMU 在跑则端口复用(ADR-0011) |
+
 ## 横切(通用)
 
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
 | 路径推导 | detect_harness_root;derive_qemu_url_config_path | unit/paths.sh | |
 | 并行度/WSL | calc_parallelism;detect_wsl | unit/paths.sh | |
-| 交互叶子(stdin) | select_from_list;confirm_action;prompt_for_absolute_path | unit/interact.sh | |
+| 交互叶子(stdin) | confirm_action;prompt_for_absolute_path;exit_on_user_cancel;prompt_for_available_port | unit/interact.sh | select_from_list 已退役(ob_check 回归锁禁复活) |
+| machine 交互选择 | pick_machine | unit/pick_machine.sh | leaf-pure L3,多态返回码表达取消/失败 |
 | require_path 前置 | require_path | unit/require_path.sh | exit 函数,radar 低估 |
 | 字符串/工具子函数 | is_valid_repo_url;read_kv_field;read_manifest_field;trim_whitespace | unit/url.sh;unit/source_manifest.sh | 子工具,被上层调用 |
 | QEMU launch profile 纯规则 | qemu_launch_profile_apply_system_name;qemu_launch_profile_apply_machine_name;machine_conf_chain_contains | unit/soc.sh | start-qemu SoC/机型派生 |

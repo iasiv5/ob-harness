@@ -20,7 +20,7 @@
 
 问题分析按下面的顺序写：
 
-1. 现象：看到什么失败、异常或行为偏差。现象段必须绑定可复现坐标：哪个 machine、跑在 QEMU 还是真机（QEMU 的话是 community 还是 custom binary）、对应的 image 或 commit（``openbmc_commit`` 或 lockfile 里的 SHA）、失败发生在 BitBake 哪一步（``do_compile`` / ``do_rootfs`` / ``do_image``）。
+1. 现象：看到什么失败、异常或行为偏差。现象段必须绑定可复现坐标：哪个 machine、跑在 QEMU 还是真机（QEMU 的话是 community 还是 custom binary）、对应的 image 或 commit（``openbmc_commit`` 或 machine snapshot 里的 SHA）、失败发生在 BitBake 哪一步（``do_compile`` / ``do_rootfs`` / ``do_image``）。
 2. 定位：证据来自哪些文件、日志、接口或调用链。
 3. 根因假设：为什么这些证据指向这个原因。
 4. 验证：已经跑过什么命令、看过什么输出、还有什么未验证。

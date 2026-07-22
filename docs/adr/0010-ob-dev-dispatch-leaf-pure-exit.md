@@ -2,15 +2,15 @@
 
 `ob dev` 的 dispatch/emit seam 深化（`dev_relay_result` + `dev_emit_*`）抽出了两族被 6 个子命令分支重复的 helper：failure-relay（stderr cat/rm + stage/phase/rc 诊断）和 result-encoder（porcelain JSON 编码 + 原子发布）。本 ADR 记录：**这些 helper 是 leaf-pure module——函数绝不 exit，返回码，由 `cmd_dev`（L1 exit seam）独占 `exit`**——并把触发条件固定下来，避免未来 explorer 把它们"修"成 own-exit（direct-exit module）。
 
-Status: accepted
+Status: accepted（extended by [ADR-0012](0012-ob-dev-subcmd-handler-leaf-pure-exit.md)：leaf-pure 归属从 helper 接力到 subcommand handler；本 ADR 锁定的决策不变）
 
 ## Considered Options
 
-1. **helper own exit（direct-exit module）** —— 拒绝。`dev_fail <subcmd> <stage> <phase>` 内部 `exit 1` 让 `cmd_dev` 分支更"干净"（无 `|| exit 1` token），但代价真实：(a) 第一次在 dev 表面打破"exit 只在 `cmd_dev` L1"这条全表面不变量——现有 `devtool_modify_run`/`reset_run`/`finish_run` 全是 leaf-pure 返回 rc、调用者 exit；(b) `exit_contract` Y 规则要把新 basename 从 leaf-pure 重分类为 direct-exit，门禁配置漂移；(c) exit 流散到更多文件，"理解 exit 流只读 cmd_dev"的心智模型破裂。而被复制的复杂度是**映射逻辑**（stage/phase/rc → 哪条 message），不是那个 `exit` 关键字——`cmd_dev` 里剩下的 `|| exit 1` 只是 trivial token。
+1. **helper own exit（direct-exit module）** —— 拒绝。`dev_fail <subcmd> <stage> <phase>` 内部 `exit 1` 让 `cmd_dev` 分支更"干净"（无 `|| exit 1` token），但代价真实：(a) 第一次在 dev 表面打破"exit 只在 `cmd_dev` L1"这条全表面不变量——现有 `devtool_modify_run`/`devtool_reset_run`/`devtool_finish_run` 全是 leaf-pure 返回 rc、调用者 exit；(b) `exit_contract` Y 规则要把新 basename 从 leaf-pure 重分类为 direct-exit，门禁配置漂移；(c) exit 流散到更多文件，"理解 exit 流只读 cmd_dev"的心智模型破裂。而被复制的复杂度是**映射逻辑**（stage/phase/rc → 哪条 message），不是那个 `exit` 关键字——`cmd_dev` 里剩下的 `|| exit 1` 只是 trivial token。
 
 2. **混合：failure-relay own exit，result-encoder leaf-pure** —— 拒绝。无原则折中，两族 helper 同属"调完 `*_run` 之后的标准动作"，要么都 leaf-pure 要么都 own-exit，不能半个半。
 
-3. **全部 leaf-pure，返回码，`cmd_dev` 独占 exit** —— 接受。映射逻辑全部收进 leaf-pure helper（deepening 的价值拿到），`cmd_dev` 每分支保留 `dev_relay_result ... || exit 1` 一个 token。守不变量、零门禁改动、与现有 `devtool_*_run` 一致。
+3. **全部 leaf-pure，返回码，`cmd_dev` 独占 exit** —— 接受。映射逻辑全部收进 leaf-pure helper（deepening 的价值拿到），`cmd_dev` 每分支保留 `dev_relay_result ... || exit 1` 一个 token。守不变量、零门禁改动、与现有 `devtool_*_run` 一致。（按此设计落地；后 ADR-0012 引入 subcommand handler 后，`cmd_dev` 收口由「每分支 `|| exit 1`」改为字面 `case` 映射，见文末更新注。）
 
 ## Consequences
 
@@ -18,3 +18,4 @@ Status: accepted
 - **exit 只在 `cmd_dev`（L1 exit seam）**这条 dev 表面不变量保持：所有 `lib/devtool_*.sh`（含新 dispatch/porcelain/build）都不直接 exit。未来 explorer 看到 `dev_relay_result` 返回 1 而 `cmd_dev` 再 `exit 1`，**不应视为冗余**而把 exit 下沉进 helper。
 - porcelain stdout 契约的失败语义（哪个 exit-code 契约值、哪条 remedy line）仍是 `cmd_dev` 的职责——leaf-pure helper 只诊断（打 stderr + 返回码），不决定 exit-code 契约。前置缺失（如 build 未 modified → exit 3 + remedy）归 `cmd_dev`，不归 relay。
 - 本 ADR 不约束未来**新类型**的 exit seam 决策——只锁定 dev dispatch/emit 这两族 helper 的 leaf-pure 归属。若未来出现"helper own exit 明显更优"的新场景，重开评审。
+- **更新（ADR-0012，2026-07）**：上述 helper 现由 `dev_subcmd_*` subcommand handler（`lib/devtool_subcmd.sh`，leaf-pure）间接消费，不再被 `cmd_dev` 直接调用。消费链从 2 层（`cmd_dev`→helper）演进为 3 层（`cmd_dev`→`dev_dispatch_subcmd`→handler→helper）；`cmd_dev` 现据 `dev_dispatch_subcmd` 的聚合返回码用字面 `case` 收口 exit（见 ADR-0012 Consequences）。本 ADR 锁定的决策不变——helper 仍 leaf-pure、exit 仍在 `cmd_dev`。

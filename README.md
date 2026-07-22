@@ -18,7 +18,7 @@
     ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 
-OpenBMC 固件开发工作台。`ob` CLI 覆盖环境初始化、镜像构建、工作区状态管理和 QEMU 仿真；内置 AI Agent 上下文框架，用 Claude Code 或 GitHub Copilot 等任意 Coding Agent 打开仓库即可用自然语言驱动开发任务。
+OpenBMC 固件开发工作台。`ob` CLI 覆盖环境初始化、镜像构建、工作区状态管理、recipe 源码开发和 QEMU 仿真；内置 AI Agent 上下文框架，用 Claude Code 或 GitHub Copilot 等任意 Coding Agent 打开仓库即可用自然语言驱动开发任务。
 
 ## 开始
 
@@ -42,6 +42,8 @@ cd ob-harness
 | 7 | 给仓库添加新的自动化能力 | — | "帮我写一个新的 skill" |
 | 8 | 在 QEMU 中启动 BMC 实例 | `./ob start-qemu [machine]` | "在 QEMU 里启动 romulus" |
 | 9 | 停止 QEMU 实例 | `./ob stop-qemu [machine\|--all]` | "停掉 romulus 的 QEMU" |
+| 10 | recipe 源码开发（改某组件源码） | `./ob dev --machine <m> <modify\|build\|...>` | "帮我改 phosphor-ipmi-host 的源码" |
+| 11 | 重建镜像 + 重启 QEMU 做干净验证 | `./ob deploy-to-qemu [machine]` | "改完重新部署到 QEMU 验证" |
 
 > **提示**：不需要记忆上面的 AI prompt。直接用自然语言描述需求，agent 会自动匹配对应的能力。
 
@@ -53,7 +55,7 @@ cd ob-harness
 
 - **Session 启动**：agent 自动读取项目规则（身份、沟通风格、目录路由、技能索引），理解仓库上下文
 - **能力路由**：遇到“怎么做 X”时，agent 先查技能索引再行动，而不是凭猜测
-- **ob 优先**：所有 OpenBMC 环境动作（初始化、编译、状态、QEMU 起停）统一走 `ob` 这个前门——agent 先查 `ob --help`，有就走 `ob <cmd>`，不绕过手撸 bitbake。退出码 `3` 是「前置缺失」不是失败，agent 会照提示补前置再重试，所以你常看到它「遇错重试」而非「报错停下」。
+- **ob 优先**：所有 OpenBMC 环境动作（初始化、编译、状态、recipe 开发、QEMU 起停）统一走 `ob` 这个前门——agent 先查 `ob --help`，有就走 `ob <cmd>`，不绕过手撸 bitbake。退出码 `3` 是「前置缺失」不是失败，agent 会照提示补前置再重试，所以你常看到它「遇错重试」而非「报错停下」。
 - **质量闭环**：`ob` 的改动由四层测试（protocol / unit / orchestration / integration）+ 质量门禁（exit 契约 / `ob_check` / 覆盖率雷达）兜底，GitHub Actions CI 自动跑。
 - **文档落盘**：设计文档和实施计划自动归档到 `docs/`，可追溯可回查
 - **记忆积累**：通过 `/ai-heartbeat` 让 AI 持续学习项目变化和团队决策
@@ -77,6 +79,8 @@ Commands:
   status                      查看工作区源码绑定状态
   start-qemu   [<machine>]    用已构建的镜像在 QEMU 中启动 BMC
   stop-qemu    [<machine>]    停止运行中的 QEMU 实例
+  deploy-to-qemu [<machine>]  重建镜像并重启 QEMU，做干净验证
+  dev          [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  devtool recipe 源码开发（省略子命令则交互）
 
 Global Options:
   -d, --dry-run         预览操作但不执行
@@ -122,6 +126,10 @@ Examples:
   ob start-qemu romulus --ssh-port 22223
   ob stop-qemu romulus             # 停止 romulus 的 QEMU 实例
   ob stop-qemu --all               # 停止所有运行中的实例
+  ob deploy-to-qemu romulus        # 重建 romulus 镜像 + 重启 QEMU（在跑则端口复用）
+  ob dev --machine romulus list ipmi           # 搜索匹配 'ipmi' 的 recipe
+  ob dev --machine romulus modify phosphor-ipmi-host  # devtool modify，输出 srctree
+  ob dev --machine romulus build phosphor-ipmi-host   # 单 recipe 编译（do_build），exit code 承载结果
 ```
 
 ## 致谢
@@ -132,37 +140,20 @@ Examples:
 
 ### v1.3 — 开发中 (unreleased)
 
-**🏗 架构演进**
-- `ob` 模块化：单文件拆为 `lib/{util,repo,qemu,machine_state,init_pipeline,commands}.sh` 六文件，按职能切分（结构边界从注释锚点转为文件名）。
-- 新增 `machine_state` 模块，统一 machine 生命周期状态。
-- QEMU launch profile 深模块抽取：把分散的 SoC 识别 / QB 变量解析 / bootloader 查找收敛为 `lib/qemu.sh` 的单一入口 `resolve_qemu_launch_profile`，`cmd_start_qemu` 只调这一个（ADR-0007，术语见 `CONTEXT.md`）。
-
-**⚠️ Breaking**
-- `openbmc-source.lock` → `openbmc-source.manifest`（source manifest）；`<machine>.lock` 命名废弃，旧脚本需适配（术语见 `CONTEXT.md`）。
-
-**✨ 新增**
-- `tools/cache_hit_rate.py`（缓存飞轮观测）、`tools/exit_contract.py`（exit 纪律静态断言）、`bestpractice_08`（质量门禁与 eval 模式库）。
-- `machine_state` 扩展「固件镜像就绪」状态（`firmware-image-ready machine` / `orphan firmware image artifact` 术语），`ob status` 据此解释残留产物。
-- `bestpractice_09`（非功能性改动的回归锁：调用次数 / 零调用断言）、`v06` 概率乘公理。
+- `ob` 模块化：单文件拆为 `lib/*.sh` 按职能切分（结构边界从注释锚点转为文件名）；新增 `machine_state` 生命周期状态模块，扩展「固件镜像就绪」状态，`ob status` 据此解释残留产物。
+- QEMU launch profile 深模块抽取：SoC 识别 / QB 变量解析 / bootloader 查找收敛为单一入口 `resolve_qemu_launch_profile`，`cmd_start_qemu` 只调这一个（ADR-0007）。
+- 构建配置注入：`PREMIRRORS`（GNU→tuna mirror）注入 + local.conf 变量检测改 exit-code 判定（用户显式赋值即接管，ADR-0004/0005）。
+- 新增 `ob dev` 命令组：modify / list / refresh / reset / finish / status / build，devtool recipe 源码开发（agent-facing porcelain 契约）。
+- 新增 `ob deploy-to-qemu`：image 重建 + QEMU 重启做干净验证，归属 ob 顶层 QEMU 生命周期层（非 ob dev，image 级 vs recipe 级边界，ADR-0011）。
+- devtool_* 深模块抽取族：devtool_pick（modified recipe selection）/ devtool_dispatch（relay）/ devtool_porcelain（emit）/ devtool_subcmd（subcommand handler），ADR-0010/0012。
+- 新增 `tools/cache_hit_rate.py`（缓存飞轮观测）、`tools/exit_contract.py`（exit 纪律静态断言）、`bestpractice_08-09`、`v06` 概率乘公理。
+- Breaking：`openbmc-source.lock` → `openbmc-source.manifest`、`<machine>.lock` → `<machine>.snapshot`（术语见 `CONTEXT.md`）。
 
 ### v1.2 — 2026-06-21
 
-**✨ 新增**
-- `ob build <machine>` 非交互直构：原仅交互菜单选择，现可 `ob build romulus` 一步直构，便于脚本 / agent 调用。
-- `ob start-qemu` 串口交互登录：BMC 起来后可直接在串口 console 登录调试。
-- `ob start-qemu` 只列出已构建的 machine，避免选到没镜像的机器白跑。
-
-**🛠 改进**
-- 退出码契约成文：全部子命令统一 `0` 成功 / `1` 失败 / `2` 用户取消 / `3` 前置缺失，写进 `ob --help`；exit 3 时给一行 remedy line（如 `Run 'ob init romulus' first.`），AI agent 据此稳定回退、不再瞎猜。
-- `ob start-qemu` PID 检测改 serial socket + 启动用户过滤，修复多用户共享环境误杀他人 QEMU 的风险；并主动检测、清理陈旧 SSH host key。
-- 交互菜单支持 `0` 取消，不再死循环。
-- `ob build` 修复 `DL_DIR`/`SSTATE_DIR` 用 `??=` 被默认值压过失效的问题（改条件强赋值）；生成的 `.inc` 增补 `BB_HASHSERVE_DB_DIR`。
-
-**🏗 内部质量**（本轮主体工作）
-- `ob` 大重构：抽公共函数、统一退出码、按 §1–§7 分区重排、删死码。
-- 测试体系从零搭建：protocol / unit / orchestration / integration 四层 + `run_all.sh` + 覆盖率矩阵与雷达 + GitHub Actions CI + shellcheck baseline。
-- 新增 `tools/ob_check.sh`：改完 `ob` 后一站式自检（结构 / 函数登记 / shellcheck baseline / 测试）。
-- 确立 ob-first 约定：OpenBMC 环境动作统一走 `ob` 前门（见 AGENTS.md 与 ADR 0003）。
+- `ob build <machine>` 非交互直构；`start-qemu` 串口登录与只列已构建 machine。
+- 退出码契约成文：全部子命令统一 `0`/`1`/`2`/`3`，exit 3 给一行 remedy line，写进 `ob --help`，agent 据此稳定回退。
+- `ob` 大重构 + 四层测试体系（protocol/unit/orchestration/integration）+ 覆盖率矩阵与雷达 + `ob_check` 自检；确立 ob-first 约定（ADR 0003）。
 
 ### v1.1 — 2026-06-12
 

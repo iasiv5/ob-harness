@@ -21,7 +21,7 @@
 - Clone OpenBMC 主仓库（首次）
 - 通过 `bitbake -g` + Tinfoil API 生成依赖图（deps.json）
 - 预填充 bare mirror 到 `DL_DIR/git2/`（BitBake 标准 mirror 路径）
-- 生成 lockfile 记录版本快照
+- 生成 machine snapshot 记录版本快照
 - 生成 `externalsrc-<machine>.inc`（缓存目录、连通性探针、externalsrc 继承）
 - 支持 `--dry-run`、`--skip-deps`、`--verbose`、`--url` 选项
 
@@ -52,7 +52,7 @@
 3. `workspace/openbmc/build/<machine>/conf/local.conf` 末尾包含 `include externalsrc-<machine>.inc`
 4. `workspace/openbmc/build/<machine>/conf/externalsrc-<machine>.inc` 存在，包含 `DL_DIR`、`SSTATE_DIR` 和 `INHERIT += "externalsrc"`
 5. `workspace/openbmc/build/<machine>/deps.json` 存在，是合法 JSON 且为 recipe 数组
-6. `workspace/configs/<machine>.lock` 存在，是合法 JSON 且包含 `machine`、`openbmc_commit`、`sub_repos` 字段
+6. `workspace/configs/<machine>.snapshot` 存在，是合法 JSON 且包含 `machine`、`openbmc_commit`、`sub_repos` 字段
 7. `workspace/configs/<machine>.init-done` 存在（全部 8 步完成的原子 marker）
 8. `workspace/downloads/git2/` 下存在若干 bare mirror 目录（数量取决于 deps.json 中 git 依赖的数量）
 
@@ -64,7 +64,7 @@
 
 **工具**：
 - 根目录 `ob` — 主入口 bash 脚本，支持三种运行模式：
-  - `./ob`（无参数）→ 交互菜单（init/build/status/clear/quit）
+  - `./ob`（无参数）→ 交互菜单（init/build/status/start-qemu/stop-qemu/clear/quit）
   - `./ob init [<machine>]` → CLI 模式初始化
   - `./ob build` → CLI 模式编译
 - `tools/parse_bitbake_deps.py` — Python 脚本，用 BitBake Tinfoil API 批量查询 SRC_URI/SRCREV，从 `pn-buildlist` 读取 recipe 列表
@@ -90,7 +90,7 @@
 ./ob status                        # 显示主仓库绑定状态
 ```
 
-**锁文件 schema**（`workspace/configs/<machine>.lock`）：
+**machine snapshot schema**（`workspace/configs/<machine>.snapshot`）：
 
 ```json
 {
@@ -173,8 +173,8 @@ workspace/
 │       └── ...
 ├── sstate-cache/                               # 共享 sstate 缓存
 └── configs/
-    ├── openbmc-source.lock                     # 主仓库来源绑定（单 harness 单源）
-    ├── <machine>.lock                          # 版本锁定快照
+    ├── openbmc-source.manifest                     # 主仓库来源绑定（单 harness 单源）
+    ├── <machine>.snapshot                       # 版本锁定快照
     └── <machine>.init-done                     # init 完成原子 marker
 ```
 
@@ -213,7 +213,7 @@ rm -rf workspace/downloads/git2/<gitsrcname-of-failed-repo>
 #### 4. 主仓库来源冲突
 
 **症状**：`A harness may only bind to one OpenBMC main repository source`
-**原因**：`openbmc-source.lock` 绑定的源与请求的 URL 不一致
+**原因**：`openbmc-source.manifest` 绑定的源与请求的 URL 不一致
 **处理**：复制 ob-harness 到新目录，在新目录中 `ob init` 使用不同 URL
 
 ### ob build 阶段

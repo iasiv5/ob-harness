@@ -5,7 +5,7 @@
 - **类型**: BestPractice
 - **适用场景**: 在 `ob`/`lib/*.sh` 里把散落在多个 helper / 多个 `cmd_*` 的同类判断收敛到一个深 module 时；拆 god-function 时；为新增 module 配纯度门禁时
 - **创建日期**: 2026-07-06
-- **来源**: 五次同构抽取提炼——`machine_state`(06-24)→`qemu_launch_profile`(07-01)→`qemu_binary`/`qemu.sh` runtime 拆(07-04)→`machine_picker`(07-05)→`qemu_instance`(07-06)。通用深模块词汇见 [codebase-design DEEPENING](.claude/skills/codebase-design/DEEPENING.md)，本 skill 是它在 ob/lib 的落地形态 + 本仓库特有的静态门禁机制。
+- **来源**: 五次同构抽取提炼（`machine_state`(06-24)→`qemu_launch_profile`(07-01)→`qemu_binary`/`qemu.sh` runtime 拆(07-04)→`machine_picker`(07-05)→`qemu_instance`(07-06)）；后续 `devtool_pick`(modified recipe selection)→`devtool_dispatch`/`devtool_porcelain`(relay/emit，ADR-0010)→`devtool_subcmd`(subcommand handler，ADR-0012) 等沿用同一模式。通用深模块词汇见 [codebase-design DEEPENING](.claude/skills/codebase-design/DEEPENING.md)，本 skill 是它在 ob/lib 的落地形态 + 本仓库特有的静态门禁机制。
 
 ## 目标
 

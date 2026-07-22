@@ -14,7 +14,7 @@
 特定任务的完整工作流程。
 
 - [OpenBMC 开发环境初始化](skills/workflow_01-obmc_env_init.md) — 首次 `ob init` 或重建 OpenBMC 开发环境时使用。
-- [OpenBMC recipe 源码开发（ob dev modify）](skills/workflow_02-obmc_dev_modify.md) — 改 recipe 源码时用 `ob dev modify`/`list`/`refresh`，而非手动 devtool。
+- [OpenBMC recipe 源码开发（ob dev modify）](skills/workflow_02-obmc_dev_modify.md) — 改 recipe 源码时用 `ob dev modify`/`list`/`refresh`/`build`/`reset`/`finish` 等子命令，而非手动 devtool。
 
 ### BestPractice（最佳实践）
 
