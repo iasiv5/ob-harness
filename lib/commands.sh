@@ -1106,54 +1106,10 @@ cmd_dev() {
         esac
     fi
 
-    case "$dev_subcmd" in
-        list)
-            local _rc=0
-            dev_subcmd_list "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
-            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
-            ;;
-        modify)
-            local _rc=0
-            dev_subcmd_modify "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
-            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
-            ;;
-        refresh)
-            local _rc=0
-            dev_subcmd_refresh "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
-            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
-            ;;
-        "")
-            error "ob dev: no subcommand." >&2
-            error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
-            exit 3
-            ;;
-        reset)
-            local _rc=0
-            dev_subcmd_reset "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
-            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
-            ;;
-        finish)
-            local _rc=0
-            dev_subcmd_finish "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
-            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
-            ;;
-        status)
-            local _rc=0
-            dev_subcmd_status "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
-            # handler leaf-pure return exit-code(0/1/2/3); cmd_dev 收口为字面 exit
-            # (exit_contract X 禁 dynamic exit $?; case 归一 + || _rc=$? 防 set -e 中止)。
-            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
-            ;;
-        build)
-            local _rc=0
-            dev_subcmd_build "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
-            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
-            ;;
-        *)
-            error "ob dev $dev_subcmd: reserved, not implemented yet." >&2
-            exit 1
-            ;;
-    esac
+    local _rc=0
+    dev_dispatch_subcmd "$dev_subcmd" "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
+    # cmd_dev 字面 case 收口（全局约束；exit_contract X 禁 exit $?, || _rc=$? 防 set -e）
+    case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
 }
 
 cmd_menu() {

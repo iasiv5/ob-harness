@@ -166,3 +166,27 @@ dev_subcmd_list() {
     esac
     return 0
 }
+
+# dev_dispatch_subcmd <subcmd> <machine> <build_dir> <recipe> <pattern> <dry_run> → return 0/1/2/3
+# leaf-pure dispatcher：按 subcmd 分发到 dev_subcmd_*，透传返回码。exit 归 cmd_dev(ADR-0012)。
+dev_dispatch_subcmd() {
+    local subcmd="$1" machine="$2" build_dir="$3" recipe="$4" pattern="$5" dry_run="$6"
+    case "$subcmd" in
+        list)    dev_subcmd_list    "$machine" "$build_dir" "$recipe" "$pattern" "$dry_run" ;;
+        modify)  dev_subcmd_modify  "$machine" "$build_dir" "$recipe" "$pattern" "$dry_run" ;;
+        refresh) dev_subcmd_refresh "$machine" "$build_dir" "$recipe" "$pattern" "$dry_run" ;;
+        reset)   dev_subcmd_reset   "$machine" "$build_dir" "$recipe" "$pattern" "$dry_run" ;;
+        finish)  dev_subcmd_finish  "$machine" "$build_dir" "$recipe" "$pattern" "$dry_run" ;;
+        status)  dev_subcmd_status  "$machine" "$build_dir" "$recipe" "$pattern" "$dry_run" ;;
+        build)   dev_subcmd_build   "$machine" "$build_dir" "$recipe" "$pattern" "$dry_run" ;;
+        "")
+            error "ob dev: no subcommand." >&2
+            error "Run 'ob dev --machine $machine list [pattern]' to discover recipes first." >&2
+            return 3
+            ;;
+        *)
+            error "ob dev $subcmd: reserved, not implemented yet." >&2
+            return 1
+            ;;
+    esac
+}
