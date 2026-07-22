@@ -159,6 +159,6 @@ Examples:
 
 - 新增 `ob start-qemu` / `ob stop-qemu`：在 QEMU 中启停 BMC 实例（SoC 自动检测、Jenkins 更新检查、端口与 PID 管理、多架构支持）。
 
-### v1.0
+### v1.0 — 2026-06-08
 
 - 首发：`ob init` / `ob build` / `ob status` + 内置 AI Agent 上下文框架。
