@@ -1,1 +1,1 @@
-读取并遵循 .claude/skills/improve-codebase-architecture/SKILL.md 来深入分析仓库内容，只提供一个最重要、最紧急、最值得今天就开工的优化任务给我！
+读取并遵循 .claude/skills/improve-codebase-architecture/SKILL.md 来深入分析仓库内容，只提供一个最重要、最紧急、最值得今天就开工的优化任务给我！不用写 HTML报告。
