@@ -65,3 +65,16 @@ dev_subcmd_refresh() {
     if [[ "$_rrc" -ne 0 ]]; then error "ob dev refresh: failed (stage=$_rstage)." >&2; return 1; fi
     return 0
 }
+
+# dev_subcmd_modify <machine> <build_dir> <recipe> <pattern> <dry_run> → return 0/1/3
+# recipe 前置 → dry_run → modify_run → relay → printf srctree（非 JSON stdout）。
+dev_subcmd_modify() {
+    local machine="$1" build_dir="$2" recipe="$3" pattern="$4" dry_run="$5"
+    _dev_recipe_precondition "$machine" "$recipe" modify || return 3
+    _dev_dryrun_gate "$dry_run" "[DRY-RUN] ob dev modify $recipe: would devtool modify (srctree preview: $build_dir/workspace/sources/$recipe)." && return 0
+    local _srctree="" _stage="" _stderr_file="" _mrc=0
+    devtool_modify_run "$machine" "$build_dir" "$recipe" _srctree _stage _stderr_file || _mrc=$?
+    dev_relay_result modify "$_stderr_file" "$_stage" "" "$_mrc" || return 1
+    printf '%s\n' "$_srctree"
+    return 0
+}

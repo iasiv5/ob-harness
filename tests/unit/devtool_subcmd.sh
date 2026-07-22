@@ -37,6 +37,13 @@ devtool_search_refresh() {
     printf -v "$4" '%s' "${MOCK_R_STDERR:-}"
     return "${MOCK_REFRESH_RC:-0}"
 }
+devtool_modify_run() {
+    # $1=machine $2=build_dir $3=recipe $4=srctree_outvar $5=stage_outvar $6=stderr_outvar
+    printf -v "$4" '%s' "${MOCK_SRCTREE:-/src/x}"
+    printf -v "$5" '%s' "${MOCK_M_STAGE:-command}"
+    printf -v "$6" '%s' "${MOCK_M_STDERR:-}"
+    return "${MOCK_MODIFY_RC:-0}"
+}
 
 # === ① dry_run=1 → return 0 + stderr 含 [DRY-RUN] notice，relay 未被调 ===
 RELAY_CALLED=0; _err="$(mktemp)"
@@ -104,6 +111,38 @@ dev_subcmd_refresh "$MACHINE" "$TMP/build" "" "" 0 >"$_out" 2>"$_err"
 rc=$?
 assert_eq "⑧ refresh 正常: return 0" "$rc" "0"
 assert_eq "⑧ refresh 正常: stdout 空" "$(cat "$_out")" ""
+rm -f "$_out" "$_err"
+
+# ========== modify handler ==========
+# === ⑨ modify recipe 空 → return 3 + stderr remedy "list [pattern]" ===
+_err="$(mktemp)"
+dev_subcmd_modify "$MACHINE" "$TMP/build" "" "" 0 2>"$_err" >/dev/null
+rc=$?
+assert_eq "⑨ modify recipe 空: return 3" "$rc" "3"
+assert_contains "⑨ modify recipe 空: remedy list [pattern]" "$(cat "$_err")" "list [pattern]"
+rm -f "$_err"
+
+# === ⑩ modify dry_run（recipe 非空）→ return 0 + stderr [DRY-RUN] ===
+_err="$(mktemp)"
+dev_subcmd_modify "$MACHINE" "$TMP/build" "x" "" 1 2>"$_err" >/dev/null
+rc=$?
+assert_eq "⑩ modify dry_run: return 0" "$rc" "0"
+assert_contains "⑩ modify dry_run: stderr [DRY-RUN]" "$(cat "$_err")" "[DRY-RUN] ob dev modify"
+rm -f "$_err"
+
+# === ⑪ modify relay rc=1 → return 1 ===
+MOCK_MODIFY_RC=0; MOCK_RELAY_RC=1; RELAY_CALLED=0
+dev_subcmd_modify "$MACHINE" "$TMP/build" "x" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "⑪ modify relay rc=1: return 1" "$rc" "1"
+
+# === ⑫ modify 正常 → return 0 + stdout = srctree ===
+MOCK_MODIFY_RC=0; MOCK_RELAY_RC=0; MOCK_SRCTREE="/src/phosphor"; RELAY_CALLED=0
+_out="$(mktemp)"; _err="$(mktemp)"
+dev_subcmd_modify "$MACHINE" "$TMP/build" "x" "" 0 >"$_out" 2>"$_err"
+rc=$?
+assert_eq "⑫ modify 正常: return 0" "$rc" "0"
+assert_eq "⑫ modify 正常: stdout = srctree" "$(cat "$_out")" "/src/phosphor"
 rm -f "$_out" "$_err"
 
 assert_summary

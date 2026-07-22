@@ -1151,20 +1151,9 @@ cmd_dev() {
             exit 0
             ;;
         modify)
-            if [[ -z "$dev_recipe" ]]; then
-                error "ob dev modify: no recipe specified." >&2
-                error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
-                exit 3
-            fi
-            if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                notice "[DRY-RUN] ob dev modify $dev_recipe: would devtool modify (srctree preview: $dev_build_dir/workspace/sources/$dev_recipe)." >&2
-                exit 0
-            fi
-            local _srctree="" _stage="" _stderr_file="" _mrc=0
-            devtool_modify_run "$dev_machine" "$dev_build_dir" "$dev_recipe" _srctree _stage _stderr_file || _mrc=$?
-            dev_relay_result modify "$_stderr_file" "$_stage" "" "$_mrc" || exit 1
-            printf '%s\n' "$_srctree"
-            exit 0
+            local _rc=0
+            dev_subcmd_modify "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
+            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
             ;;
         refresh)
             local _rc=0
