@@ -52,3 +52,16 @@ dev_subcmd_status() {
     dev_emit_status_jsonl "$_st_entries" || { error "ob dev status: failed to encode result JSONL." >&2; return 1; }
     return 0
 }
+
+# dev_subcmd_refresh <machine> <build_dir> <recipe> <pattern> <dry_run> → return 0/1
+# 不调 relay/emit：自己做 cat+rm stderr，空 stdout（cache 重建无 porcelain 输出）。
+dev_subcmd_refresh() {
+    local machine="$1" build_dir="$2" recipe="$3" pattern="$4" dry_run="$5"
+    _dev_dryrun_gate "$dry_run" "[DRY-RUN] ob dev refresh: would regenerate recipe cache via tinfoil." && return 0
+    local _rstage="" _rstderr="" _rrc=0
+    devtool_search_refresh "$machine" "$build_dir" _rstage _rstderr || _rrc=$?
+    cat "$_rstderr" >&2 2>/dev/null || true
+    rm -f "$_rstderr" 2>/dev/null
+    if [[ "$_rrc" -ne 0 ]]; then error "ob dev refresh: failed (stage=$_rstage)." >&2; return 1; fi
+    return 0
+}

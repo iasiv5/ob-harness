@@ -1167,19 +1167,9 @@ cmd_dev() {
             exit 0
             ;;
         refresh)
-            if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                notice "[DRY-RUN] ob dev refresh: would regenerate recipe cache via tinfoil." >&2
-                exit 0
-            fi
-            local _rstage="" _rstderr="" _rrc=0
-            devtool_search_refresh "$dev_machine" "$dev_build_dir" _rstage _rstderr || _rrc=$?
-            cat "$_rstderr" >&2 2>/dev/null || true
-            rm -f "$_rstderr" 2>/dev/null
-            if [[ "$_rrc" -ne 0 ]]; then
-                error "ob dev refresh: failed (stage=$_rstage)." >&2
-                exit 1
-            fi
-            exit 0
+            local _rc=0
+            dev_subcmd_refresh "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
+            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
             ;;
         "")
             error "ob dev: no subcommand." >&2

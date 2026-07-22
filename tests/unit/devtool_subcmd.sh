@@ -31,6 +31,12 @@ dev_emit_status_jsonl() {
     printf '%s\n' "${MOCK_EMIT_OUT:-[]}"
     return "${MOCK_EMIT_RC:-0}"
 }
+devtool_search_refresh() {
+    # $1=machine $2=build_dir $3=stage_outvar $4=stderr_outvar
+    printf -v "$3" '%s' "${MOCK_R_STAGE:-tinfoil}"
+    printf -v "$4" '%s' "${MOCK_R_STDERR:-}"
+    return "${MOCK_REFRESH_RC:-0}"
+}
 
 # === ① dry_run=1 → return 0 + stderr 含 [DRY-RUN] notice，relay 未被调 ===
 RELAY_CALLED=0; _err="$(mktemp)"
@@ -73,6 +79,31 @@ out="$(cat "$_out")"
 assert_eq "⑤ 正常: return 0" "$rc" "0"
 assert_eq "⑤ 正常: relay 被调" "$RELAY_CALLED" "1"
 assert_eq "⑤ 正常: stdout = emit 输出" "$out" '{"recipe":"x","srctree":"/p"}'
+rm -f "$_out" "$_err"
+
+# ========== refresh handler ==========
+# === ⑥ refresh dry_run → return 0 + stderr 含 [DRY-RUN]，refresh 未被调 ===
+MOCK_REFRESH_RC=0; _err="$(mktemp)"
+dev_subcmd_refresh "$MACHINE" "$TMP/build" "" "" 1 2>"$_err" >/dev/null
+rc=$?
+assert_eq "⑥ refresh dry_run: return 0" "$rc" "0"
+assert_contains "⑥ refresh dry_run: stderr 含 [DRY-RUN]" "$(cat "$_err")" "[DRY-RUN] ob dev refresh"
+rm -f "$_err"
+
+# === ⑦ refresh rc≠0 → return 1 + stderr 含 "failed (stage=...)" ===
+MOCK_REFRESH_RC=1; MOCK_R_STAGE="tinfoil"; _err="$(mktemp)"
+dev_subcmd_refresh "$MACHINE" "$TMP/build" "" "" 0 2>"$_err" >/dev/null
+rc=$?
+assert_eq "⑦ refresh rc=1: return 1" "$rc" "1"
+assert_contains "⑦ refresh rc=1: stderr 含 failed" "$(cat "$_err")" "failed (stage=tinfoil)"
+rm -f "$_err"
+
+# === ⑧ refresh 正常 → return 0 + stdout 空 ===
+MOCK_REFRESH_RC=0; _out="$(mktemp)"; _err="$(mktemp)"
+dev_subcmd_refresh "$MACHINE" "$TMP/build" "" "" 0 >"$_out" 2>"$_err"
+rc=$?
+assert_eq "⑧ refresh 正常: return 0" "$rc" "0"
+assert_eq "⑧ refresh 正常: stdout 空" "$(cat "$_out")" ""
 rm -f "$_out" "$_err"
 
 assert_summary
