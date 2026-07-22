@@ -19,6 +19,7 @@
 - **命名（D6）**：`lib/devtool_subcmd.sh` + `dev_dispatch_subcmd` + `dev_subcmd_<name>` + `_dev_dryrun_gate`/`_dev_recipe_precondition`。
 - **lib 文件结构**：过 `extract_funcs` 三段（header 注释 + 函数定义 + footer 纯函数定义），参照 `lib/devtool_pick.sh`。
 - **dry_run 走入参**：handler 签名含 `dry_run`，不读全局 `$DRY_RUN`（自包含、好测）；`cmd_dev` 切换时传 `"${DRY_RUN:-0}"`。
+- **cmd_dev 收口模式（Task 1 实施发现，适配 exit_contract X）**：handler leaf-pure return exit-code(0/1/2/3)，cmd_dev 用**字面 case 映射**收口，**不用 `exit $?`**——exit_contract X 规则禁 dynamic exit（仅 require_path 例外，见 ob_check 实测报 `dynamic exit '$?' outside require_path`）。统一写法：`local _rc=0; dev_subcmd_* ... || _rc=$?; case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac`（`|| _rc=$?` 兼防 set -e 在 handler return 非零时中止）。dispatcher `dev_dispatch_subcmd` 透传用 `return $?`（leaf-pure return，不违反 X——X 只管 `exit`）。
 - **scope（D2）**：本次只抽 dispatch case；TTY guide（cmd_dev 内交互引导段）、arg parsing 不动。
 - 文案逐字照搬：各 notice / remedy / error 文案从 `cmd_dev` 原分支原样搬到 handler，不改写。
 
@@ -111,8 +112,9 @@
   3. Modify `lib/commands.sh` cmd_dev 的 `status)` 分支：整段替换为：
   ```bash
           status)
-              dev_subcmd_status "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}"
-              exit $?
+              local _rc=0
+              dev_subcmd_status "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
+              case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
               ;;
   ```
   4. Create `tests/unit/devtool_subcmd.sh`：source `ob_loader.sh` + `assert.sh` + `assert_reset`；mktemp TMP + trap；头注释补 outvar 形参名（`_st_entries` 等）不与 handler 内 local 同名的免责说明（参考 devtool_pick.sh unit 的 nameref 免责）；用 **stub 下游**（重定义 `devtool_status_run`/`dev_relay_result`/`dev_emit_status_jsonl`）聚焦 handler 编排；关键 case：① dry_run=1 → return 0 + stderr 含 notice；② entries 空 → return 0 + stderr 含 "No modified recipes"；③ relay 返回 1 → handler return 1；④ emit 返回 1 → handler return 1；⑤ 正常 → return 0 + stdout = emit 输出。stub 范式（outvar 经 `printf -v "$3"` 回传，当前 shell 跑，stderr 用文件捕获 `2>"$_err"` 不用 `$()`）：
@@ -161,7 +163,7 @@
       return 0
   }
   ```
-  cmd_dev `refresh)` 分支替换为 `dev_subcmd_refresh "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}"; exit $?`。unit 加 stub `devtool_search_refresh` + case：① dry_run → return 0；② refresh rc≠0 → return 1 + stderr 含 "failed"；③ 正常 → return 0 + stdout 空。
+  cmd_dev `refresh)` 分支替换为 handler 调用 + 字面 case 收口（全局约束「cmd_dev 收口模式」）。unit 加 stub `devtool_search_refresh` + case：① dry_run → return 0；② refresh rc≠0 → return 1 + stderr 含 "failed"；③ 正常 → return 0 + stdout 空。
 
 - [ ] Step 4: 确认通过
 - Run: `bash tests/unit/devtool_subcmd.sh && tools/ob_check.sh`
@@ -201,7 +203,7 @@
       return 0
   }
   ```
-  cmd_dev `modify)` 分支替换为 handler 调用 + `exit $?`。unit 加 stub `devtool_modify_run`（outvar `_srctree`/`_stage`/`_stderr_file` 经 `printf -v "$4"` 等）+ case：① recipe 空 → return 3 + stderr 含 remedy "list [pattern]"；② dry_run → return 0；③ relay rc=1 → return 1；④ 正常 → return 0 + stdout = srctree。
+  cmd_dev `modify)` 分支替换为 handler 调用 + 字面 case 收口（全局约束「cmd_dev 收口模式」）。unit 加 stub `devtool_modify_run`（outvar `_srctree`/`_stage`/`_stderr_file` 经 `printf -v "$4"` 等）+ case：① recipe 空 → return 3 + stderr 含 remedy "list [pattern]"；② dry_run → return 0；③ relay rc=1 → return 1；④ 正常 → return 0 + stdout = srctree。
 
 - [ ] Step 4: 确认通过
 - Run: `bash tests/unit/devtool_subcmd.sh && tools/ob_check.sh`
@@ -251,7 +253,7 @@
       return 0   # 空 stdout(exit code 承载成败)
   }
   ```
-  cmd_dev `build)` 分支替换为 handler 调用 + `exit $?`。unit 加 stub `devtool_build_run`（outvar `_b_stage`/`_b_stderr`/`_b_notmod`）+ case：① recipe 空 → return 3；② dry_run → return 0；③ **not_mod（stub 设 `_b_notmod=1` + run rc=0）→ return 3 + stderr 含 "not modified" + 走 cat 非 relay**（断言 `dev_relay_result` 未被调用：用计数 stub）；④ relay rc=1 → return 1；⑤ 正常 → return 0 + stdout 空。not_mod case 的回归锁：`dev_relay_result` stub 内 `MOCK_RELAY_CALLED=1`，not_mod case 后断言 `test -z "${MOCK_RELAY_CALLED:-}"`（relay 未被调）。
+  cmd_dev `build)` 分支替换为 handler 调用 + 字面 case 收口（全局约束「cmd_dev 收口模式」）。unit 加 stub `devtool_build_run`（outvar `_b_stage`/`_b_stderr`/`_b_notmod`）+ case：① recipe 空 → return 3；② dry_run → return 0；③ **not_mod（stub 设 `_b_notmod=1` + run rc=0）→ return 3 + stderr 含 "not modified" + 走 cat 非 relay**（断言 `dev_relay_result` 未被调用：用计数 stub）；④ relay rc=1 → return 1；⑤ 正常 → return 0 + stdout 空。not_mod case 的回归锁：`dev_relay_result` stub 内 `MOCK_RELAY_CALLED=1`，not_mod case 后断言 `test -z "${MOCK_RELAY_CALLED:-}"`（relay 未被调）。
 
 - [ ] Step 4: 确认通过（重点验 not_mod 锁定）
 - Run: `bash tests/unit/devtool_subcmd.sh && tools/ob_check.sh`
@@ -295,7 +297,7 @@
       return 0
   }
   ```
-  cmd_dev `reset)` 分支替换为 handler 调用 + `exit $?`。unit 加 stub `devtool_reset_run`（8 outvar）+ `dev_emit_reset_json` + case：① recipe 空 → return 3；② dry_run → return 0；③ relay rc=1 → return 1；④ emit rc=1 → return 1；⑤ 正常 → return 0 + stdout = emit 输出。
+  cmd_dev `reset)` 分支替换为 handler 调用 + 字面 case 收口（全局约束「cmd_dev 收口模式」）。unit 加 stub `devtool_reset_run`（8 outvar）+ `dev_emit_reset_json` + case：① recipe 空 → return 3；② dry_run → return 0；③ relay rc=1 → return 1；④ emit rc=1 → return 1；⑤ 正常 → return 0 + stdout = emit 输出。
 
 - [ ] Step 4: 确认通过
 - Run: `bash tests/unit/devtool_subcmd.sh && tools/ob_check.sh`
@@ -342,7 +344,7 @@
       return 0
   }
   ```
-  cmd_dev `finish)` 分支替换为 handler 调用 + `exit $?`。unit 加 stub `devtool_finish_run`（13 outvar）+ `dev_emit_finish_json` + case：① recipe 空 → return 3（remedy 含 "status"）；② dry_run → return 0；③ relay rc=1 → return 1；④ emit rc=1 → return 1；⑤ 正常 → return 0 + stdout = emit 输出。
+  cmd_dev `finish)` 分支替换为 handler 调用 + 字面 case 收口（全局约束「cmd_dev 收口模式」）。unit 加 stub `devtool_finish_run`（13 outvar）+ `dev_emit_finish_json` + case：① recipe 空 → return 3（remedy 含 "status"）；② dry_run → return 0；③ relay rc=1 → return 1；④ emit rc=1 → return 1；⑤ 正常 → return 0 + stdout = emit 输出。
 
 - [ ] Step 4: 确认通过
 - Run: `bash tests/unit/devtool_subcmd.sh && tools/ob_check.sh`
@@ -401,7 +403,7 @@
       return 0
   }
   ```
-  cmd_dev `list)` 分支替换为 handler 调用 + `exit $?`。unit 加 stub `devtool_search_read`（outvar `_state`，可配 `MOCK_READ_STATE`）+ `devtool_search_refresh` + case：① dry_run → return 0；② read rc≠0 → return 1；③ stale → return 3 + stderr 含 "refresh"；④ missing + refresh rc≠0 → return 1；⑤ missing + refresh ok + 重检 fresh → return 0；⑥ missing + 重检 非 fresh → return 1；⑦ fresh → return 0。
+  cmd_dev `list)` 分支替换为 handler 调用 + 字面 case 收口（全局约束「cmd_dev 收口模式」）。unit 加 stub `devtool_search_read`（outvar `_state`，可配 `MOCK_READ_STATE`）+ `devtool_search_refresh` + case：① dry_run → return 0；② read rc≠0 → return 1；③ stale → return 3 + stderr 含 "refresh"；④ missing + refresh rc≠0 → return 1；⑤ missing + refresh ok + 重检 fresh → return 0；⑥ missing + 重检 非 fresh → return 1；⑦ fresh → return 0。
 
 - [ ] Step 4: 确认通过
 - Run: `bash tests/unit/devtool_subcmd.sh && tools/ob_check.sh`
@@ -456,8 +458,10 @@
   ```
   2. Modify `lib/commands.sh` cmd_dev：把整段 dispatch case（Task 1-7 切换后的 7 个 `dev_subcmd_* ...; exit $?` 内联分支 + `""` + `*`）替换为：
   ```bash
-      dev_dispatch_subcmd "$dev_subcmd" "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}"
-      exit $?
+      local _rc=0
+      dev_dispatch_subcmd "$dev_subcmd" "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
+      # cmd_dev 字面 case 收口（全局约束；exit_contract X 禁 exit $?, || _rc=$? 防 set -e）
+      case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
   ```
 
 - [ ] Step 4: 确认通过（收口验证）

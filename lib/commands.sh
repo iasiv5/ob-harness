@@ -1230,19 +1230,11 @@ cmd_dev() {
             exit 0
             ;;
         status)
-            if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                notice "[DRY-RUN] ob dev status: would list modified recipes via devtool status." >&2
-                exit 0
-            fi
-            local _st_entries="" _st_stage="" _st_stderr_file="" _st_rc=0
-            devtool_status_run "$dev_machine" "$dev_build_dir" _st_entries _st_stage _st_stderr_file || _st_rc=$?
-            dev_relay_result status "$_st_stderr_file" "$_st_stage" "" "${_st_rc:-0}" || exit 1
-            if [[ -z "$_st_entries" ]]; then
-                warn "No modified recipes for $dev_machine." >&2
-                exit 0
-            fi
-            dev_emit_status_jsonl "$_st_entries" || { error "ob dev status: failed to encode result JSONL." >&2; exit 1; }
-            exit 0
+            local _rc=0
+            dev_subcmd_status "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
+            # handler leaf-pure return exit-code(0/1/2/3); cmd_dev 收口为字面 exit
+            # (exit_contract X 禁 dynamic exit $?; case 归一 + || _rc=$? 防 set -e 中止)。
+            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
             ;;
         build)
             if [[ -z "$dev_recipe" ]]; then
