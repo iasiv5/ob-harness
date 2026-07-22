@@ -1108,47 +1108,9 @@ cmd_dev() {
 
     case "$dev_subcmd" in
         list)
-            if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                notice "[DRY-RUN] ob dev list: would read recipe cache + output JSONL (pattern='$dev_pattern')." >&2
-                exit 0
-            fi
-            local _state="" _read_rc=0
-            devtool_search_read "$dev_machine" "$dev_build_dir" "$dev_pattern" _state || _read_rc=$?
-            if [[ "$_read_rc" -ne 0 ]]; then
-                error "ob dev list: failed to read recipe cache safely." >&2
-                exit 1
-            fi
-            case "$_state" in
-                missing)
-                    local _rstage="" _rstderr="" _rrc=0
-                    devtool_search_refresh "$dev_machine" "$dev_build_dir" _rstage _rstderr || _rrc=$?
-                    cat "$_rstderr" >&2 2>/dev/null || true
-                    rm -f "$_rstderr" 2>/dev/null
-                    if [[ "$_rrc" -ne 0 ]]; then
-                        error "ob dev list: failed to generate recipe cache (stage=$_rstage)." >&2
-                        exit 1
-                    fi
-                    # Refresh 后在同一 shared lock 内重检并读取，避免 state/list 跨代。
-                    local _post_state=""
-                    _read_rc=0
-                    devtool_search_read "$dev_machine" "$dev_build_dir" "$dev_pattern" _post_state || _read_rc=$?
-                    if [[ "$_read_rc" -ne 0 ]]; then
-                        error "ob dev list: failed to read generated recipe cache safely." >&2
-                        exit 1
-                    fi
-                    if [[ "$_post_state" != "fresh" ]]; then
-                        error "ob dev list: cache not fresh after refresh (state=$_post_state)." >&2
-                        exit 1
-                    fi
-                    ;;
-                stale)
-                    error "Recipe cache is stale (bblayers/commit changed)." >&2
-                    error "Run 'ob dev --machine $dev_machine refresh' first." >&2
-                    exit 3
-                    ;;
-                fresh) ;;
-            esac
-            exit 0
+            local _rc=0
+            dev_subcmd_list "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
+            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
             ;;
         modify)
             local _rc=0

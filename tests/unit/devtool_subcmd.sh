@@ -93,6 +93,18 @@ dev_emit_finish_json() {
     printf '%s\n' "${MOCK_EMIT_FINISH_OUT:-$_d}"
     return "${MOCK_EMIT_FINISH_RC:-0}"
 }
+_READ_CALL=0
+devtool_search_read() {
+    # $1=machine $2=build_dir $3=pattern $4=state_outvar；直写 stdout JSONL（list 输出）
+    _READ_CALL=$((_READ_CALL + 1))
+    printf '%s\n' "${MOCK_READ_OUT:-}"
+    if (( _READ_CALL == 1 )); then
+        printf -v "$4" '%s' "${MOCK_READ_STATE:-fresh}"
+    else
+        printf -v "$4" '%s' "${MOCK_READ_STATE_2:-fresh}"
+    fi
+    return "${MOCK_READ_RC:-0}"
+}
 
 # === ① dry_run=1 → return 0 + stderr 含 [DRY-RUN] notice，relay 未被调 ===
 RELAY_CALLED=0; _err="$(mktemp)"
@@ -310,5 +322,52 @@ rc=$?
 assert_eq "㉗ finish 正常: return 0" "$rc" "0"
 assert_eq "㉗ finish 正常: stdout = emit 输出" "$(cat "$_out")" '{"recipe":"x","landing_mode":"patch"}'
 rm -f "$_out" "$_err"
+
+# ========== list handler（read→三态机） ==========
+# === ㉘ list dry_run → return 0 + stderr [DRY-RUN] ===
+_err="$(mktemp)"
+dev_subcmd_list "$MACHINE" "$TMP/build" "" "" 1 2>"$_err" >/dev/null
+rc=$?
+assert_eq "㉘ list dry_run: return 0" "$rc" "0"
+assert_contains "㉘ list dry_run: stderr [DRY-RUN]" "$(cat "$_err")" "[DRY-RUN] ob dev list"
+rm -f "$_err"
+
+# === ㉙ list read rc≠0 → return 1 ===
+_READ_CALL=0; MOCK_READ_RC=1; MOCK_READ_STATE="fresh"
+dev_subcmd_list "$MACHINE" "$TMP/build" "" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "㉙ list read rc≠0: return 1" "$rc" "1"
+
+# === ㉚ list stale → return 3 + stderr "refresh" ===
+_READ_CALL=0; MOCK_READ_RC=0; MOCK_READ_STATE="stale"; _err="$(mktemp)"
+dev_subcmd_list "$MACHINE" "$TMP/build" "" "" 0 2>"$_err" >/dev/null
+rc=$?
+assert_eq "㉚ list stale: return 3" "$rc" "3"
+assert_contains "㉚ list stale: stderr refresh" "$(cat "$_err")" "Run 'ob dev --machine $MACHINE refresh' first."
+rm -f "$_err"
+
+# === ㉛ list missing + refresh rc≠0 → return 1 ===
+_READ_CALL=0; MOCK_READ_RC=0; MOCK_READ_STATE="missing"; MOCK_REFRESH_RC=1
+dev_subcmd_list "$MACHINE" "$TMP/build" "" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "㉛ list missing+refresh fail: return 1" "$rc" "1"
+
+# === ㉜ list missing + refresh ok + 重检 fresh → return 0 ===
+_READ_CALL=0; MOCK_READ_RC=0; MOCK_READ_STATE="missing"; MOCK_READ_STATE_2="fresh"; MOCK_REFRESH_RC=0
+dev_subcmd_list "$MACHINE" "$TMP/build" "" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "㉜ list missing+refresh ok+重检 fresh: return 0" "$rc" "0"
+
+# === ㉝ list missing + 重检非 fresh → return 1 ===
+_READ_CALL=0; MOCK_READ_RC=0; MOCK_READ_STATE="missing"; MOCK_READ_STATE_2="stale"; MOCK_REFRESH_RC=0
+dev_subcmd_list "$MACHINE" "$TMP/build" "" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "㉝ list missing+重检非fresh: return 1" "$rc" "1"
+
+# === ㉞ list fresh → return 0 ===
+_READ_CALL=0; MOCK_READ_RC=0; MOCK_READ_STATE="fresh"
+dev_subcmd_list "$MACHINE" "$TMP/build" "" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "㉞ list fresh: return 0" "$rc" "0"
 
 assert_summary

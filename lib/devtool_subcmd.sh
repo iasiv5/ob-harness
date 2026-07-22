@@ -135,3 +135,34 @@ dev_subcmd_finish() {
     dev_emit_finish_json "$recipe" "$_finish_srctree" "$_finish_srctreebase" "$_finish_disposition" "$_finish_destination_parent" "$_finish_cleaned_bbappend" "$_finish_landing_mode" "$_finish_landing_layer" "$_finish_patches" "$_finish_recipe_files" "$_finish_srcrev" || { error "ob dev finish: result JSON malformed." >&2; return 1; }
     return 0
 }
+
+# dev_subcmd_list <machine> <build_dir> <recipe> <pattern> <dry_run> → return 0/1/3
+# 不调 relay/emit：read 失败/refresh 失败自己 cat+rm stderr；list 输出由 devtool_search_read 直写 stdout JSONL。
+dev_subcmd_list() {
+    local machine="$1" build_dir="$2" recipe="$3" pattern="$4" dry_run="$5"
+    _dev_dryrun_gate "$dry_run" "[DRY-RUN] ob dev list: would read recipe cache + output JSONL (pattern='$pattern')." && return 0
+    local _state="" _read_rc=0
+    devtool_search_read "$machine" "$build_dir" "$pattern" _state || _read_rc=$?
+    if [[ "$_read_rc" -ne 0 ]]; then error "ob dev list: failed to read recipe cache safely." >&2; return 1; fi
+    case "$_state" in
+        missing)
+            local _rstage="" _rstderr="" _rrc=0
+            devtool_search_refresh "$machine" "$build_dir" _rstage _rstderr || _rrc=$?
+            cat "$_rstderr" >&2 2>/dev/null || true
+            rm -f "$_rstderr" 2>/dev/null
+            if [[ "$_rrc" -ne 0 ]]; then error "ob dev list: failed to generate recipe cache (stage=$_rstage)." >&2; return 1; fi
+            # Refresh 后在同一 shared lock 内重检并读取，避免 state/list 跨代。
+            local _post_state=""; _read_rc=0
+            devtool_search_read "$machine" "$build_dir" "$pattern" _post_state || _read_rc=$?
+            if [[ "$_read_rc" -ne 0 ]]; then error "ob dev list: failed to read generated recipe cache safely." >&2; return 1; fi
+            if [[ "$_post_state" != "fresh" ]]; then error "ob dev list: cache not fresh after refresh (state=$_post_state)." >&2; return 1; fi
+            ;;
+        stale)
+            error "Recipe cache is stale (bblayers/commit changed)." >&2
+            error "Run 'ob dev --machine $machine refresh' first." >&2
+            return 3
+            ;;
+        fresh) ;;
+    esac
+    return 0
+}
