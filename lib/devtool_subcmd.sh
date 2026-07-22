@@ -100,3 +100,19 @@ dev_subcmd_build() {
     dev_relay_result build "$_b_stderr" "$_b_stage" "" "${_b_rc:-0}" || return 1
     return 0   # 空 stdout(exit code 承载成败)
 }
+
+# dev_subcmd_reset <machine> <build_dir> <recipe> <pattern> <dry_run> → return 0/1/3
+dev_subcmd_reset() {
+    local machine="$1" build_dir="$2" recipe="$3" pattern="$4" dry_run="$5"
+    _dev_recipe_precondition "$machine" "$recipe" reset || return 3
+    _dev_dryrun_gate "$dry_run" "[DRY-RUN] ob dev reset $recipe: would devtool reset (source-preserving, no --remove-work)." && return 0
+    local _reset_srctree="" _reset_srctreebase="" _reset_disposition=""
+    local _reset_destination_parent="" _reset_cleaned_bbappend="" _reset_phase="" _reset_stage="" _reset_stderr_file=""
+    local _reset_rc=0
+    devtool_reset_run "$machine" "$build_dir" "$recipe" \
+        _reset_srctree _reset_srctreebase _reset_disposition _reset_destination_parent \
+        _reset_cleaned_bbappend _reset_phase _reset_stage _reset_stderr_file || _reset_rc=$?
+    dev_relay_result reset "$_reset_stderr_file" "$_reset_stage" "$_reset_phase" "$_reset_rc" || return 1
+    dev_emit_reset_json "$recipe" "$_reset_srctree" "$_reset_srctreebase" "$_reset_disposition" "$_reset_destination_parent" "$_reset_cleaned_bbappend" || { error "ob dev reset: result JSON malformed." >&2; return 1; }
+    return 0
+}

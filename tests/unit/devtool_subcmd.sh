@@ -51,6 +51,24 @@ devtool_build_run() {
     printf -v "$6" '%s' "${MOCK_B_NOTMOD:-0}"
     return "${MOCK_BUILD_RC:-0}"
 }
+devtool_reset_run() {
+    # $1=machine $2=build_dir $3=recipe $4=srctree $5=srctreebase $6=disposition
+    # $7=dest_parent $8=cleaned_bbappend $9=phase $10=stage $11=stderr
+    printf -v "$4"  '%s' "${MOCK_RS_SRCTREE:-/src}"
+    printf -v "$5"  '%s' "${MOCK_RS_SRCTREEBASE:-/srcbase}"
+    printf -v "$6"  '%s' "${MOCK_RS_DISP:-moved}"
+    printf -v "$7"  '%s' "${MOCK_RS_DEST_PARENT:-/attic}"
+    printf -v "$8"  '%s' "${MOCK_RS_CLEANED:-}"
+    printf -v "$9"  '%s' "${MOCK_RS_PHASE:-}"
+    printf -v "${10}" '%s' "${MOCK_RS_STAGE:-command}"
+    printf -v "${11}" '%s' "${MOCK_RS_STDERR:-}"
+    return "${MOCK_RESET_RC:-0}"
+}
+dev_emit_reset_json() {
+    local _d='{"recipe":"x"}'
+    printf '%s\n' "${MOCK_EMIT_RESET_OUT:-$_d}"
+    return "${MOCK_EMIT_RESET_RC:-0}"
+}
 
 # === ① dry_run=1 → return 0 + stderr 含 [DRY-RUN] notice，relay 未被调 ===
 RELAY_CALLED=0; _err="$(mktemp)"
@@ -191,6 +209,44 @@ dev_subcmd_build "$MACHINE" "$TMP/build" "x" "" 0 >"$_out" 2>"$_err"
 rc=$?
 assert_eq "⑰ build 正常: return 0" "$rc" "0"
 assert_eq "⑰ build 正常: stdout 空" "$(cat "$_out")" ""
+rm -f "$_out" "$_err"
+
+# ========== reset handler ==========
+# === ⑱ reset recipe 空 → return 3 + remedy "list [pattern]" ===
+_err="$(mktemp)"
+dev_subcmd_reset "$MACHINE" "$TMP/build" "" "" 0 2>"$_err" >/dev/null
+rc=$?
+assert_eq "⑱ reset recipe 空: return 3" "$rc" "3"
+assert_contains "⑱ reset recipe 空: remedy list" "$(cat "$_err")" "list [pattern]"
+rm -f "$_err"
+
+# === ⑲ reset dry_run → return 0 + stderr [DRY-RUN] ===
+_err="$(mktemp)"
+dev_subcmd_reset "$MACHINE" "$TMP/build" "x" "" 1 2>"$_err" >/dev/null
+rc=$?
+assert_eq "⑲ reset dry_run: return 0" "$rc" "0"
+assert_contains "⑲ reset dry_run: stderr [DRY-RUN]" "$(cat "$_err")" "[DRY-RUN] ob dev reset"
+rm -f "$_err"
+
+# === ⑳ reset relay rc=1 → return 1 ===
+MOCK_RESET_RC=0; MOCK_RELAY_RC=1; RELAY_CALLED=0
+dev_subcmd_reset "$MACHINE" "$TMP/build" "x" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "⑳ reset relay rc=1: return 1" "$rc" "1"
+
+# === ㉑ reset emit rc=1 → return 1 ===
+MOCK_RESET_RC=0; MOCK_RELAY_RC=0; MOCK_EMIT_RESET_RC=1; RELAY_CALLED=0
+dev_subcmd_reset "$MACHINE" "$TMP/build" "x" "" 0 >/dev/null 2>&1
+rc=$?
+assert_eq "㉑ reset emit rc=1: return 1" "$rc" "1"
+
+# === ㉒ reset 正常 → return 0 + stdout = emit 输出 ===
+MOCK_RESET_RC=0; MOCK_RELAY_RC=0; MOCK_EMIT_RESET_RC=0; MOCK_EMIT_RESET_OUT='{"recipe":"x","disposition":"moved"}'; RELAY_CALLED=0
+_out="$(mktemp)"; _err="$(mktemp)"
+dev_subcmd_reset "$MACHINE" "$TMP/build" "x" "" 0 >"$_out" 2>"$_err"
+rc=$?
+assert_eq "㉒ reset 正常: return 0" "$rc" "0"
+assert_eq "㉒ reset 正常: stdout = emit 输出" "$(cat "$_out")" '{"recipe":"x","disposition":"moved"}'
 rm -f "$_out" "$_err"
 
 assert_summary

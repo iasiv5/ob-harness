@@ -1166,24 +1166,9 @@ cmd_dev() {
             exit 3
             ;;
         reset)
-            if [[ -z "$dev_recipe" ]]; then
-                error "ob dev reset: no recipe specified." >&2
-                error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
-                exit 3
-            fi
-            if [[ "${DRY_RUN:-0}" == "1" ]]; then
-                notice "[DRY-RUN] ob dev reset $dev_recipe: would devtool reset (source-preserving, no --remove-work)." >&2
-                exit 0
-            fi
-            local _reset_srctree="" _reset_srctreebase="" _reset_disposition=""
-            local _reset_destination_parent="" _reset_cleaned_bbappend="" _reset_phase="" _reset_stage="" _reset_stderr_file=""
-            local _reset_rc=0
-            devtool_reset_run "$dev_machine" "$dev_build_dir" "$dev_recipe" \
-                _reset_srctree _reset_srctreebase _reset_disposition _reset_destination_parent \
-                _reset_cleaned_bbappend _reset_phase _reset_stage _reset_stderr_file || _reset_rc=$?
-            dev_relay_result reset "$_reset_stderr_file" "$_reset_stage" "$_reset_phase" "$_reset_rc" || exit 1
-            dev_emit_reset_json "$dev_recipe" "$_reset_srctree" "$_reset_srctreebase" "$_reset_disposition" "$_reset_destination_parent" "$_reset_cleaned_bbappend" || { error "ob dev reset: result JSON malformed." >&2; exit 1; }
-            exit 0
+            local _rc=0
+            dev_subcmd_reset "$dev_machine" "$dev_build_dir" "$dev_recipe" "$dev_pattern" "${DRY_RUN:-0}" || _rc=$?
+            case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
             ;;
         finish)
             if [[ -z "$dev_recipe" ]]; then
