@@ -6,9 +6,12 @@
 #
 # 覆盖范围:"直接调用"的 ob 函数(qemu_instance_is_alive/normalize_repo_url/read_kv_field/
 #   write_source_manifest/derive_*/interact 的 select/confirm/prompt 等)。
-# 已知低估:assert_rc 的 bash -c 子进程测试的 exit 函数(check_ports_available/
-#   parse_args/require_path/prompt_for_available_port)——bash -c 不继承父 -x,
-#   这些函数 trace 不采集。靠 checklist(tools/coverage_matrix.md)补偿。
+# 采集波动(非确定):assert_rc/with_stub 的 bash -c 子进程测试的函数(check_ports_available/
+#   parse_args/require_path/prompt_for_available_port 等)——其 xtrace 采集依赖
+#   BASH_XTRACEFD 是否传到子进程 + 子进程 fd3 是否指向同一 log, 跨 bash/locale 不稳
+#   (实测: 一环境捕 0 行→radar uncovered +1; 另一环境捕函数体→covered)。故 radar
+#   uncovered 计数对这些函数 ±1 浮动, 不能当确定值; 语义覆盖靠 checklist 补偿。
+#   根治(follow-up, 非本任务): 给 bash -c 子进程显式注入 BASH_XTRACEFD + set -x。
 #
 # 用法:
 #   tools/trace_collect.sh | python3 tools/coverage_radar.py -   # 全 unit+protocol+orchestration

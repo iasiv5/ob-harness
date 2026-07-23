@@ -73,8 +73,8 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | binary 更新/URL 决策 | qemu_binary_update_decision;qemu_binary_resolve_url | unit/qemu_binary_decision.sh | 纯决策 |
 | 实例四行显示 | qemu_instance_summarize_full | unit/qemu_instance.sh | start↔stop 复用；status 走 summarize_brief |
 | instance module（list/load/summarize_brief/clean_stale） | qemu_instance_list;qemu_instance_load;qemu_instance_summarize_brief;qemu_instance_clean_stale | unit/qemu_instance.sh | start/stop/status 共用；caller 不碰 .pids 物理布局 |
-| binary 更新(flock+回滚) | download_and_replace_community_qemu | | 副作用残留(flock+backup+rollback) |
-| custom binary 配置 | ensure_qemu_binary_custom | | 交互残留(非 TTY exit 3 / TTY prompt) |
+| binary 更新(flock+回滚) | download_and_replace_community_qemu;_dlqbc_stage_binary;_replace_community_binary | orchestration/qemu_binary_replace.sh | acquire/commit 切面; flock 留 wrapper; swap-fail-rollback 不变量 stateful mv 锁 |
+| custom binary 配置 | ensure_qemu_binary_custom;resolve_custom_binary_candidate;resolve_custom_pcbios_candidate | unit/qemu_binary_resolve.sh | 路径解析 leaf-pure(outvar 编码); 交互循环留 wrapper; 非 TTY exit 3 仍靠 .exp |
 
 ## stop-qemu
 
