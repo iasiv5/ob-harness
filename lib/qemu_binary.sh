@@ -498,7 +498,6 @@ ensure_qemu_binary_custom() {
     info "QEMU binary for custom source not found."
     echo ""
 
-    local input_binary=""
     local resolved_binary_path=""
     while true; do
         local pfp_rc=0
@@ -506,28 +505,19 @@ ensure_qemu_binary_custom() {
         if [[ "$pfp_rc" -ne 0 ]]; then
             exit 1
         fi
-        input_binary="$PROMPT_PATH_RESULT"
-
-        resolved_binary_path="$input_binary"
-        if [[ -d "$input_binary" ]]; then
-            resolved_binary_path="${input_binary%/}/$arch"
-            if [[ ! -f "$resolved_binary_path" ]]; then
-                error "Directory does not contain $arch: $input_binary"
-                continue
-            fi
-        elif [[ ! -f "$input_binary" ]]; then
-            error "File not found: $input_binary"
-            continue
-        fi
-
-        break
+        local _bres=""
+        resolve_custom_binary_candidate "$PROMPT_PATH_RESULT" "$arch" _bres
+        case "$_bres" in
+            ok:*) resolved_binary_path="${_bres#ok:}"; break ;;
+            err_dir_no_arch) error "Directory does not contain $arch: $PROMPT_PATH_RESULT"; continue ;;
+            err_not_file)    error "File not found: $PROMPT_PATH_RESULT"; continue ;;
+        esac
     done
 
     cp "$resolved_binary_path" "$QEMU_BIN_FILE"
     chmod +x "$QEMU_BIN_FILE"
     info "QEMU binary copied: $QEMU_BIN_FILE"
 
-    local input_pcbios=""
     local resolved_pcbios_path=""
     local target_pcbios="$QEMU_BIN_DIR/pc-bios"
     if [[ "$QEMU_LAUNCH_REQUIRES_PCBIOS" == "yes" ]]; then
@@ -539,25 +529,16 @@ ensure_qemu_binary_custom() {
             if [[ "$pfp_rc" -ne 0 ]]; then
                 exit 1
             fi
-            input_pcbios="$PROMPT_PATH_RESULT"
-
-            if [[ ! -d "$input_pcbios" ]]; then
-                error "Directory not found: $input_pcbios"
-                continue
-            fi
-
-            resolved_pcbios_path="$input_pcbios"
-            if [[ ! -f "$resolved_pcbios_path/ast27x0_bootrom.bin" ]]; then
-                if [[ -f "$resolved_pcbios_path/pc-bios/ast27x0_bootrom.bin" ]]; then
-                    resolved_pcbios_path="$resolved_pcbios_path/pc-bios"
-                else
-                    error "Directory does not contain ast27x0_bootrom.bin: $input_pcbios"
+            local _pres=""
+            resolve_custom_pcbios_candidate "$PROMPT_PATH_RESULT" _pres
+            case "$_pres" in
+                ok:*) resolved_pcbios_path="${_pres#ok:}"; break ;;
+                err_not_dir)   error "Directory not found: $PROMPT_PATH_RESULT"; continue ;;
+                err_no_bootrom)
+                    error "Directory does not contain ast27x0_bootrom.bin: $PROMPT_PATH_RESULT"
                     error "Provide the pc-bios directory itself, or a QEMU root directory that contains pc-bios/."
-                    continue
-                fi
-            fi
-
-            break
+                    continue ;;
+            esac
         done
 
         if [[ -d "$target_pcbios" ]]; then
