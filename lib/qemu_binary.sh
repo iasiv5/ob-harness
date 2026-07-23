@@ -96,6 +96,15 @@ query_jenkins_build_number() {
     echo "$raw" | grep -o '"number":[0-9]*' | head -1 | cut -d: -f2
 }
 
+# jenkins_job_url_from_url <url>
+# 纯决策(无 IO、不 exit): 从 QEMU binary 下载 URL 剥离 lastSuccessfulBuild/artifact 后缀，
+# 得到 Jenkins job base URL(供 query_jenkins_build_number 查 lastSuccessfulBuild/api/json)。
+# leaf-pure(绝不 exit)。
+jenkins_job_url_from_url() {
+    local url="$1"
+    echo "$url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||'
+}
+
 # download_qemu_binary_core <url> <extract_dir> <arch>
 # Shared download→detect→extract→locate→sha256 core for QEMU binaries
 # (used by download_and_replace_community_qemu and ensure_qemu_binary_community).
@@ -271,7 +280,7 @@ check_jenkins_update() {
 
     # ── extract job URL + query Jenkins ──
     local job_url
-    job_url=$(echo "$manifest_url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||')
+    job_url=$(jenkins_job_url_from_url "$manifest_url")
     local remote_build
     remote_build=$(query_jenkins_build_number "$job_url")
 
@@ -390,7 +399,7 @@ ensure_qemu_binary_community() {
     local build_number=""
     if [[ "$qemu_url" == *"jenkins.openbmc.org"* ]]; then
         local job_url
-        job_url=$(echo "$qemu_url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||')
+        job_url=$(jenkins_job_url_from_url "$qemu_url")
         build_number=$(query_jenkins_build_number "$job_url")
     fi
 
