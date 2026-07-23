@@ -154,6 +154,23 @@ download_qemu_binary_core() {
     return 0
 }
 
+# _dlqbc_stage_binary <url> <extract_dir> <arch>
+# acquire 段: download_qemu_binary_core + chmod+x 校验。只动 extract_dir, 无 QEMU_BIN_FILE 副作用。
+# 设 DLQB_BIN_PATH / DLQB_SHA256(on success)。return 0=成功 / 1=download·extract·不可执行失败。
+# leaf-pure(绝不 exit); caller 拥有 tmp_dir 清理 + flock + exit。
+_dlqbc_stage_binary() {
+    local url="$1" extract_dir="$2" arch="$3"
+    if ! download_qemu_binary_core "$url" "$extract_dir" "$arch"; then
+        return 1
+    fi
+    chmod +x "$DLQB_BIN_PATH" 2>/dev/null || true
+    if ! [[ -x "$DLQB_BIN_PATH" ]]; then
+        warn "Downloaded file is not executable."
+        return 1
+    fi
+    return 0
+}
+
 # Download a new QEMU binary and safely replace the existing one.
 # Args: $1 = download URL, $2 = remote build number, $3 = arch
 # Returns: 0 on success, 1 on failure (caller should continue with old binary)
