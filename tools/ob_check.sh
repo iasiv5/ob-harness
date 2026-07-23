@@ -95,7 +95,7 @@ fi
 _qbin_leaf_fns=(jenkins_job_url_from_url resolve_custom_binary_candidate resolve_custom_pcbios_candidate _dlqbc_stage_binary _replace_community_binary)
 _qbin_leaf_bad=""
 for _fn in "${_qbin_leaf_fns[@]}"; do
-    _body=$(awk -v fn="^${_fn}\\(\\)" '$0 ~ fn {g=1} g {print; if($0=="}") exit}' lib/qemu_binary.sh)
+    _body=$(awk -v fn="$_fn" 'index($0, fn "()")==1 {g=1} g {print; if($0=="}") exit}' lib/qemu_binary.sh)
     if printf '%s\n' "$_body" | grep -qE '^[[:space:]]*exit([[:space:]]|$)'; then
         _qbin_leaf_bad="$_qbin_leaf_bad $_fn"
     fi
