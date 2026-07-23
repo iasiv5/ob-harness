@@ -205,79 +205,42 @@ _replace_community_binary() {
 
 # Download a new QEMU binary and safely replace the existing one.
 # Args: $1 = download URL, $2 = remote build number, $3 = arch
+# flock wrapper: acquire(download+verify)在锁外(只动 tmp_dir, 不碰 QEMU_BIN_FILE);
+# flock 仅包 commit 段(并发 replace 会互相覆盖)。锁范围比原全程持锁缩小(良性)。
 # Returns: 0 on success, 1 on failure (caller should continue with old binary)
 download_and_replace_community_qemu() {
     local qemu_url="$1"
     local remote_build="$2"
     local arch="$3"
-    local manifest="${QEMU_BIN_FILE}.manifest"
-
-    # ── flock: prevent concurrent updates ──
     local lock_file="${QEMU_BIN_FILE}.update.lock"
+    local tmp_dir
+    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/qemu-update-XXXXXX")
+    local _rc=0
+
+    # ── acquire: download + verify(锁外; 只动 tmp_dir, 不碰 QEMU_BIN_FILE) ──
+    info "Downloading QEMU binary (build #${remote_build})..."
+    if ! _dlqbc_stage_binary "$qemu_url" "$tmp_dir" "$arch"; then
+        warn "Failed to download/extract QEMU binary from: $qemu_url"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    # ── flock: 仅保护 commit 段(并发 replace 互相覆盖; acquire 已在锁外完成) ──
     exec 200>"$lock_file"
     if ! flock -n 200; then
         warn "Another QEMU binary update is in progress. Skipping."
         exec 200>&-
-        return 1
-    fi
-
-    # ── Staging dir for extraction (partial path lives in download_qemu_binary_core) ──
-    local tmp_dir
-    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/qemu-update-XXXXXX")
-
-    info "Downloading QEMU binary (build #${remote_build})..."
-    if ! download_qemu_binary_core "$qemu_url" "$tmp_dir" "$arch"; then
-        warn "Failed to download/extract QEMU binary from: $qemu_url"
         rm -rf "$tmp_dir"
-        flock -u 200 2>/dev/null; exec 200>&-
-        return 1
-    fi
-    local new_binary="$DLQB_BIN_PATH"
-    local new_sha256="$DLQB_SHA256"
-
-    # ── Verify new binary ──
-    chmod +x "$new_binary"
-    if ! [[ -x "$new_binary" ]]; then
-        warn "Downloaded file is not executable."
-        rm -rf "$tmp_dir"
-        flock -u 200 2>/dev/null; exec 200>&-
         return 1
     fi
 
-    # ── Backup old binary ──
-    local old_build
-    old_build=$(read_kv_field "$manifest" build_number 2>/dev/null) || old_build=""
-    local bak_suffix="${old_build:-unknown}"
-    local bak_file="${QEMU_BIN_FILE}-${bak_suffix}.bak"
+    # ── commit: backup→swap→rollback→manifest(契约: 已持锁) ──
+    _replace_community_binary "$DLQB_BIN_PATH" "$DLQB_SHA256" "$qemu_url" "$remote_build" "$arch" || _rc=$?
 
-    info "Backing up current QEMU binary (build #${bak_suffix})..."
-    cp "$QEMU_BIN_FILE" "$bak_file"
-
-    # ── Replace ──
-    if ! mv "$new_binary" "$QEMU_BIN_FILE"; then
-        warn "Failed to replace QEMU binary."
-        if [[ -f "$bak_file" ]]; then
-            mv "$bak_file" "$QEMU_BIN_FILE"
-        fi
-        rm -rf "$tmp_dir"
-        flock -u 200 2>/dev/null; exec 200>&-
-        return 1
-    fi
-    chmod +x "$QEMU_BIN_FILE"
-
-    # ── Update manifest ──
-    local label
-    label=$(read_source_label)
-    write_qemu_binary_manifest "$label" "$arch" "url" "$qemu_url" "$new_sha256" "$remote_build"
-
-    # ── Cleanup ──
+    # ── cleanup tmp + release lock ──
     rm -rf "$tmp_dir"
-    rm -f "$bak_file"
     flock -u 200 2>/dev/null; exec 200>&-
-
-    info "QEMU binary updated to build #${remote_build}."
-    verbose "  SHA256: $new_sha256"
-    return 0
+    return "$_rc"
 }
 
 # Check if a newer QEMU binary is available on Jenkins.
