@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/util.sh — 底层通用工具(log/read_kv_field/require_path). 术语见 CONTEXT.md function semantic layer.
+# lib/util.sh — 底层通用工具(log/read_kv_field/require_path; npm registry 决策族 probe/resolve/apply). 术语见 CONTEXT.md function semantic layer.
 # Exit: leaf-no-exit（leaf-pure module; 例外 fn_quit/resolve_npm_registry/require_path 可 direct exit, require_path 使用 caller code）; 调用者负责 exit-code/remedy.
 
 
@@ -382,6 +382,26 @@ resolve_npm_registry() {
 
     info "npm registry: $chosen_url (auto-detected)"
     NPM_REGISTRY_RESOLVED="$chosen_url"
+}
+
+# Apply resolved npm registry to the current shell for bitbake passthrough.
+# 对偶于 resolve_npm_registry(决策→装配): 消费 NPM_REGISTRY_RESOLVED, 非 "skip" 则
+# export 5 个 npm_config_* 并把变量名追加进 BB_ENV_PASSTHROUGH_ADDITIONS(前置保留).
+# leaf-no-exit; 前置: 调用者已 resolve_npm_registry. cmd_build / cmd_deploy_to_qemu 共享.
+apply_npm_registry() {
+    [[ "$NPM_REGISTRY_RESOLVED" != "skip" ]] || return 0
+    export npm_config_registry="$NPM_REGISTRY_RESOLVED"
+    export npm_config_fetch_timeout=600000
+    export npm_config_fetch_retry_maxtimeout=120000
+    export npm_config_fetch_retry_mintimeout=30000
+    export npm_config_fetch_retry_factor=2
+    local _vars="npm_config_registry npm_config_fetch_timeout npm_config_fetch_retry_maxtimeout npm_config_fetch_retry_mintimeout npm_config_fetch_retry_factor"
+    local _existing="${BB_ENV_PASSTHROUGH_ADDITIONS:-}"
+    BB_ENV_PASSTHROUGH_ADDITIONS="$_vars"
+    [[ -n "$_existing" ]] && BB_ENV_PASSTHROUGH_ADDITIONS="$_existing $BB_ENV_PASSTHROUGH_ADDITIONS"
+    export BB_ENV_PASSTHROUGH_ADDITIONS
+    verbose "Exported npm config for bitbake passthrough"
+    verbose "  npm_config_registry=$npm_config_registry"
 }
 
 # Read first `key=value` match from a file. Echoes value (after first '=');

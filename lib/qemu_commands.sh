@@ -350,19 +350,7 @@ cmd_deploy_to_qemu() {
 
     build_env_enter "$MACHINE" "$BUILD_DIR" 2>/dev/null
     resolve_npm_registry
-    # npm vars export(复用 cmd_build :343-358, ~20 行; 技术债: 后续抽 build_obmc_image helper)
-    if [[ "$NPM_REGISTRY_RESOLVED" != "skip" ]]; then
-        export npm_config_registry="$NPM_REGISTRY_RESOLVED"
-        export npm_config_fetch_timeout=600000
-        export npm_config_fetch_retry_maxtimeout=120000
-        export npm_config_fetch_retry_mintimeout=30000
-        export npm_config_fetch_retry_factor=2
-        local _npm_vars="npm_config_registry npm_config_fetch_timeout npm_config_fetch_retry_maxtimeout npm_config_fetch_retry_mintimeout npm_config_fetch_retry_factor"
-        local _existing="${BB_ENV_PASSTHROUGH_ADDITIONS:-}"
-        BB_ENV_PASSTHROUGH_ADDITIONS="$_npm_vars"
-        [[ -n "$_existing" ]] && BB_ENV_PASSTHROUGH_ADDITIONS="$_existing $BB_ENV_PASSTHROUGH_ADDITIONS"
-        export BB_ENV_PASSTHROUGH_ADDITIONS
-    fi
+    apply_npm_registry
 
     if ! bitbake obmc-phosphor-image; then
         echo ""

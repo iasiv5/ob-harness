@@ -340,22 +340,7 @@ cmd_build() {
 
     # === npm registry auto-detection ===
     resolve_npm_registry
-    if [[ "$NPM_REGISTRY_RESOLVED" != "skip" ]]; then
-        export npm_config_registry="$NPM_REGISTRY_RESOLVED"
-        export npm_config_fetch_timeout=600000
-        export npm_config_fetch_retry_maxtimeout=120000
-        export npm_config_fetch_retry_mintimeout=30000
-        export npm_config_fetch_retry_factor=2
-        local _npm_vars="npm_config_registry npm_config_fetch_timeout npm_config_fetch_retry_maxtimeout npm_config_fetch_retry_mintimeout npm_config_fetch_retry_factor"
-        local _existing="${BB_ENV_PASSTHROUGH_ADDITIONS:-}"
-        BB_ENV_PASSTHROUGH_ADDITIONS="$_npm_vars"
-        if [[ -n "$_existing" ]]; then
-            BB_ENV_PASSTHROUGH_ADDITIONS="$_existing $BB_ENV_PASSTHROUGH_ADDITIONS"
-        fi
-        export BB_ENV_PASSTHROUGH_ADDITIONS
-        verbose "Exported npm config for bitbake passthrough"
-        verbose "  npm_config_registry=$npm_config_registry"
-    fi
+    apply_npm_registry
 
     # === Run bitbake ===
     echo ""
