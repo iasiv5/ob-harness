@@ -11,7 +11,7 @@ OB="$ROOT/ob"
 QEMU_SH="$ROOT/lib/qemu.sh"
 QEMU_LAUNCH_PROFILE_SH="$ROOT/lib/qemu_launch_profile.sh"
 QEMU_BINARY_SH="$ROOT/lib/qemu_binary.sh"
-COMMANDS_SH="$ROOT/lib/commands.sh"
+QEMU_COMMANDS_SH="$ROOT/lib/qemu_commands.sh"
 
 extract_shell_function() {
     local file="$1"
@@ -66,10 +66,10 @@ assert_function_not_match() {
     fi
 }
 
-assert_function_contains "cmd_start_qemu calls qemu_prepare_launch" "$COMMANDS_SH" cmd_start_qemu "qemu_prepare_launch"
-assert_function_contains "cmd_start_qemu calls qemu_execute_launch" "$COMMANDS_SH" cmd_start_qemu "qemu_execute_launch"
+assert_function_contains "cmd_start_qemu calls qemu_prepare_launch" "$QEMU_COMMANDS_SH" cmd_start_qemu "qemu_prepare_launch"
+assert_function_contains "cmd_start_qemu calls qemu_execute_launch" "$QEMU_COMMANDS_SH" cmd_start_qemu "qemu_execute_launch"
 assert_function_contains "qemu_prepare_launch resolves profile" "$QEMU_SH" qemu_prepare_launch "resolve_qemu_launch_profile"
-assert_function_not_match "cmd_start_qemu no old launch calls" "$COMMANDS_SH" cmd_start_qemu '^[[:space:]]*(resolve_qb_vars|detect_soc_type|derive_qemu_machine_name|find_ast2700_bootloaders)([[:space:]]|$)'
+assert_function_not_match "cmd_start_qemu no old launch calls" "$QEMU_COMMANDS_SH" cmd_start_qemu '^[[:space:]]*(resolve_qb_vars|detect_soc_type|derive_qemu_machine_name|find_ast2700_bootloaders)([[:space:]]|$)'
 
 assert_function_not_match "build_qemu_cmd no discovery/old vars" "$QEMU_SH" build_qemu_cmd 'find_ast2700_bootloaders|machine_conf_chain_contains|detect_soc_type|\bQB_MEM_SIZE_FLAG\b|\bSOC_TYPE\b'
 assert_function_not_match "derive_qemu_paths no old arch vars" "$QEMU_SH" derive_qemu_paths 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
