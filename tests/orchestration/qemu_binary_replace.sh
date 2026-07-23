@@ -40,5 +40,38 @@ download_qemu_binary_core() { return 1; }
 ) > "$TMP/a2" 2>&1
 assert_eq "acquire core 失败 → rc=1" "$(grep -o 'RC=[01]' "$TMP/a2")" "RC=1"
 
+# --- _replace_community_binary: 正常事务(backup→swap→manifest→cleanup bak) ---
+# 显式设 SOURCE_MANIFEST_FILE: read_source_label(repo.sh:8) → read_manifest_field(util.sh:422)
+# → read_kv_field "$SOURCE_MANIFEST_FILE" 读的是这个全局(非 CONFIGS_DIR); ob_loader 加载时
+# 它为空(ob:15), 仅设 CONFIGS_DIR 会靠 fallback "community" 碰巧过——约束须在测试里显式成立。
+CONFIGS_DIR="$TMP/configs"; mkdir -p "$CONFIGS_DIR"
+SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
+printf 'source_label=community\n' > "$SOURCE_MANIFEST_FILE"
+QEMU_BIN_FILE="$QEMU_BIN_DIR/qemu-system-arm"
+printf 'OLD' > "$QEMU_BIN_FILE"
+printf 'build_number=40\nurl=https://jenkins.openbmc.org/job/latest-qemu-x86/lastSuccessfulBuild/artifact/qemu/build/qemu-system-arm\n' > "$QEMU_BIN_FILE.manifest"
+new_binary="$TMP/newbin"; printf 'NEW' > "$new_binary"; chmod +x "$new_binary"
+(
+    _replace_community_binary "$new_binary" "deadbeef" "https://jenkins.openbmc.org/job/latest-qemu-x86/lastSuccessfulBuild/artifact/qemu/build/qemu-system-arm" "42" "qemu-system-arm"
+    echo "RC=$?"
+) > "$TMP/c1" 2>&1
+assert_eq "commit 正常 → rc=0" "$(grep -o 'RC=[01]' "$TMP/c1")" "RC=0"
+assert_true "commit 正常: binary 已换新" grep -q NEW "$QEMU_BIN_FILE"
+assert_true "commit 正常: bak 已清理" test ! -f "$QEMU_BIN_FILE-40.bak"
+assert_true "commit 正常: manifest build_number=42" grep -q 'build_number=42' "$QEMU_BIN_FILE.manifest"
+
+# --- _replace_community_binary: swap-fail-rollback(stateful mv: 第1次 swap fail / 第2次 rollback real) ---
+printf 'OLD' > "$QEMU_BIN_FILE"
+printf 'build_number=40\nurl=https://jenkins.openbmc.org/job/latest-qemu-x86/lastSuccessfulBuild/artifact/qemu/build/qemu-system-arm\n' > "$QEMU_BIN_FILE.manifest"
+new_binary2="$TMP/newbin2"; printf 'NEW' > "$new_binary2"; chmod +x "$new_binary2"
+(
+    _mv_n=0
+    mv() { _mv_n=$((_mv_n+1)); if (( _mv_n == 1 )); then return 1; fi; command mv "$@"; }
+    _replace_community_binary "$new_binary2" "deadbeef" "https://jenkins.openbmc.org/job/latest-qemu-x86/lastSuccessfulBuild/artifact/qemu/build/qemu-system-arm" "42" "qemu-system-arm"
+    echo "RC=$?"
+) > "$TMP/c2" 2>&1
+assert_eq "swap-fail → rc=1(rollback 后)" "$(grep -o 'RC=[01]' "$TMP/c2")" "RC=1"
+assert_true "rollback 恢复旧 binary" grep -q OLD "$QEMU_BIN_FILE"
+
 rm -rf "$TMP" "$extract_dir" "$extract_dir2"
 assert_summary

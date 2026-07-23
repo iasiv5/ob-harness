@@ -171,6 +171,38 @@ _dlqbc_stage_binary() {
     return 0
 }
 
+# _replace_community_binary <new_binary> <new_sha256> <qemu_url> <remote_build> <arch>
+# commit 段: backup→swap→rollback→manifest→cleanup bak。契约: caller 已持 flock + 提供 new_binary(已 chmod+x)。
+# return 0=替换成功 / 1=swap 失败(已 rollback 旧 binary)。leaf-pure(绝不 exit);
+# caller(download_and_replace_community_qemu)拥有 tmp_dir 清理 + flock 释放 + exit。
+# swap+rollback 是紧耦合原子组(rollback 依赖 swap 失败状态), 整块留此函数(F1)。
+_replace_community_binary() {
+    local new_binary="$1" new_sha256="$2" qemu_url="$3" remote_build="$4" arch="$5"
+    local manifest="${QEMU_BIN_FILE}.manifest"
+    local old_build bak_suffix bak_file label
+    old_build=$(read_kv_field "$manifest" build_number 2>/dev/null) || old_build=""
+    bak_suffix="${old_build:-unknown}"
+    bak_file="${QEMU_BIN_FILE}-${bak_suffix}.bak"
+
+    info "Backing up current QEMU binary (build #${bak_suffix})..."
+    cp "$QEMU_BIN_FILE" "$bak_file"
+
+    if ! mv "$new_binary" "$QEMU_BIN_FILE"; then
+        warn "Failed to replace QEMU binary."
+        [[ -f "$bak_file" ]] && mv "$bak_file" "$QEMU_BIN_FILE"
+        return 1
+    fi
+    chmod +x "$QEMU_BIN_FILE"
+
+    label=$(read_source_label)
+    write_qemu_binary_manifest "$label" "$arch" "url" "$qemu_url" "$new_sha256" "$remote_build"
+
+    rm -f "$bak_file"
+    info "QEMU binary updated to build #${remote_build}."
+    verbose "  SHA256: $new_sha256"
+    return 0
+}
+
 # Download a new QEMU binary and safely replace the existing one.
 # Args: $1 = download URL, $2 = remote build number, $3 = arch
 # Returns: 0 on success, 1 on failure (caller should continue with old binary)
