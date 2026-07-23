@@ -423,6 +423,56 @@ ensure_qemu_binary() {
     fi
 }
 
+# resolve_custom_binary_candidate <input> <arch> <outvar>
+# 纯决策(无 IO 副作用、不 exit): custom QEMU binary 路径解析。outvar 编码:
+#   ok:<path>          input 是文件, 或目录下含 <arch>
+#   err_dir_no_arch    input 是目录但缺 <arch>
+#   err_not_file       input 既非目录也非文件
+# leaf-pure; 调用者(ensure_qemu_binary_custom)负责交互循环 + exit。
+resolve_custom_binary_candidate() {
+    local input="$1" arch="$2" out="$3"
+    if [[ -d "$input" ]]; then
+        local cand="${input%/}/$arch"
+        if [[ ! -f "$cand" ]]; then
+            printf -v "$out" '%s' "err_dir_no_arch"
+            return 0
+        fi
+        printf -v "$out" '%s' "ok:$cand"
+        return 0
+    elif [[ ! -f "$input" ]]; then
+        printf -v "$out" '%s' "err_not_file"
+        return 0
+    fi
+    printf -v "$out" '%s' "ok:$input"
+    return 0
+}
+
+# resolve_custom_pcbios_candidate <input> <outvar>
+# 纯决策(无 IO 副作用、不 exit): custom QEMU pc-bios 目录解析(ast27x0_bootrom.bin 查找 +
+# pc-bios/ 子目录回退)。outvar 编码:
+#   ok:<path>        input(或 input/pc-bios)含 ast27x0_bootrom.bin
+#   err_not_dir      input 非目录
+#   err_no_bootrom   input 是目录但无 ast27x0_bootrom.bin(含 pc-bios/ 回退)
+# leaf-pure。
+resolve_custom_pcbios_candidate() {
+    local input="$1" out="$2"
+    if [[ ! -d "$input" ]]; then
+        printf -v "$out" '%s' "err_not_dir"
+        return 0
+    fi
+    local cand="$input"
+    if [[ ! -f "$cand/ast27x0_bootrom.bin" ]]; then
+        if [[ -f "$cand/pc-bios/ast27x0_bootrom.bin" ]]; then
+            cand="$cand/pc-bios"
+        else
+            printf -v "$out" '%s' "err_no_bootrom"
+            return 0
+        fi
+    fi
+    printf -v "$out" '%s' "ok:$cand"
+    return 0
+}
+
 ensure_qemu_binary_custom() {
     derive_qemu_paths
 
