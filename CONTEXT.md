@@ -52,6 +52,10 @@ _Avoid_: invalid image, broken image, QEMU-ready artifact
 ob 对单个 machine 当前生命周期事实的组合判断，由 `machine snapshot`、`init-done marker` 和 firmware image artifact 共同决定。它回答 machine 是否 initialized、是否 partial、是否是 `firmware-image-ready machine`、是否存在 `orphan firmware image artifact` 等状态问题；不包含 `ob status` 表格排版、`remedy line`、`exit-code 契约` 或用户交互策略。
 _Avoid_: UI state, command policy, 把展示文本当 lifecycle state
 
+**status presentation module**:
+`ob status` 仪表盘的呈现层 module（`lib/status_render.sh`），只负责把已采集的事实格式化为 stdout——`machine lifecycle state`（initialized/partial/`firmware-image-ready machine`）、`QEMU instance` 列表、主仓 origin/branch/commit/upstream 漂移、`orphan firmware image artifact`、dynamic tips 的表格与段落排版（含 emoji/文案映射）。它是 leaf-pure module（绝不 exit；绝不采集数据——不读全局 `$OPENBMC_DIR`/`$SOURCE_MANIFEST_FILE`、不调 `git`/网络、不调 `machine_state_*`/`qemu_instance_*` 等数据接口），全部数据由 L1 `cmd_status` 以参数喂入，呈现逻辑（emoji 映射、列宽、分段）归本 module。与 `machine lifecycle state`（数据）形成数据/呈现二分：后者回答"machine 处于什么状态"，前者回答"这些状态怎么排版给用户看"。呈现层的归宿在 [ADR-0006](docs/adr/0006-machine-state-firmware-image-readiness.md) 留悬（该 ADR 只规定呈现不下沉到数据层，未规定呈现落哪个文件），本 module 给它归宿。
+_Avoid_: ob status view, status formatter（口语化）, dashboard（引入未定义概念）, 把它当数据采集 module（它只格式化）, 把 emoji/文案映射留在 cmd_status（呈现逻辑归本 module）
+
 **machine selection**:
 `lib/machine_picker.sh` 中 `pick_machine` 封装的交互选择 module。它在调用者已保证 machine 集合非空且为交互终端的前提下，渲染纯序号+名字选择表，读取用户输入（数字或名字），将选中的 machine 设入 `$MACHINE`，或以 return 2 表示取消。它是 leaf-pure L3（绝不 exit，不决定 `exit-code 契约`，不打印 `remedy line`）；不判断集合是否为空、不判断终端交互性、不做 arg 合法性校验——这些是调用者（L1 `cmd_*`）的命令级前置。它只管"选哪个 machine"，与 `machine lifecycle state`（machine 处于什么状态）正交。
 _Avoid_: machine picker（口语化，术语用 selection）, 把 selection 当 lifecycle state, resolve_machine（init 旧函数，含 arg 快路径与 confirm，职责更宽）

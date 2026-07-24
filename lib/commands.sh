@@ -3,194 +3,8 @@
 # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
 
 
-status_section_main_repo() {
-    step_header "OpenBMC Main Repository"
-
-    if [[ ! -d "$OPENBMC_DIR/.git" ]]; then
-        echo "  Status       : missing"
-        return 0
-    fi
-
-    # Source (origin URL + label)
-    local origin_url=""
-    local source_label=""
-    origin_url=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
-    if [[ -f "$SOURCE_MANIFEST_FILE" ]]; then
-        source_label=$(read_manifest_field source_label 2>/dev/null || true)
-    fi
-    local source_display="${origin_url:-<no origin>}${source_label:+ ($source_label)}"
-
-    # Branch & commit
-    local branch=""
-    local commit_line=""
-    branch=$(git -C "$OPENBMC_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
-    commit_line=$(git -C "$OPENBMC_DIR" log --oneline -1 2>/dev/null || true)
-
-    # Upstream comparison (network, best-effort)
-    local upstream_display="⚠️ unreachable (skipped)"
-    if timeout 10 git -C "$OPENBMC_DIR" fetch origin --quiet 2>/dev/null; then
-        local ahead behind
-        ahead=$(git -C "$OPENBMC_DIR" rev-list --count "origin/${branch}..HEAD" 2>/dev/null || echo "0")
-        behind=$(git -C "$OPENBMC_DIR" rev-list --count "HEAD..origin/${branch}" 2>/dev/null || echo "0")
-        if [[ "$ahead" -eq 0 && "$behind" -eq 0 ]]; then
-            upstream_display="✅ up-to-date"
-        elif [[ "$behind" -gt 0 ]]; then
-            upstream_display="⬇️  behind ${behind}${ahead:+, ⬆️  ahead ${ahead}}"
-        else
-            upstream_display="⬆️  ahead ${ahead}"
-        fi
-    fi
-
-    # First init time
-    local first_init=""
-    if [[ -f "$SOURCE_MANIFEST_FILE" ]]; then
-        local raw_time
-        raw_time=$(read_manifest_field created_at 2>/dev/null || true)
-        if [[ -n "$raw_time" ]]; then
-            # Format ISO to readable: 2026-06-06T17:13:41Z → 2026-06-06 17:13 UTC
-            first_init=$(format_timestamp "$raw_time")
-        fi
-    fi
-
-    echo "  Status       : present"
-    echo "  Source       : $source_display"
-    echo "  Local path   : $OPENBMC_DIR"
-    echo "  Branch       : ${branch:-<unknown>}"
-    echo "  Commit       : ${commit_line:-<unknown>}"
-    echo "  Upstream     : $upstream_display"
-    echo "  First init   : ${first_init:-<unknown>}"
-}
-
-status_section_machines() {
-    step_header "Machines"
-
-    # --- Summary table ---
-    # Collect per-machine data
-    local -a machines=()
-    local -A m_init=() m_repos=() m_firmware=() m_firmware_path=() m_firmware_mtime=() m_snapshot=() m_init_time=()
-    local m
-
-    while IFS= read -r m; do
-        [[ -n "$m" ]] || continue
-        local init_state snapshot_state repo_count firmware_image_path firmware_image_mtime raw_init_time
-        init_state=$(machine_state_init_state "$m")
-        snapshot_state=$(machine_state_snapshot_state "$m")
-        repo_count=$(machine_state_repo_count "$m")
-        raw_init_time=$(machine_state_init_time "$m")
-        machines+=("$m")
-
-        case "$init_state" in
-            initialized) m_init["$m"]="✅ initialized" ;;
-            partial) m_init["$m"]="⏳ partial" ;;
-            *) m_init["$m"]="— uninitialized" ;;
-        esac
-
-        m_snapshot["$m"]="$snapshot_state"
-        m_repos["$m"]="$repo_count"
-        m_init_time["$m"]="$raw_init_time"
-
-        if machine_state_is_firmware_image_ready "$m"; then
-            firmware_image_path=$(machine_state_firmware_image_path "$m" 2>/dev/null || true)
-            firmware_image_mtime=$(machine_state_firmware_image_mtime "$m")
-            m_firmware["$m"]="📦 ready"
-            m_firmware_path["$m"]="$firmware_image_path"
-            m_firmware_mtime["$m"]="$firmware_image_mtime"
-        else
-            m_firmware["$m"]="— missing"
-        fi
-    done < <(machine_state_display_machines)
-
-    if [[ ${#machines[@]} -eq 0 ]]; then
-        echo "  (none)"
-        return 0
-    fi
-
-    # Print summary table header
-    printf "  %-22s %-15s %s\n" "Machine" "Init" "Firmware Image"
-    for m in "${machines[@]}"; do
-        local m_padded
-        printf -v m_padded "%-22s" "$m"
-        printf "  %b%-15s %s\n" "${YELLOW}${m_padded}${NC}" "${m_init[$m]}" "${m_firmware[$m]}"
-    done
-
-    # --- Per-machine expansion ---
-    for m in "${machines[@]}"; do
-        # Only expand machines that have a snapshot file (meaningful repo data)
-        [[ "${m_snapshot[$m]}" == "present" ]] || continue
-
-        echo ""
-        echo "  ── $m ──────────────────────────────────────"
-
-        # Init time
-        local init_time=""
-        if [[ -n "${m_init_time[$m]}" ]]; then
-            init_time=$(format_timestamp "${m_init_time[$m]}")
-        fi
-        echo "    Init time    : ${init_time:--}"
-
-        # Repos
-        echo "    Repos        : ${m_repos[$m]}"
-
-        # Firmware image details (only when ready)
-        if [[ -n "${m_firmware_path[$m]:-}" ]]; then
-            local firmware_time="-"
-            if [[ -n "${m_firmware_mtime[$m]}" ]]; then
-                firmware_time=$(format_timestamp "${m_firmware_mtime[$m]}")
-            fi
-            echo "    Firmware time: $firmware_time"
-            echo "    Firmware name: $(basename "${m_firmware_path[$m]}")"
-            echo "    Firmware path: $(dirname "${m_firmware_path[$m]}")/"
-        fi
-    done
-}
-
-status_section_diagnostics() {
-    local -a orphan_machines=()
-    local machine
-
-    while IFS= read -r machine; do
-        [[ -n "$machine" ]] && orphan_machines+=("$machine")
-    done < <(machine_state_orphan_firmware_image_machines)
-
-    if [[ ${#orphan_machines[@]} -eq 0 ]]; then
-        return 0
-    fi
-
-    echo ""
-    step_header "Diagnostics"
-    echo "  Orphan firmware image artifacts"
-
-    for machine in "${orphan_machines[@]}"; do
-        local firmware_path
-        firmware_path=$(machine_state_firmware_image_path "$machine" 2>/dev/null || true)
-        echo ""
-        echo "    $machine"
-        echo "      Path      : ${firmware_path:-<unknown>}"
-        echo "      Reason    : firmware image artifact exists, but machine init is incomplete"
-        echo "      Next step : ob init $machine"
-    done
-}
-
-status_section_tips() {
-    local repo_exists="$1"
-    local has_initialized_machine="$2"
-    local has_initialized_without_firmware_image="$3"
-
-    local tip=""
-
-    if [[ "$repo_exists" -eq 0 ]]; then
-        tip="💡 Run 'ob init' to get started."
-    elif [[ "$has_initialized_machine" -eq 0 ]]; then
-        tip="💡 Run 'ob init' to initialize a machine."
-    elif [[ "$has_initialized_without_firmware_image" -eq 1 ]]; then
-        tip="💡 Run 'ob build <machine>' to produce a firmware image."
-    fi
-
-    if [[ -n "$tip" ]]; then
-        echo ""
-        echo "  $tip"
-    fi
-}
+# ob status 呈现层(原内联在 cmd_status 前的 4 个 section 渲染函数)已抽至 lib/status_render.sh(status_render_*);
+# cmd_status 负责 gather(machine_state_*/qemu_instance_*/git/manifest)→ render。术语见 CONTEXT.md status presentation module。
 
 # exit_on_user_cancel <rc> <verb>
 # 消费 pick_machine / confirm_action 的 rc (0=ok / 2=cancel / 1=read-fail)。
@@ -211,39 +25,87 @@ cmd_status() {
     local repo_exists=0
     [[ -d "$OPENBMC_DIR/.git" ]] && repo_exists=1
 
-    # Section 1: Main repo info (always shown)
-    status_section_main_repo
+    # --- gather main_repo facts(含网络 upstream 比较;原内联在 main_repo section 渲染,现上移编排层) ---
+    local mr_origin_url="" mr_source_label="" mr_branch="" mr_commit=""
+    local mr_upstream_display="⚠️ unreachable (skipped)" mr_first_init_raw="" mr_local_path="$OPENBMC_DIR"
+    if [[ "$repo_exists" -eq 1 ]]; then
+        mr_origin_url=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || true)
+        if [[ -f "$SOURCE_MANIFEST_FILE" ]]; then
+            mr_source_label=$(read_manifest_field source_label 2>/dev/null || true)
+        fi
+        mr_branch=$(git -C "$OPENBMC_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || true)
+        mr_commit=$(git -C "$OPENBMC_DIR" log --oneline -1 2>/dev/null || true)
+        if timeout 10 git -C "$OPENBMC_DIR" fetch origin --quiet 2>/dev/null; then
+            local ahead behind
+            ahead=$(git -C "$OPENBMC_DIR" rev-list --count "origin/${mr_branch}..HEAD" 2>/dev/null || echo "0")
+            behind=$(git -C "$OPENBMC_DIR" rev-list --count "HEAD..origin/${mr_branch}" 2>/dev/null || echo "0")
+            if [[ "$ahead" -eq 0 && "$behind" -eq 0 ]]; then
+                mr_upstream_display="✅ up-to-date"
+            elif [[ "$behind" -gt 0 ]]; then
+                mr_upstream_display="⬇️  behind ${behind}${ahead:+, ⬆️  ahead ${ahead}}"
+            else
+                mr_upstream_display="⬆️  ahead ${ahead}"
+            fi
+        fi
+        if [[ -f "$SOURCE_MANIFEST_FILE" ]]; then
+            mr_first_init_raw=$(read_manifest_field created_at 2>/dev/null || true)
+        fi
+    fi
+    status_render_main_repo "$repo_exists" "$mr_origin_url" "$mr_source_label" "$mr_branch" "$mr_commit" "$mr_upstream_display" "$mr_first_init_raw" "$mr_local_path"
 
     echo ""
 
-    # Section 2: Machine list + expansion (always shown, even if repo missing — may have residual data)
-    status_section_machines
-
-    # Section 3: Diagnostics for residual artifacts
-    status_section_diagnostics
-
-    # Section 4: Dynamic tips
-    local has_initialized_machine=0
-    local has_initialized_without_firmware_image=0
-    local _ms_machine
-    while IFS= read -r _ms_machine; do
-        [[ -n "$_ms_machine" ]] || continue
-        has_initialized_machine=1
-        if ! machine_state_is_firmware_image_ready "$_ms_machine"; then
-            has_initialized_without_firmware_image=1
-        fi
-    done < <(machine_state_initialized_machines)
-
-    status_section_tips "$repo_exists" "$has_initialized_machine" "$has_initialized_without_firmware_image"
-
-    # Section 5: QEMU instances（只读,含 stale 显示;不删 PID 文件——清理 owner = start-qemu/stop-qemu）
-    local _has_qemu=0
-    local -a _qemu_lines=()
+    # --- gather machines records(raw facts;renderer 做 emoji 映射。gather 原样透传,禁兜底——否则破坏 golden) ---
+    local -a status_machine_records=()
     local _m
     while IFS= read -r _m; do
         [[ -n "$_m" ]] || continue
+        local _init_state _snapshot_state _repo_count _init_time _fw_ready="0" _fw_path="" _fw_mtime=""
+        _init_state=$(machine_state_init_state "$_m")
+        _snapshot_state=$(machine_state_snapshot_state "$_m")
+        _repo_count=$(machine_state_repo_count "$_m")
+        _init_time=$(machine_state_init_time "$_m")
+        if machine_state_is_firmware_image_ready "$_m"; then
+            _fw_ready="1"
+            _fw_path=$(machine_state_firmware_image_path "$_m" 2>/dev/null || true)
+            _fw_mtime=$(machine_state_firmware_image_mtime "$_m")
+        fi
+        status_machine_records+=("$_m|$_init_state|$_snapshot_state|$_repo_count|$_init_time|$_fw_ready|$_fw_path|$_fw_mtime")
+    done < <(machine_state_display_machines)
+    status_render_machines status_machine_records
+
+    # --- gather orphan diagnostics records ---
+    local -a status_orphan_records=()
+    local _om
+    while IFS= read -r _om; do
+        [[ -n "$_om" ]] || continue
+        local _opath
+        _opath=$(machine_state_firmware_image_path "$_om" 2>/dev/null || true)
+        status_orphan_records+=("$_om|$_opath")
+    done < <(machine_state_orphan_firmware_image_machines)
+    status_render_diagnostics status_orphan_records
+
+    # --- gather tips inputs ---
+    local has_initialized_machine=0
+    local has_initialized_without_firmware_image=0
+    local _im
+    while IFS= read -r _im; do
+        [[ -n "$_im" ]] || continue
+        has_initialized_machine=1
+        if ! machine_state_is_firmware_image_ready "$_im"; then
+            has_initialized_without_firmware_image=1
+        fi
+    done < <(machine_state_initialized_machines)
+    status_render_tips "$repo_exists" "$has_initialized_machine" "$has_initialized_without_firmware_image"
+
+    # --- QEMU instances(编排层内联,out of scope;只读含 stale 显示,不删 PID 文件——清理 owner = start-qemu/stop-qemu) ---
+    local _has_qemu=0
+    local -a _qemu_lines=()
+    local _qm
+    while IFS= read -r _qm; do
+        [[ -n "$_qm" ]] || continue
         _has_qemu=1
-        _qemu_lines+=("  $_m   $(qemu_instance_summarize_brief "$_m")")
+        _qemu_lines+=("  $_qm   $(qemu_instance_summarize_brief "$_qm")")
     done < <(qemu_instance_list)
 
     if [[ "$_has_qemu" -eq 1 ]]; then

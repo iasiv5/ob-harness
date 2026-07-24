@@ -23,7 +23,7 @@
 4. **coverage 基线已校准**：抽取后是否实测 `coverage_radar.py` 并把新基线写进 CI `--fail-if-uncovered`（基线随模块化下降是正常，盲区透明化，不要制造覆盖率虚高）？
 5. **副作用次序未破坏**：若拆 god-function，有副作用前置状态的决策块（检测+kill 等）是否整块留在调用者、置于依赖其前置状态的下游之前（见已知陷阱 F1）？是否配次序回归锁？
 6. **规则面已同步**：`rules/03_WORKSPACE.md` 的 lib 路由表是否登记了新 module（角色 + leaf-pure 标注）？
-7. **depth 证明形态对齐**：若待抽模块**已经是** function module（不是散落逻辑、不是 god-function），depth 不能靠"搬函数进新文件"证明——必须靠 (a) interface-shrink 断言（旧状态 token 在全部 production Bash 清零，caller 失去状态形状知识）+ (b) 非功能成本锁（进程数/调用面）先红后绿。此时顺序变体为 **pin → optimize → deepen**（optimizable 收益先行并锁住，再收 module），是 extract → pin → deepen 的特化。canonical 实例：2026-07-12 `lib/bare_mirror.sh`（旧 `clone_sub_repos` 已是 function module，用 NUL 批量 planning 把 $2+4N 次 Python 压成 1 次 + command-scoped `git -c` 取代 `git config --global`，两收益锁住后才收 module，并用旧 STATUS_*/MIRROR_BASE token 全 production 清零证 interface 收缩）。
+7. **depth 证明形态对齐**：若待抽模块**已经是** function module（不是散落逻辑、不是 god-function），depth 不能靠"搬函数进新文件"证明——必须靠 (a) interface-shrink 断言（旧状态 token 在全部 production Bash 清零，caller 失去状态形状知识）+ (b) 非功能成本锁（进程数/调用面）先红后绿。此时顺序变体为 **pin → optimize → deepen**（optimizable 收益先行并锁住，再收 module），是 extract → pin → deepen 的特化。canonical 实例：2026-07-12 `lib/bare_mirror.sh`（旧 `clone_sub_repos` 已是 function module，用 NUL 批量 planning 把 $2+4N 次 Python 压成 1 次 + command-scoped `git -c` 取代 `git config --global`，两收益锁住后才收 module，并用旧 STATUS_*/MIRROR_BASE token 全 production 清零证 interface 收缩）；2026-07-25 `lib/status_render.sh`（已是 function module 的 `status_section_*` 抽呈现层，§7 两类 depth 维度的第 2 实例——(a) interface-shrink：forbidden-token surface gate 证 renderer 对全局/网络/数据接口的形状知识清零；(b) 调用面锁：renderer 网络调用清零，**系统总网络调用 1→1 不变**，收缩的是 renderer 调用面，**非 bare_mirror 式调用次数压缩**。两类维度（成本量下降 / surface 收缩）均属合格 `optimizable 收益`，勿误以为只有调用次数压缩才算 depth）。
 
 ## 可用资源与边界
 
