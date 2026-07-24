@@ -106,6 +106,21 @@ else
     ok "qemu_binary leaf-pure 原语无 exit"
 fi
 
+# ── 1c-quin. obmc-phosphor-image 直调清零门禁(必经 build_obmc_image) ──
+# 除 image_build.sh 内部, ob/lib 不得直接调用 bitbake obmc-phosphor-image(必经
+# build_obmc_image 深 module 收口 enter+npm+bitbake, ob build/deploy-to-qemu 共享)。
+# 精确正则只匹配命令位直调(行首/if/! 后的 bitbake), 排除 info/echo/notice 字符串内的
+# 展示文案(DRY-RUN 行、"Running: bitbake..." 等)——经实测, 抽取前命中 commands.sh:351
+# + qemu_commands.sh:355 两处直调, 字符串行 5 处不被误报。
+_img_build_direct_re='^[[:space:]]*(if[[:space:]]*(![[:space:]]*)?)?bitbake[[:space:]]+obmc-phosphor-image'
+_img_build_direct=$(grep -RInE "$_img_build_direct_re" ob lib/*.sh 2>/dev/null | grep -v 'lib/image_build.sh' || true)
+if [[ -n "$_img_build_direct" ]]; then
+    bad "bitbake obmc-phosphor-image 直调未收口到 build_obmc_image(除 image_build.sh):"
+    printf '%s\n' "$_img_build_direct"
+else
+    ok "obmc-phosphor-image 直调全经 build_obmc_image"
+fi
+
 # ── 1d. 交互 prompt 文案契约（.exp expect 依赖这些源码字符串；read -p 非 tty 不输出，故静态守）──
 _prompt_bad=""
 grep -q 'Select a machine for' lib/machine_picker.sh 2>/dev/null || _prompt_bad="${_prompt_bad} pick_machine('Select a machine for')"
