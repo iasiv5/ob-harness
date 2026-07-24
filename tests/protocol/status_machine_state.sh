@@ -5,60 +5,10 @@ source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
 assert_reset
 
+source "$(dirname "$0")/../lib/status_fixtures.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
-
-WORKSPACE_DIR="$TMP/workspace"
-CONFIGS_DIR="$WORKSPACE_DIR/configs"
-OPENBMC_DIR="$WORKSPACE_DIR/openbmc"
-SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
-mkdir -p "$CONFIGS_DIR" "$OPENBMC_DIR"
-mkdir -p "$OPENBMC_DIR/.git"
-
-write_snapshot() {
-    local machine="$1"
-    cat > "$CONFIGS_DIR/$machine.snapshot" <<EOF
-{
-  "machine": "$machine",
-  "generated_at": "2026-06-23T00:00:00+00:00",
-  "openbmc_commit": "deadbeef1234",
-  "target_image": "obmc-phosphor-image",
-  "sub_repos": [
-    {
-      "name": "repo1",
-      "src_uri": "git://example/repo1",
-      "srcrev": "1111",
-      "local_path": "workspace/src/$machine/repo1",
-      "recipe": "recipe1"
-    }
-  ]
-}
-EOF
-}
-
-write_marker() {
-    local machine="$1"
-    printf '2026-06-23T01:02:03Z\n' > "$CONFIGS_DIR/$machine.init-done"
-}
-
-printf '{"sub_repos": []}\n' > "$CONFIGS_DIR/legacy.lock"
-write_snapshot snaponly
-write_marker markeronly
-write_marker failm
-mkdir -p "$OPENBMC_DIR/build/failm"
-write_marker built
-deploy_dir="$OPENBMC_DIR/build/built/tmp/deploy/images/built"
-mkdir -p "$deploy_dir"
-touch "$deploy_dir/built.static.mtd"
-orphan_dir="$OPENBMC_DIR/build/orphan/tmp/deploy/images/orphan"
-mkdir -p "$orphan_dir"
-touch "$orphan_dir/orphan.static.mtd"
-
-# 造两类 stale QEMU 实例：exited（pid 不存在）+ recycled（pid=$$ 测试进程,cmdline 不匹配 qemu）
-QEMU_PIDS_DIR="$WORKSPACE_DIR/qemu-bin/.pids"
-mkdir -p "$QEMU_PIDS_DIR"
-printf 'pid=99999999\nbinary=qemu-system-arm\nmachine=stalebox\nssh_port=2222\nredfish_port=2443\nipmi_port=2623\n' > "$QEMU_PIDS_DIR/stalebox.pid"
-printf 'pid=%s\nbinary=qemu-system-arm\nmachine=recycbox\nssh_port=2225\nredfish_port=2445\nipmi_port=2625\n' "$$" > "$QEMU_PIDS_DIR/recycbox.pid"
+status_build_fixture "$TMP"
 
 status_records_calls_file="$TMP/status_records_calls"
 machine_state_records() {

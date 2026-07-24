@@ -1,0 +1,41 @@
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mOpenBMC Main Repository[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+  Status       : present
+  Source       : <no origin>
+  Local path   : /tmp/tmp.wCsi3vNNKE/workspace/openbmc
+  Branch       : <unknown>
+  Commit       : <unknown>
+  Upstream     : ⚠️ unreachable (skipped)
+  First init   : <unknown>
+
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mMachines[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+  Machine                Init            Firmware Image
+  [0;33mbuilt                 [0m✅ initialized 📦 ready
+  [0;33mfailm                 [0m✅ initialized — missing
+  [0;33mmarkeronly            [0m✅ initialized — missing
+  [0;33msnaponly              [0m⏳ partial     — missing
+
+  ── snaponly ──────────────────────────────────────
+    Init time    : -
+    Repos        : 1
+
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mDiagnostics[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+  Orphan firmware image artifacts
+
+    orphan
+      Path      : /tmp/tmp.wCsi3vNNKE/workspace/openbmc/build/orphan/tmp/deploy/images/orphan/orphan.static.mtd
+      Reason    : firmware image artifact exists, but machine init is incomplete
+      Next step : ob init orphan
+
+  💡 Run 'ob build <machine>' to produce a firmware image.
+
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mQEMU Instances[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+  recycbox   PID 45215   SSH(2225) Redfish(2445) IPMI(2625/UDP)   ⚠️ stale
+  stalebox   PID 99999999   SSH(2222) Redfish(2443) IPMI(2623/UDP)   ⚠️ stale
