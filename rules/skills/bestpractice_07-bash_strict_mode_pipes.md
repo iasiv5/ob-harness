@@ -112,6 +112,30 @@ rm -rf "$partial" || return 1
 
 判定要点:`set -e` 只在命令返回码被"直接观察"的最外层生效;一旦命令出现在 `if`/`while`/`&&`/`||`/`$()`/`< <()` 的条件位,它就退出 errexit 保护、失败只成返回码。约定:leaf-pure module(见 [bestpractice_10](bestpractice_10-deep_module_extraction.md))恒不假设 caller 开 errexit,所有 fs/外部命令失败必须显式 `|| return`;caller 的 `if ! func` 只兜 module 整体返回码,不兜 module 内部。与上面 exec 持久重定向同属"strict mode 静默吞诊断"族——一个吞 stderr 一个吞返回码,解药都是显式而非隐式。
 
+## 相邻陷阱:输入重定向 `< 文件` 打开失败绕过子命令的 2>/dev/null
+
+`cmd < file 2>/dev/null` 当 `file` 不存在时,`< file` 的打开由 **shell 在子命令启动前**完成,失败错误("No such file or directory")写到 **shell 的 stderr**;而 `2>/dev/null` 是**子命令的** fd2 重定向——子命令因重定向失败根本没启动,`2>/dev/null` 还没生效、吞不掉这条 shell 错误。表现为 rc 非零(重定向失败码)+ stderr 漏一行噪音,易误判成"测试脏输出"或"还有别的报错"。
+
+典型是想用 `wc -l < file` 计数、又怕文件不存在加 `2>/dev/null` 吞错:
+
+```bash
+# 错:`< "$calls"` 不存在时,bash 层 open 失败的错误到 shell stderr,
+#   `2>/dev/null`(wc 的)吞不掉(wc 没启动)。漏一行 "bash: ...: No such file" 噪音。
+count=$(wc -l < "$calls" 2>/dev/null || echo 0)
+
+# 对 A:改用文件参数(非重定向)——文件不存在时 wc 自己报错到 wc 的 stderr,2>/dev/null 可吞。
+count=$(wc -l "$calls" 2>/dev/null | awk '{print $1+0}')
+# 对 B:先判存在再重定向,把"不存在"显式化。
+[[ -f "$calls" ]] && count=$(wc -l < "$calls") || count=0
+# 对 C:本意是断言"文件不该存在"时,别用计数==0,直接 test -f。
+```
+
+判定要点:区分**谁打开文件**——`< file` 是 shell 重定向(open 发生在 fork/exec 子命令前,失败属 shell);`cmd file`(文件作参数)是子命令自己 open(失败属子命令,其 `2>/dev/null` 可吞)。所以"想静默文件缺失"用文件参数让子命令 own open,或显式 `[[ -f ]]` 前置;断言语义是"文件存在与否"时不要用 `wc -l < file` 计数间接表达,直接 `test -f`/`[[ -f ]]`。**不只 wc**——`cat < file`/`grep ... < file` 等所有 `< file` 形态同理。
+
+本仓库案例:`tests/unit/image_build.sh` 态3(build_obmc_image 抽取时 enter 失败→bitbake 不调→`.bitbake.calls` 不存在)原写 `wc -l < "$DB/.bitbake.calls" 2>/dev/null || echo 0` 断言计数==0,实跑漏"没有那个文件或目录"噪音(assert 逻辑靠 `|| echo 0` 兜底仍正确);改 `assert_false test -f`(与 `tests/orchestration/deploy_to_qemu.sh` 场景④同款)。注意既有 `cmd_build_bitbake_handoff.sh`/`deploy_to_qemu.sh` 的同款写法在文件**存在**时无此问题,只有"文件可能不存在"的场景才中招。
+
+与 exec 持久重定向、errexit 禁用上下文同属"bash 重定向/执行语义"族——作用域错(exec 持久 vs 单条)、时机错(输入重定向 open 早于子命令 fd2)、触发位错(set -e 在条件位不生效),解药都是把语义显式化(块作用域/文件参数/显式 `|| return`)而非靠隐式重定向。
+
 ## 与现有 skill 的关系
 
 - `workflow_01-obmc_env_init.md` 记录的「BitBake `??=` 优先级陷阱」是 strict mode 之外的另一类"看起来赋值了实际没生效"的 shell 相邻陷阱，可互为补充。
