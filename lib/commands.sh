@@ -335,20 +335,13 @@ cmd_build() {
         exit 0
     fi
 
-    # === Re-enter bitbake environment ===
-    build_env_enter "$MACHINE" "$BUILD_DIR" 2>/dev/null
-
-    # === npm registry auto-detection ===
-    resolve_npm_registry
-    apply_npm_registry
-
-    # === Run bitbake ===
+    # === Build obmc-phosphor-image(经 obmc-phosphor-image build module: enter+npm+bitbake, return rc) ===
     echo ""
     step_header "Building $MACHINE"
     info "Running: bitbake obmc-phosphor-image"
     echo ""
 
-    if bitbake obmc-phosphor-image; then
+    if build_obmc_image "$MACHINE" "$BUILD_DIR"; then
         echo ""
         step_header "Build Succeeded"
 

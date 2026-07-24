@@ -34,6 +34,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 取消 → exit 2 | cmd_build;confirm_action | protocol/manual_matrix.exp | |
 | 进入 bitbake 环境 + bitbake handoff | build_env_enter;cmd_build | orchestration/build_env_enter.sh;orchestration/cmd_build_bitbake_handoff.sh;protocol/build_env_enter_structure.sh | build_env_enter=进入原语(副作用契约); cmd_build_bitbake_handoff=非 dry-run 调 bitbake + 失败 exit 1 兜底 |
 | npm registry passthrough 装配 | apply_npm_registry | unit/npm_registry.sh | leaf-pure(util.sh); cmd_build/cmd_deploy_to_qemu 共享; skip/空 existing/非空 existing/空 registry 四态 |
+| obmc-phosphor-image 构建编排 | build_obmc_image | unit/image_build.sh | leaf-pure(image_build.sh); cmd_build/cmd_deploy_to_qemu 共享 enter+npm+bitbake; 成功/失败/enter失败 三态 |
 
 ## status
 

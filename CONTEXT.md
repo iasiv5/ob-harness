@@ -100,6 +100,10 @@ _Avoid_: BitBake environment manager, current-shell setup wrapper, 把 QEMU laun
 `lib/build_env.sh` 封装的 current-shell 构建环境进入原语：`cd OPENBMC_DIR` + `source setup <machine> <build_dir>`（带 nounset save/restore 保护），让后续 `bitbake` 调用运行在正确 cwd 与 source 注入的 shell 环境下。其副作用（cwd 漂移到 build dir、shell 变量）刻意留在当前 shell——与 `BitBake environment support module` 用子进程 `( )` 隔离副作用的纯查询形成对偶（泄漏 vs 隔离）。只管「进入」不管离开；不接管首次初始化的 conf 校验/bootstrap/mkdir（属 `init_pipeline`），不解析 `QB_*`，不打印 remedy，不决定 exit-code 契约；函数绝不 exit（允许受控副作用，不要求 pure）。
 _Avoid_: BitBake environment session, build environment activation, 当作 bitbake_env 的扩展（二者机制对立）
 
+**obmc-phosphor-image build module**:
+`lib/image_build.sh` 封装的 obmc-phosphor-image 整体构建执行编排 module：进入 `current-shell build environment`（`build_env_enter`）→ 装配 npm registry（`resolve_npm_registry` + `apply_npm_registry`）→ `bitbake obmc-phosphor-image`，return bitbake rc（0/非0）。由 `ob build` 与 `ob deploy-to-qemu` 共享（消除两处内联重复，统一 build 逻辑防漂移）；不含 machine 选择、确认、成功/失败展示、exit-1 收口（那些是 L1 `cmd_*` owns）；不处理 DRY-RUN（两调用点均在 module 入口前短路）。与 `ob dev build`（单 recipe devtool 编译）正交——前者编整个 image（1-4h），后者 fast inner-loop 单 recipe（秒-分钟）。leaf-pure（绝不 exit，return rc，exit 由 `cmd_*` 收口）。
+_Avoid_: ob build helper（口语化）, image builder, 把它当 ob dev build 的整体版（二者 depth 与机制不同：image build 用 bitbake 整个 target，dev build 用 devtool 单 recipe）
+
 **test layer**:
 `ob` 测试体系的分层，自下而上为 protocol（退出码协议，非交互）、unit（纯函数单测，零依赖毫秒级）、orchestration（编排函数，PATH 注入 stub）、integration（真实集成，init→build→QEMU 全流程）。曾用 L0–L3 编号，为脱离与「function semantic layer」的 L1/L2/L3 撞名而改语义名。
 _Avoid_: 测试等级, 覆盖等级, L0–L3（旧称已弃）, function semantic layer
