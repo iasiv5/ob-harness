@@ -193,7 +193,13 @@ status_render_tips() {
     elif [[ "$has_init"     -eq 0 ]]; then tip="💡 Run 'ob init' to initialize a machine."
     elif [[ "$has_init_no_fw" -eq 1 ]]; then tip="💡 Run 'ob build <machine>' to produce a firmware image."
     fi
-    [[ -n "$tip" ]] && { echo ""; echo "  $tip"; }
+    # 用 if 不用 `[[ -n $tip ]] && {...}`:后者 tip 为空时返回非零,作为函数末句会使 renderer
+    # 返回 1,在 cmd_status 的 set -e 上下文触发退出(bestpractice_07 短路 && 陷阱;Task 4 实测发现,
+    # unit/golden 用 set +e 测不出,只有真实 ./ob 的 set -e 路径暴露)。
+    if [[ -n "$tip" ]]; then
+        echo ""
+        echo "  $tip"
+    fi
 }
 ```
 
