@@ -40,8 +40,9 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
-| 空工作区 → exit 0 | cmd_status | protocol/exit_codes.sh | exit 函数,radar 低估 |
+| 空工作区 → exit 0 | cmd_status | protocol/exit_codes.sh;protocol/status_golden.sh | exit 函数,radar 低估;golden 字节级回归(子壳+redirect N1+normalize run-specific TMP/PID) |
 | machine lifecycle state 展示/诊断 | machine_state_display_machines;machine_state_orphan_firmware_image_machines;machine_state_init_state;machine_state_snapshot_state;machine_state_init_time;machine_state_firmware_image_mtime;machine_state_is_firmware_image_ready;machine_state_is_orphan_firmware_image | unit/machine_state.sh;protocol/status_machine_state.sh | public records surface 已删除 |
+| 仪表盘呈现(表格/diagnostics 段/tips 排版+emoji 映射) | status_render_main_repo;status_render_machines;status_render_diagnostics;status_render_tips | unit/status_render.sh;protocol/status_render_surface.sh | leaf-pure(status_render.sh);纯参数注入不采集数据;§7 surface gate(forbidden token 清零,protocol/status_render_surface.sh) |
 
 ## dev
 
