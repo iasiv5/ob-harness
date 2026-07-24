@@ -327,7 +327,7 @@ devtool_search_read() {
 #   时 restore 旧 pair(尽力, 失败 backup retained); meta-mv-fail 时 meta_published=0 走 discard 不碰 cache。
 #   消费 devtool_recipes_cache_path/meta_path + _devtool_recipes_collect_cache_integrity/backup_file/
 #   restore_file/discard_backup/schema_version(现有 leaf-pure helper)。leaf-pure: return rc(0/非0), 不 exit。
-#   在 refresh 持有的排他 flock 9 临界区内调用, 不自加锁(refresh L362-L467 的 flock 块)。
+#   在 refresh 持有的排他 flock 9 临界区内调用, 不自加锁(refresh 取排他 flock 9 后、} 9>"$lock" 释放前的块内)。
 _devtool_recipes_publish_pair() {
     local stdout_file="$1" machine="$2" post_hash="$3" post_mtime="$4" post_commit="$5" stderr_file="$6"
     local cache meta tmp_cache="" tmp_meta="" staged_cache_sha="" staged_record_count=""
