@@ -96,6 +96,15 @@ query_jenkins_build_number() {
     echo "$raw" | grep -o '"number":[0-9]*' | head -1 | cut -d: -f2
 }
 
+# jenkins_job_url_from_url <url>
+# 纯决策(无 IO、不 exit): 从 QEMU binary 下载 URL 剥离 lastSuccessfulBuild/artifact 后缀，
+# 得到 Jenkins job base URL(供 query_jenkins_build_number 查 lastSuccessfulBuild/api/json)。
+# leaf-pure(绝不 exit)。
+jenkins_job_url_from_url() {
+    local url="$1"
+    echo "$url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||'
+}
+
 # download_qemu_binary_core <url> <extract_dir> <arch>
 # Shared download→detect→extract→locate→sha256 core for QEMU binaries
 # (used by download_and_replace_community_qemu and ensure_qemu_binary_community).
@@ -145,81 +154,93 @@ download_qemu_binary_core() {
     return 0
 }
 
+# _dlqbc_stage_binary <url> <extract_dir> <arch>
+# acquire 段: download_qemu_binary_core + chmod+x 校验。只动 extract_dir, 无 QEMU_BIN_FILE 副作用。
+# 设 DLQB_BIN_PATH / DLQB_SHA256(on success)。return 0=成功 / 1=download·extract·不可执行失败。
+# leaf-pure(绝不 exit); caller 拥有 tmp_dir 清理 + flock + exit。
+_dlqbc_stage_binary() {
+    local url="$1" extract_dir="$2" arch="$3"
+    if ! download_qemu_binary_core "$url" "$extract_dir" "$arch"; then
+        return 1
+    fi
+    chmod +x "$DLQB_BIN_PATH" 2>/dev/null || true
+    if ! [[ -x "$DLQB_BIN_PATH" ]]; then
+        warn "Downloaded file is not executable."
+        return 1
+    fi
+    return 0
+}
+
+# _replace_community_binary <new_binary> <new_sha256> <qemu_url> <remote_build> <arch>
+# commit 段: backup→swap→rollback→manifest→cleanup bak。契约: caller 已持 flock + 提供 new_binary(已 chmod+x)。
+# return 0=替换成功 / 1=swap 失败(已 rollback 旧 binary)。leaf-pure(绝不 exit);
+# caller(download_and_replace_community_qemu)拥有 tmp_dir 清理 + flock 释放 + exit。
+# swap+rollback 是紧耦合原子组(rollback 依赖 swap 失败状态), 整块留此函数(F1)。
+_replace_community_binary() {
+    local new_binary="$1" new_sha256="$2" qemu_url="$3" remote_build="$4" arch="$5"
+    local manifest="${QEMU_BIN_FILE}.manifest"
+    local old_build bak_suffix bak_file label
+    old_build=$(read_kv_field "$manifest" build_number 2>/dev/null) || old_build=""
+    bak_suffix="${old_build:-unknown}"
+    bak_file="${QEMU_BIN_FILE}-${bak_suffix}.bak"
+
+    info "Backing up current QEMU binary (build #${bak_suffix})..."
+    cp "$QEMU_BIN_FILE" "$bak_file"
+
+    if ! mv "$new_binary" "$QEMU_BIN_FILE"; then
+        warn "Failed to replace QEMU binary."
+        [[ -f "$bak_file" ]] && mv "$bak_file" "$QEMU_BIN_FILE"
+        return 1
+    fi
+    chmod +x "$QEMU_BIN_FILE"
+
+    label=$(read_source_label)
+    write_qemu_binary_manifest "$label" "$arch" "url" "$qemu_url" "$new_sha256" "$remote_build"
+
+    rm -f "$bak_file"
+    info "QEMU binary updated to build #${remote_build}."
+    verbose "  SHA256: $new_sha256"
+    return 0
+}
+
 # Download a new QEMU binary and safely replace the existing one.
 # Args: $1 = download URL, $2 = remote build number, $3 = arch
+# flock wrapper: acquire(download+verify)在锁外(只动 tmp_dir, 不碰 QEMU_BIN_FILE);
+# flock 仅包 commit 段(并发 replace 会互相覆盖)。锁范围比原全程持锁缩小(良性)。
 # Returns: 0 on success, 1 on failure (caller should continue with old binary)
 download_and_replace_community_qemu() {
     local qemu_url="$1"
     local remote_build="$2"
     local arch="$3"
-    local manifest="${QEMU_BIN_FILE}.manifest"
-
-    # ── flock: prevent concurrent updates ──
     local lock_file="${QEMU_BIN_FILE}.update.lock"
+    local tmp_dir
+    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/qemu-update-XXXXXX")
+    local _rc=0
+
+    # ── acquire: download + verify(锁外; 只动 tmp_dir, 不碰 QEMU_BIN_FILE) ──
+    info "Downloading QEMU binary (build #${remote_build})..."
+    if ! _dlqbc_stage_binary "$qemu_url" "$tmp_dir" "$arch"; then
+        warn "Failed to download/extract QEMU binary from: $qemu_url"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    # ── flock: 仅保护 commit 段(并发 replace 互相覆盖; acquire 已在锁外完成) ──
     exec 200>"$lock_file"
     if ! flock -n 200; then
         warn "Another QEMU binary update is in progress. Skipping."
         exec 200>&-
-        return 1
-    fi
-
-    # ── Staging dir for extraction (partial path lives in download_qemu_binary_core) ──
-    local tmp_dir
-    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/qemu-update-XXXXXX")
-
-    info "Downloading QEMU binary (build #${remote_build})..."
-    if ! download_qemu_binary_core "$qemu_url" "$tmp_dir" "$arch"; then
-        warn "Failed to download/extract QEMU binary from: $qemu_url"
         rm -rf "$tmp_dir"
-        flock -u 200 2>/dev/null; exec 200>&-
-        return 1
-    fi
-    local new_binary="$DLQB_BIN_PATH"
-    local new_sha256="$DLQB_SHA256"
-
-    # ── Verify new binary ──
-    chmod +x "$new_binary"
-    if ! [[ -x "$new_binary" ]]; then
-        warn "Downloaded file is not executable."
-        rm -rf "$tmp_dir"
-        flock -u 200 2>/dev/null; exec 200>&-
         return 1
     fi
 
-    # ── Backup old binary ──
-    local old_build
-    old_build=$(read_kv_field "$manifest" build_number 2>/dev/null) || old_build=""
-    local bak_suffix="${old_build:-unknown}"
-    local bak_file="${QEMU_BIN_FILE}-${bak_suffix}.bak"
+    # ── commit: backup→swap→rollback→manifest(契约: 已持锁) ──
+    _replace_community_binary "$DLQB_BIN_PATH" "$DLQB_SHA256" "$qemu_url" "$remote_build" "$arch" || _rc=$?
 
-    info "Backing up current QEMU binary (build #${bak_suffix})..."
-    cp "$QEMU_BIN_FILE" "$bak_file"
-
-    # ── Replace ──
-    if ! mv "$new_binary" "$QEMU_BIN_FILE"; then
-        warn "Failed to replace QEMU binary."
-        if [[ -f "$bak_file" ]]; then
-            mv "$bak_file" "$QEMU_BIN_FILE"
-        fi
-        rm -rf "$tmp_dir"
-        flock -u 200 2>/dev/null; exec 200>&-
-        return 1
-    fi
-    chmod +x "$QEMU_BIN_FILE"
-
-    # ── Update manifest ──
-    local label
-    label=$(read_source_label)
-    write_qemu_binary_manifest "$label" "$arch" "url" "$qemu_url" "$new_sha256" "$remote_build"
-
-    # ── Cleanup ──
+    # ── cleanup tmp + release lock ──
     rm -rf "$tmp_dir"
-    rm -f "$bak_file"
     flock -u 200 2>/dev/null; exec 200>&-
-
-    info "QEMU binary updated to build #${remote_build}."
-    verbose "  SHA256: $new_sha256"
-    return 0
+    return "$_rc"
 }
 
 # Check if a newer QEMU binary is available on Jenkins.
@@ -271,7 +292,7 @@ check_jenkins_update() {
 
     # ── extract job URL + query Jenkins ──
     local job_url
-    job_url=$(echo "$manifest_url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||')
+    job_url=$(jenkins_job_url_from_url "$manifest_url")
     local remote_build
     remote_build=$(query_jenkins_build_number "$job_url")
 
@@ -390,7 +411,7 @@ ensure_qemu_binary_community() {
     local build_number=""
     if [[ "$qemu_url" == *"jenkins.openbmc.org"* ]]; then
         local job_url
-        job_url=$(echo "$qemu_url" | sed -E 's|/lastSuccessfulBuild/.*||; s|/artifact/.*||')
+        job_url=$(jenkins_job_url_from_url "$qemu_url")
         build_number=$(query_jenkins_build_number "$job_url")
     fi
 
@@ -412,6 +433,56 @@ ensure_qemu_binary() {
     else
         ensure_qemu_binary_custom
     fi
+}
+
+# resolve_custom_binary_candidate <input> <arch> <outvar>
+# 纯决策(无 IO 副作用、不 exit): custom QEMU binary 路径解析。outvar 编码:
+#   ok:<path>          input 是文件, 或目录下含 <arch>
+#   err_dir_no_arch    input 是目录但缺 <arch>
+#   err_not_file       input 既非目录也非文件
+# leaf-pure; 调用者(ensure_qemu_binary_custom)负责交互循环 + exit。
+resolve_custom_binary_candidate() {
+    local input="$1" arch="$2" out="$3"
+    if [[ -d "$input" ]]; then
+        local cand="${input%/}/$arch"
+        if [[ ! -f "$cand" ]]; then
+            printf -v "$out" '%s' "err_dir_no_arch"
+            return 0
+        fi
+        printf -v "$out" '%s' "ok:$cand"
+        return 0
+    elif [[ ! -f "$input" ]]; then
+        printf -v "$out" '%s' "err_not_file"
+        return 0
+    fi
+    printf -v "$out" '%s' "ok:$input"
+    return 0
+}
+
+# resolve_custom_pcbios_candidate <input> <outvar>
+# 纯决策(无 IO 副作用、不 exit): custom QEMU pc-bios 目录解析(ast27x0_bootrom.bin 查找 +
+# pc-bios/ 子目录回退)。outvar 编码:
+#   ok:<path>        input(或 input/pc-bios)含 ast27x0_bootrom.bin
+#   err_not_dir      input 非目录
+#   err_no_bootrom   input 是目录但无 ast27x0_bootrom.bin(含 pc-bios/ 回退)
+# leaf-pure。
+resolve_custom_pcbios_candidate() {
+    local input="$1" out="$2"
+    if [[ ! -d "$input" ]]; then
+        printf -v "$out" '%s' "err_not_dir"
+        return 0
+    fi
+    local cand="$input"
+    if [[ ! -f "$cand/ast27x0_bootrom.bin" ]]; then
+        if [[ -f "$cand/pc-bios/ast27x0_bootrom.bin" ]]; then
+            cand="$cand/pc-bios"
+        else
+            printf -v "$out" '%s' "err_no_bootrom"
+            return 0
+        fi
+    fi
+    printf -v "$out" '%s' "ok:$cand"
+    return 0
 }
 
 ensure_qemu_binary_custom() {
@@ -439,7 +510,6 @@ ensure_qemu_binary_custom() {
     info "QEMU binary for custom source not found."
     echo ""
 
-    local input_binary=""
     local resolved_binary_path=""
     while true; do
         local pfp_rc=0
@@ -447,28 +517,19 @@ ensure_qemu_binary_custom() {
         if [[ "$pfp_rc" -ne 0 ]]; then
             exit 1
         fi
-        input_binary="$PROMPT_PATH_RESULT"
-
-        resolved_binary_path="$input_binary"
-        if [[ -d "$input_binary" ]]; then
-            resolved_binary_path="${input_binary%/}/$arch"
-            if [[ ! -f "$resolved_binary_path" ]]; then
-                error "Directory does not contain $arch: $input_binary"
-                continue
-            fi
-        elif [[ ! -f "$input_binary" ]]; then
-            error "File not found: $input_binary"
-            continue
-        fi
-
-        break
+        local _bres=""
+        resolve_custom_binary_candidate "$PROMPT_PATH_RESULT" "$arch" _bres
+        case "$_bres" in
+            ok:*) resolved_binary_path="${_bres#ok:}"; break ;;
+            err_dir_no_arch) error "Directory does not contain $arch: $PROMPT_PATH_RESULT"; continue ;;
+            err_not_file)    error "File not found: $PROMPT_PATH_RESULT"; continue ;;
+        esac
     done
 
     cp "$resolved_binary_path" "$QEMU_BIN_FILE"
     chmod +x "$QEMU_BIN_FILE"
     info "QEMU binary copied: $QEMU_BIN_FILE"
 
-    local input_pcbios=""
     local resolved_pcbios_path=""
     local target_pcbios="$QEMU_BIN_DIR/pc-bios"
     if [[ "$QEMU_LAUNCH_REQUIRES_PCBIOS" == "yes" ]]; then
@@ -480,25 +541,16 @@ ensure_qemu_binary_custom() {
             if [[ "$pfp_rc" -ne 0 ]]; then
                 exit 1
             fi
-            input_pcbios="$PROMPT_PATH_RESULT"
-
-            if [[ ! -d "$input_pcbios" ]]; then
-                error "Directory not found: $input_pcbios"
-                continue
-            fi
-
-            resolved_pcbios_path="$input_pcbios"
-            if [[ ! -f "$resolved_pcbios_path/ast27x0_bootrom.bin" ]]; then
-                if [[ -f "$resolved_pcbios_path/pc-bios/ast27x0_bootrom.bin" ]]; then
-                    resolved_pcbios_path="$resolved_pcbios_path/pc-bios"
-                else
-                    error "Directory does not contain ast27x0_bootrom.bin: $input_pcbios"
+            local _pres=""
+            resolve_custom_pcbios_candidate "$PROMPT_PATH_RESULT" _pres
+            case "$_pres" in
+                ok:*) resolved_pcbios_path="${_pres#ok:}"; break ;;
+                err_not_dir)   error "Directory not found: $PROMPT_PATH_RESULT"; continue ;;
+                err_no_bootrom)
+                    error "Directory does not contain ast27x0_bootrom.bin: $PROMPT_PATH_RESULT"
                     error "Provide the pc-bios directory itself, or a QEMU root directory that contains pc-bios/."
-                    continue
-                fi
-            fi
-
-            break
+                    continue ;;
+            esac
         done
 
         if [[ -d "$target_pcbios" ]]; then

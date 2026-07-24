@@ -89,6 +89,23 @@ else
     ok "bare mirror state owned by module"
 fi
 
+# ── 1c-quat. qemu_binary 自愿 leaf-pure 原语函数体无 exit ──
+# qemu_binary.sh 是 direct-exit basename(ensure_* own exit 1/2/3), exit_contract Y 规则够不着
+# 这些单原语; 它们自愿 leaf-pure(恒 return, 绝不 exit), 用函数体静态锁守纯度。
+_qbin_leaf_fns=(jenkins_job_url_from_url resolve_custom_binary_candidate resolve_custom_pcbios_candidate _dlqbc_stage_binary _replace_community_binary)
+_qbin_leaf_bad=""
+for _fn in "${_qbin_leaf_fns[@]}"; do
+    _body=$(awk -v fn="$_fn" 'index($0, fn "()")==1 {g=1} g {print; if($0=="}") exit}' lib/qemu_binary.sh)
+    if printf '%s\n' "$_body" | grep -qE '^[[:space:]]*exit([[:space:]]|$)'; then
+        _qbin_leaf_bad="$_qbin_leaf_bad $_fn"
+    fi
+done
+if [[ -n "$_qbin_leaf_bad" ]]; then
+    bad "qemu_binary leaf-pure 函数体含 exit(应恒 return):$_qbin_leaf_bad"
+else
+    ok "qemu_binary leaf-pure 原语无 exit"
+fi
+
 # ── 1d. 交互 prompt 文案契约（.exp expect 依赖这些源码字符串；read -p 非 tty 不输出，故静态守）──
 _prompt_bad=""
 grep -q 'Select a machine for' lib/machine_picker.sh 2>/dev/null || _prompt_bad="${_prompt_bad} pick_machine('Select a machine for')"
