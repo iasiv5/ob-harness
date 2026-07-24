@@ -320,6 +320,94 @@ devtool_search_read() {
     return "$rc"
 }
 
+# _devtool_recipes_publish_pair <stdout_file> <machine> <post_hash> <post_mtime> <post_commit> <stderr_file>
+# 把生成的 recipe 索引以 staged-atomic 方式发布到 cache+meta pair(stage→integrity→render meta→
+#   backup→publish meta→publish cache→restore-on-fail→discard/cleanup)。逐字搬移自 devtool_search_refresh
+#   原 else 块, fail-safe 语义不变: meta-先-cache-后(更便宜失败路径); meta_published 标志; cache-mv-fail
+#   时 restore 旧 pair(尽力, 失败 backup retained); meta-mv-fail 时 meta_published=0 走 discard 不碰 cache。
+#   消费 devtool_recipes_cache_path/meta_path + _devtool_recipes_collect_cache_integrity/backup_file/
+#   restore_file/discard_backup/schema_version(现有 leaf-pure helper)。leaf-pure: return rc(0/非0), 不 exit。
+#   在 refresh 持有的排他 flock 9 临界区内调用, 不自加锁(refresh L362-L467 的 flock 块)。
+_devtool_recipes_publish_pair() {
+    local stdout_file="$1" machine="$2" post_hash="$3" post_mtime="$4" post_commit="$5" stderr_file="$6"
+    local cache meta tmp_cache="" tmp_meta="" staged_cache_sha="" staged_record_count=""
+    local old_cache_bak="" old_meta_bak="" had_cache=0 had_meta=0 meta_published=0 rc=0
+    cache="$(devtool_recipes_cache_path "$machine")"
+    meta="$(devtool_recipes_meta_path "$machine")"
+    if ! tmp_cache="$(mktemp "${cache}.XXXXXX" 2>/dev/null)"; then
+        printf 'ob dev refresh: failed to stage cache at %s\n' "$cache" >>"$stderr_file"
+        rc=1
+    elif ! cp "$stdout_file" "$tmp_cache" 2>/dev/null; then
+        printf 'ob dev refresh: failed to write staged cache %s\n' "$tmp_cache" >>"$stderr_file"
+        rc=1
+    fi
+    if [[ "$rc" -eq 0 ]]; then
+        if ! _devtool_recipes_collect_cache_integrity "$tmp_cache" staged_cache_sha staged_record_count; then
+            printf 'ob dev refresh: failed to collect staged cache integrity data\n' >>"$stderr_file"
+            rc=1
+        elif ! tmp_meta="$(mktemp "${meta}.XXXXXX" 2>/dev/null)"; then
+            printf 'ob dev refresh: failed to stage metadata at %s\n' "$meta" >>"$stderr_file"
+            rc=1
+        elif ! printf '{"schema_version":"%s","bblayers_hash":"%s","bblayers_mtime":%s,"openbmc_commit":"%s","cache_sha256":"%s","count":%s,"generated_at":"%s"}\n' \
+                "$(_devtool_recipes_schema_version)" "$post_hash" "$post_mtime" "$post_commit" "$staged_cache_sha" "$staged_record_count" \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" > "$tmp_meta" 2>/dev/null; then
+            printf 'ob dev refresh: failed to write staged metadata %s\n' "$tmp_meta" >>"$stderr_file"
+            rc=1
+        fi
+    fi
+    if [[ "$rc" -eq 0 ]]; then
+        [[ -f "$cache" ]] && had_cache=1
+        [[ -f "$meta" ]] && had_meta=1
+        _devtool_recipes_backup_file "$cache" \
+            "${CONFIGS_DIR}/.${machine}.recipes.cache.backup.XXXXXX" \
+            old_cache_bak "$stderr_file" || rc=1
+        if [[ "$rc" -eq 0 ]]; then
+            _devtool_recipes_backup_file "$meta" \
+                "${CONFIGS_DIR}/.${machine}.recipes.meta.backup.XXXXXX" \
+                old_meta_bak "$stderr_file" || rc=1
+        fi
+    fi
+    if [[ "$rc" -eq 0 ]]; then
+        if mv "$tmp_meta" "$meta" 2>/dev/null; then
+            tmp_meta=""
+            meta_published=1
+            if mv "$tmp_cache" "$cache" 2>/dev/null; then
+                tmp_cache=""
+                _devtool_recipes_discard_backup "$old_cache_bak" "$stderr_file" "cache"
+                _devtool_recipes_discard_backup "$old_meta_bak" "$stderr_file" "metadata"
+                old_cache_bak=""
+                old_meta_bak=""
+            else
+                printf 'ob dev refresh: failed to publish cache %s; restoring previous pair\n' \
+                    "$cache" >>"$stderr_file"
+                rc=1
+                if _devtool_recipes_restore_file "$old_cache_bak" "$cache" "$had_cache" \
+                    "$stderr_file" "cache"; then
+                    old_cache_bak=""
+                fi
+                if _devtool_recipes_restore_file "$old_meta_bak" "$meta" "$had_meta" \
+                    "$stderr_file" "metadata"; then
+                    old_meta_bak=""
+                fi
+            fi
+        else
+            printf 'ob dev refresh: failed to publish metadata %s\n' "$meta" >>"$stderr_file"
+            rc=1
+        fi
+    fi
+    if [[ "$meta_published" -eq 0 ]]; then
+        _devtool_recipes_discard_backup "$old_cache_bak" "$stderr_file" "cache"
+        _devtool_recipes_discard_backup "$old_meta_bak" "$stderr_file" "metadata"
+    fi
+    if [[ -n "$tmp_cache" ]] && ! rm -f "$tmp_cache" 2>/dev/null; then
+        printf 'ob dev refresh: staged cache retained at %s\n' "$tmp_cache" >>"$stderr_file"
+    fi
+    if [[ -n "$tmp_meta" ]] && ! rm -f "$tmp_meta" 2>/dev/null; then
+        printf 'ob dev refresh: staged metadata retained at %s\n' "$tmp_meta" >>"$stderr_file"
+    fi
+    return "$rc"
+}
+
 # devtool_search_refresh <machine> <build_dir> <stage_outvar> <stderr_file_outvar>
 # A publish failure restores the old cache/meta pair. Backup or restore failures are fail-closed.
 # If diagnostics tempfile creation itself fails, stderr is the only remaining error channel.
@@ -383,81 +471,7 @@ devtool_search_refresh() {
                     printf 'ob dev refresh: recipe index generator produced no valid records\n' >>"$stderr_file"
                     rc=1
                 else
-                    local cache meta tmp_cache="" tmp_meta="" staged_cache_sha="" staged_record_count=""
-                    local old_cache_bak="" old_meta_bak="" had_cache=0 had_meta=0 meta_published=0
-                    cache="$(devtool_recipes_cache_path "$machine")"
-                    meta="$(devtool_recipes_meta_path "$machine")"
-                    if ! tmp_cache="$(mktemp "${cache}.XXXXXX" 2>/dev/null)"; then
-                        printf 'ob dev refresh: failed to stage cache at %s\n' "$cache" >>"$stderr_file"
-                        rc=1
-                    elif ! cp "$stdout_file" "$tmp_cache" 2>/dev/null; then
-                        printf 'ob dev refresh: failed to write staged cache %s\n' "$tmp_cache" >>"$stderr_file"
-                        rc=1
-                    fi
-                    if [[ "$rc" -eq 0 ]]; then
-                        if ! _devtool_recipes_collect_cache_integrity "$tmp_cache" staged_cache_sha staged_record_count; then
-                            printf 'ob dev refresh: failed to collect staged cache integrity data\n' >>"$stderr_file"
-                            rc=1
-                        elif ! tmp_meta="$(mktemp "${meta}.XXXXXX" 2>/dev/null)"; then
-                            printf 'ob dev refresh: failed to stage metadata at %s\n' "$meta" >>"$stderr_file"
-                            rc=1
-                        elif ! printf '{"schema_version":"%s","bblayers_hash":"%s","bblayers_mtime":%s,"openbmc_commit":"%s","cache_sha256":"%s","count":%s,"generated_at":"%s"}\n' \
-                                "$(_devtool_recipes_schema_version)" "$post_hash" "$post_mtime" "$post_commit" "$staged_cache_sha" "$staged_record_count" \
-                                "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo unknown)" > "$tmp_meta" 2>/dev/null; then
-                            printf 'ob dev refresh: failed to write staged metadata %s\n' "$tmp_meta" >>"$stderr_file"
-                            rc=1
-                        fi
-                    fi
-                    if [[ "$rc" -eq 0 ]]; then
-                        [[ -f "$cache" ]] && had_cache=1
-                        [[ -f "$meta" ]] && had_meta=1
-                        _devtool_recipes_backup_file "$cache" \
-                            "${CONFIGS_DIR}/.${machine}.recipes.cache.backup.XXXXXX" \
-                            old_cache_bak "$stderr_file" || rc=1
-                        if [[ "$rc" -eq 0 ]]; then
-                            _devtool_recipes_backup_file "$meta" \
-                                "${CONFIGS_DIR}/.${machine}.recipes.meta.backup.XXXXXX" \
-                                old_meta_bak "$stderr_file" || rc=1
-                        fi
-                    fi
-                    if [[ "$rc" -eq 0 ]]; then
-                        if mv "$tmp_meta" "$meta" 2>/dev/null; then
-                            tmp_meta=""
-                            meta_published=1
-                            if mv "$tmp_cache" "$cache" 2>/dev/null; then
-                                tmp_cache=""
-                                _devtool_recipes_discard_backup "$old_cache_bak" "$stderr_file" "cache"
-                                _devtool_recipes_discard_backup "$old_meta_bak" "$stderr_file" "metadata"
-                                old_cache_bak=""
-                                old_meta_bak=""
-                            else
-                                printf 'ob dev refresh: failed to publish cache %s; restoring previous pair\n' \
-                                    "$cache" >>"$stderr_file"
-                                rc=1
-                                if _devtool_recipes_restore_file "$old_cache_bak" "$cache" "$had_cache" \
-                                    "$stderr_file" "cache"; then
-                                    old_cache_bak=""
-                                fi
-                                if _devtool_recipes_restore_file "$old_meta_bak" "$meta" "$had_meta" \
-                                    "$stderr_file" "metadata"; then
-                                    old_meta_bak=""
-                                fi
-                            fi
-                        else
-                            printf 'ob dev refresh: failed to publish metadata %s\n' "$meta" >>"$stderr_file"
-                            rc=1
-                        fi
-                    fi
-                    if [[ "$meta_published" -eq 0 ]]; then
-                        _devtool_recipes_discard_backup "$old_cache_bak" "$stderr_file" "cache"
-                        _devtool_recipes_discard_backup "$old_meta_bak" "$stderr_file" "metadata"
-                    fi
-                    if [[ -n "$tmp_cache" ]] && ! rm -f "$tmp_cache" 2>/dev/null; then
-                        printf 'ob dev refresh: staged cache retained at %s\n' "$tmp_cache" >>"$stderr_file"
-                    fi
-                    if [[ -n "$tmp_meta" ]] && ! rm -f "$tmp_meta" 2>/dev/null; then
-                        printf 'ob dev refresh: staged metadata retained at %s\n' "$tmp_meta" >>"$stderr_file"
-                    fi
+                    _devtool_recipes_publish_pair "$stdout_file" "$machine" "$post_hash" "$post_mtime" "$post_commit" "$stderr_file" || rc=1
                 fi
             elif [[ "$rc" -eq 0 ]]; then
                 printf 'ob dev refresh: recipe index generator produced no records\n' >>"$stderr_file"
