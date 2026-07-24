@@ -348,11 +348,7 @@ cmd_deploy_to_qemu() {
     info "Running: bitbake obmc-phosphor-image"
     info "Estimated time: 1-4 hours depending on machine and cache state."
 
-    build_env_enter "$MACHINE" "$BUILD_DIR" 2>/dev/null
-    resolve_npm_registry
-    apply_npm_registry
-
-    if ! bitbake obmc-phosphor-image; then
+    if ! build_obmc_image "$MACHINE" "$BUILD_DIR"; then
         echo ""
         step_header "Build Failed"
         error "bitbake failed — image not rebuilt, QEMU unchanged (build-first)."
