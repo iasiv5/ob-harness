@@ -4,12 +4,14 @@ source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
 assert_reset
 
-# ---- main_repo ----
-out=$(status_render_main_repo 0 "" "" "" "" "" "" "")
+# ---- main_repo (含 rc=0 leaf-pure 契约——unit 显式断言 rc,防 renderer return 非 0 在 set -e 下炸) ----
+out=$(status_render_main_repo 0 "" "" "" "" "" "" ""); rc=$?
+assert_eq "main_repo missing rc" "$rc" 0
 assert_contains "main_repo missing shows missing" "$out" "Status       : missing"
 assert_false "main_repo missing hides present" grep -Fq "present" <<< "$out"
 
-out=$(status_render_main_repo 1 "git://x/y" "mirror" "main" "abc1234" "✅ up-to-date" "2026-06-23T01:02:03Z" "/srv/ob")
+out=$(status_render_main_repo 1 "git://x/y" "mirror" "main" "abc1234" "✅ up-to-date" "2026-06-23T01:02:03Z" "/srv/ob"); rc=$?
+assert_eq "main_repo present rc" "$rc" 0
 assert_contains "main_repo present" "$out" "Status       : present"
 assert_contains "main_repo source + label" "$out" "Source       : git://x/y (mirror)"
 assert_contains "main_repo branch" "$out" "Branch       : main"
@@ -57,14 +59,18 @@ out=$(status_render_diagnostics empty_orphan); rc=$?
 assert_eq "diag empty rc" "$rc" 0
 assert_false "diag empty no section" grep -Fq "Orphan firmware" <<< "$out"
 
-# ---- tips ----
-out=$(status_render_tips 0 0 0)
+# ---- tips (4 分支全断言 rc=0——bp07 set -e 陷阱点:tips 空 tip 时末句若返回非 0 会在 cmd_status set -e 下炸;unit 虽 set +e,显式 assert rc 把这个契约钉进单测) ----
+out=$(status_render_tips 0 0 0); rc=$?
+assert_eq "tips no repo rc" "$rc" 0
 assert_contains "tips no repo" "$out" "Run 'ob init' to get started."
-out=$(status_render_tips 1 0 0)
+out=$(status_render_tips 1 0 0); rc=$?
+assert_eq "tips has_init rc" "$rc" 0
 assert_contains "tips no init machine" "$out" "to initialize a machine."
-out=$(status_render_tips 1 1 1)
+out=$(status_render_tips 1 1 1); rc=$?
+assert_eq "tips no_fw rc" "$rc" 0
 assert_contains "tips init no fw" "$out" "to produce a firmware image."
-out=$(status_render_tips 1 1 0)
+out=$(status_render_tips 1 1 0); rc=$?
+assert_eq "tips fw_ready rc" "$rc" 0
 assert_false "tips no tip when fw ready" grep -Fq "Run 'ob" <<< "$out"
 
 assert_summary
