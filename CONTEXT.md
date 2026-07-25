@@ -173,3 +173,11 @@ _Avoid_: recipe picker（口语化，术语用 selection）, 把 selection 当 m
 **subcommand handler**:
 `ob dev` 二级子命令（list/modify/refresh/reset/finish/status/build）的 porcelain 生命周期编排 module，把各子命令"调完执行 module（`devtool_*_run` / `devtool_search_*`）之后的编排"收成独立单元。它是 leaf-pure（绝不 exit，return exit-code 契约值 0/1/2/3，exit 由 `cmd_dev` L1 独占，见 [ADR-0012](docs/adr/0012-ob-dev-subcmd-handler-leaf-pure-exit.md)），由 `dev_dispatch_subcmd` dispatcher 按 subcmd 分发。7 个子命令共享入口契约（`machine`/`build_dir`/`recipe`/`pattern`/`dry_run` → return exit-code）与两段真重复前置（dry-run gate、recipe 前置），但 run→relay→emit 段各自保留真实形状（reset/finish/status 走 relay + emit JSON；modify 走 relay + printf srctree；refresh/build 空输出且 refresh 不调 relay；list 走 read→三态机），**不强求统一模板**——形状事实不同，强行统一会造假模板。recipe 前置的 TOCTOU 再校验留在 handler 内（非 TTY 路径不经交互引导段，靠它兜底）。与 `ob dev porcelain stdout`（stdout 契约，handler 是其编排者）、`function semantic layer`（它是 L3 leaf-pure 的领域化子类）、`modified recipe selection`（reset/finish/build handler 共享的前置选号）正交。
 _Avoid_: dispatch handler（口语化，术语用 subcommand handler）, 把 handler 当 L1 `cmd_*`（它是 leaf-pure L3）, 强求 7 子命令统一 run→relay→emit 模板（形状事实不同）
+
+**know-how**:
+`rules/knowhow/` 下 agent 可查阅的可复用实操经验集合，分两类形状——workflow（过程：怎么一步步做成一件事，如 `ob init`/`ob dev modify`）与 bestpractice（原则/已知坑/pattern：遇到某类情况记住什么）。索引为 `rules/05_KNOWHOW_INDEX.md`。它是 agent **读**的文档，不是被**调用**的——与 `harness skill` 是两个概念。单条称 "know-how 条目"（不称 "a know-how"，因 know-how 是 mass noun）。曾用名 "skill"，因与 `.claude/skills/` 撞名且 "skill" 把过程与原则混为一谈而改名，决策见 [ADR-0013](docs/adr/0013-skills-to-knowhow-rename.md)。
+_Avoid_: skill / 技能（指 `rules/knowhow/` 时——会与 harness skill 混淆）, knowledge / 知识（陈述性，装不下 workflow 过程）, a know-how（不可数，用 "know-how 条目"）
+
+**harness skill**:
+`.claude/skills/` 下 Claude Code harness 原生的 skill，agent 通过 Skill 工具**调用**（非阅读），由 harness 自动发现与加载（如 brainstorming/grilling/domain-modeling）。与 `know-how`（`rules/knowhow/`，agent 读的参考文档）是两个概念：harness skill 是可调用能力，know-how 是参考文档。两者历史上都叫 "skill" 产生歧义，故 `rules/` 侧改用 know-how，`.claude/` 侧保留 skill。
+_Avoid_: 把 harness skill 与 know-how 混称 "skill"

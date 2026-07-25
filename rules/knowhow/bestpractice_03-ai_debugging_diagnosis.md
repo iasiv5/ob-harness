@@ -103,7 +103,7 @@ AI 改不好代码
 
 ---
 
-## 与其他 Skill 的关系
+## 与其他 Know-how 的关系
 
 - 配合 `bestpractice_02-ai_programming_mindset.md` 的"70% 问题"诊断
 - 配合系统提示词中的 Todo 任务管理机制进行任务分解

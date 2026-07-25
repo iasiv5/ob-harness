@@ -30,7 +30,7 @@ Observer 扫描以下路径，检测有意义的变更：
 | `docs/specs/` | 新设计文档 = 新功能在规划 |
 | `docs/plans/` | 新实施计划 = 功能在构建 |
 | `rules/` | 核心规则变动 = 系统进化 |
-| `rules/skills/` | 新增 skill = 新能力 |
+| `rules/knowhow/` | 新增 know-how = 新能力 |
 | `rules/axioms/` | 新增公理 = 认知更新 |
 | `ob` | 主工具脚本变更 |
 | `lib/` | ob 模块主体变更（cmd_* 编排 / devtool_* / qemu_* 等深模块，06-16 模块化后主体逻辑所在） |
@@ -70,11 +70,11 @@ Observer 扫描以下路径，检测有意义的变更：
 ### 4.2 反思与晋升 (L2 Reflector)
 - **核心目标**: 实现从“短期观测”到“长期规则”的进化。
 - **操作文件**:
-  1. **规则层 (L3)**: 直接根据最新观测到的有效规律、语言风格变化、以及长效约束，修改或更新 `rules/` 下的核心规则文件 (`01_SOUL.md`~`06_AXIOMS_INDEX.md`)，并在确有必要时更新或新建 `rules/skills/` 下的真实 skill 文档。
-  2. **Skills 索引与新增规范**: 当晋升目标落在 `rules/skills/` 下的真实 skill 文档时，必须遵循以下规则：
-     - 新增或重写 skill 前，先读 `rules/skills/bestpractice_01-skill_writing.md`，按目标、验收标准、可用资源和输出规格定义 skill，不要把 skill 写成机械步骤清单。
+  1. **规则层 (L3)**: 直接根据最新观测到的有效规律、语言风格变化、以及长效约束，修改或更新 `rules/` 下的核心规则文件 (`01_SOUL.md`~`06_AXIOMS_INDEX.md`)，并在确有必要时更新或新建 `rules/knowhow/` 下的真实 know-how 文档。
+  2. **Know-how 索引与新增规范**: 当晋升目标落在 `rules/knowhow/` 下的真实 know-how 文档时，必须遵循以下规则：
+     - 新增或重写 know-how 前，先读 `rules/knowhow/bestpractice_01-knowhow_writing.md`，按目标、验收标准、可用资源和输出规格定义 know-how，不要把 know-how 写成机械步骤清单。
      - 文件命名建议采用 `<category>_<NN>-<name>.md`，例如 `workflow_01-my_process.md`、`bestpractice_01-my_insight.md`。
-     - 修改或新增后，必须同步更新 `rules/05_SKILLS_INDEX.md`，确保后续 agent 能找到。
+     - 修改或新增后，必须同步更新 `rules/05_KNOWHOW_INDEX.md`，确保后续 agent 能找到。
   3. **记忆层 (L1/L2)**: 重写 `contexts/memory/OBSERVATIONS.md`。执行垃圾回收，删除已被固化进 rules 的内容以及过期的 🟢 记录。
 - **职责**: 确保 `rules/` 始终代表系统的最新“进化状态”。
 

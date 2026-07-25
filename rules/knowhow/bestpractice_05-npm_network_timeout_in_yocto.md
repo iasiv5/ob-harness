@@ -127,7 +127,7 @@ export npm_config_fetch_retry_factor=2
 | 缓存过期后网络状况已变 | 24h 缓存可能滞后：上午探测结果已不适用下午的网络状况 | 删除 `workspace/configs/<machine>.npm-registry` 强制重新探测 |
 | 非中国用户使用 npmmirror.com 反而慢 | npmmirror.com 对海外用户可能比 npmjs.org 更慢 | 设置 `OB_NPM_REGISTRY= ob build` 禁用自动检测，或设为其他镜像 |
 
-## 与其他 Skill 的关系
+## 与其他 Know-how 的关系
 
 - 配合 `workflow_01-obmc_env_init.md` 中的构建流程使用
 - 配合 `bestpractice_03-ai_debugging_diagnosis.md` 进行系统化诊断

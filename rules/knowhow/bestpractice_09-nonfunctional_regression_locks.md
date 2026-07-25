@@ -101,8 +101,8 @@ assert_false "does not rediscover initialized list" test -f "$initialized_calls_
 | 对功能性改动滥用 | 给"改了输出"的改动也加调用次数断言，合法重构（换实现）时测试误红 | 只对"输出不变、仅优化达成方式"的改动加；功能性改动靠输出断言 |
 | mock 泄漏错觉 | 担心重定义污染其他测试 | 每文件独立进程不跨文件泄漏；注意同文件内定义顺序 |
 
-## 与现有 skill 的关系
+## 与现有 know-how 的关系
 
-- 是 [bestpractice_08 质量门禁与 Eval 模式库](bestpractice_08-eval_gate_patterns.md) **模式 4（四层测试）内部**的微观断言手法：08 讲门禁架构（环节怎么配 eval），本 skill 讲测试代码里**为非功能性改动**具体怎么写断言。这类断言在本仓库语义分层里通常落在 **unit 层**（mock 依赖函数，如 `repo_previously_initialized.sh`）或 **protocol 层**（命令行为 + 计数，如 `status_machine_state.sh`）；分层语义见 CONTEXT.md 的 test layer。
-- 与 [bestpractice_07 bash strict mode 管道陷阱](bestpractice_07-bash_strict_mode_pipes.md) 同属"bash 作用域/写法手法"族——两者都源自子 shell 作用域（07 是退出码，本 skill 是计数变量可见性）。
+- 是 [bestpractice_08 质量门禁与 Eval 模式库](bestpractice_08-eval_gate_patterns.md) **模式 4（四层测试）内部**的微观断言手法：08 讲门禁架构（环节怎么配 eval），本 know-how 讲测试代码里**为非功能性改动**具体怎么写断言。这类断言在本仓库语义分层里通常落在 **unit 层**（mock 依赖函数，如 `repo_previously_initialized.sh`）或 **protocol 层**（命令行为 + 计数，如 `status_machine_state.sh`）；分层语义见 CONTEXT.md 的 test layer。
+- 与 [bestpractice_07 bash strict mode 管道陷阱](bestpractice_07-bash_strict_mode_pipes.md) 同属"bash 作用域/写法手法"族——两者都源自子 shell 作用域（07 是退出码，本 know-how 是计数变量可见性）。
 - 上游公理：[V2 可验证性](../axioms/v02_verifiability.md)（让优化可验证才是资产）、呼应 [V6 概率乘](../axioms/v06_probability_multiplication.md)（每个优化配 eval，防黑箱回退）。

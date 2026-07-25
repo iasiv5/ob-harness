@@ -5,7 +5,7 @@
 - **类型**: BestPractice
 - **适用场景**: 在 `ob`/`lib/*.sh` 里把散落在多个 helper / 多个 `cmd_*` 的同类判断收敛到一个深 module 时；拆 god-function 时；为新增 module 配纯度门禁时
 - **创建日期**: 2026-07-06
-- **来源**: 五次同构抽取提炼（`machine_state`(06-24)→`qemu_launch_profile`(07-01)→`qemu_binary`/`qemu.sh` runtime 拆(07-04)→`machine_picker`(07-05)→`qemu_instance`(07-06)）；后续 `devtool_pick`(modified recipe selection)→`devtool_dispatch`/`devtool_porcelain`(relay/emit，ADR-0010)→`devtool_subcmd`(subcommand handler，ADR-0012) 等沿用同一模式。通用深模块词汇见 [codebase-design DEEPENING](.claude/skills/codebase-design/DEEPENING.md)，本 skill 是它在 ob/lib 的落地形态 + 本仓库特有的静态门禁机制。
+- **来源**: 五次同构抽取提炼（`machine_state`(06-24)→`qemu_launch_profile`(07-01)→`qemu_binary`/`qemu.sh` runtime 拆(07-04)→`machine_picker`(07-05)→`qemu_instance`(07-06)）；后续 `devtool_pick`(modified recipe selection)→`devtool_dispatch`/`devtool_porcelain`(relay/emit，ADR-0010)→`devtool_subcmd`(subcommand handler，ADR-0012) 等沿用同一模式。通用深模块词汇见 [codebase-design DEEPENING](.claude/skills/codebase-design/DEEPENING.md)，本 know-how 是它在 ob/lib 的落地形态 + 本仓库特有的静态门禁机制。
 
 ## 目标
 
@@ -31,7 +31,7 @@
 - **覆盖观测**：`tools/coverage_radar.py` + `trace_collect.sh`（xtrace 函数级命中，复用 extract_funcs，盲区透明化）+ `tools/coverage_matrix.md`（五档函数自动化归属清单）。
 - **术语权威**：`CONTEXT.md`（canonical term 登记）、`docs/adr/`（架构决策背书）。
 - **测试手法**：PATH-injection 优先（`tests/lib/stub.sh` 的 `mkfake_bin`/`stub_out`/`stub_script`），避开同 shell 函数 override 造成的 radar 虚高；调用次数/零调用断言见 [bestpractice_09](bestpractice_09-nonfunctional_regression_locks.md)。
-- **边界**：本 skill 只讲 ob/lib 的 bash 深模块抽取 + 配套门禁；通用 module/seam/adapter 词汇和依赖分类（in-process / local-substitutable / ports&adapters / true-external）见 codebase-design DEEPENING，两者互补不重复。
+- **边界**：本 know-how 只讲 ob/lib 的 bash 深模块抽取 + 配套门禁；通用 module/seam/adapter 词汇和依赖分类（in-process / local-substitutable / ports&adapters / true-external）见 codebase-design DEEPENING，两者互补不重复。
 
 ## 处置模式
 
@@ -67,10 +67,10 @@
 | 函数名前缀让 grep 漏（F7） | 迁移清单用 `grep qemu_binary_` 枚举，但某函数名带该前缀、唯一调用者在另一个同前缀函数 body 内，被 grep 当"已迁移"漏掉，孤儿化且无 gate 报错 | 迁移清单用全限定名 + 调用点 grep 双向核对；正则用 `[a-z0-9_]+` 覆盖含数字名（如 ast2700） |
 | 工具依赖单文件假设漂移 | ob 模块化（ob→lib/*.sh）后，依赖"ob 单文件"假设的工具（`coverage_radar.py list_funcs`）静默失效——只 extract ob 入口 3 函数，真实逻辑全在 lib 但 radar 盲；docstring 仍写旧函数数 | 模块化重构必须同步更新依赖单文件假设的工具；docstring 旧数 + cross_check 静默丢弃是双重漂移信号 |
 | 跨用例状态泄漏 | 同一 shell 进程连续解析不同 machine（AST2700 后再 AST2600），上一次的决策变量残留，bootloader 该空不空 | 入口必 reset 全部决策变量（`reset_qemu_launch_profile` 清空 `QEMU_LAUNCH_*`） |
-| 把单点当模式硬抄 | 只做过一次抽取就把它当通用模式写进 skill，过早抽象 | 等到同构出现 ≥3 次再固化为模式（本 skill 的五次先例即是门槛）；少于三次保留在 OBSERVATIONS 单点记录 |
+| 把单点当模式硬抄 | 只做过一次抽取就把它当通用模式写进 know-how，过早抽象 | 等到同构出现 ≥3 次再固化为模式（本 know-how 的五次先例即是门槛）；少于三次保留在 OBSERVATIONS 单点记录 |
 
-## 与现有 skill 的关系
+## 与现有 know-how 的关系
 
-- **上游通用词汇**：[codebase-design DEEPENING](.claude/skills/codebase-design/DEEPENING.md)（module/interface/seam/adapter、依赖分类、replace-don't-layer 测试策略）。本 skill 是它在 ob/lib bash 场景的落地 + 静态门禁。
-- **同族门禁**：[bestpractice_08 质量门禁与 Eval 模式库](bestpractice_08-eval_gate_patterns.md)（门禁架构）、[bestpractice_09 非功能性回归锁](bestpractice_09-nonfunctional_regression_locks.md)（调用次数/零调用断言手法）。三者同属"可机器验证的纪律"族：08 讲门禁怎么配、09 讲测试代码怎么写断言、本 skill 讲深模块怎么抽 + 纯度怎么守。
+- **上游通用词汇**：[codebase-design DEEPENING](.claude/skills/codebase-design/DEEPENING.md)（module/interface/seam/adapter、依赖分类、replace-don't-layer 测试策略）。本 know-how 是它在 ob/lib bash 场景的落地 + 静态门禁。
+- **同族门禁**：[bestpractice_08 质量门禁与 Eval 模式库](bestpractice_08-eval_gate_patterns.md)（门禁架构）、[bestpractice_09 非功能性回归锁](bestpractice_09-nonfunctional_regression_locks.md)（调用次数/零调用断言手法）。三者同属"可机器验证的纪律"族：08 讲门禁怎么配、09 讲测试代码怎么写断言、本 know-how 讲深模块怎么抽 + 纯度怎么守。
 - **上游公理**：[V2 可验证性](../axioms/v02_verifiability.md)（leaf-pure 纯度由静态工具验证才是资产）、呼应 [V6 概率乘](../axioms/v06_probability_multiplication.md)（每环配 eval，防黑箱回退）。

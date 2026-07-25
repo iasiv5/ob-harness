@@ -15,7 +15,7 @@ agent 做 OpenBMC 环境动作时，以 `ob` 为唯一前门：先查 `ob` 是�
 ## 适用边界
 
 - **适用**：OpenBMC 环境生命周期动作——`ob --help` 列出的子命令所覆盖的意图（当前 `init` / `build` / `status` / `start-qemu` / `stop-qemu` / `deploy-to-qemu` / `dev`（recipe 源码开发））。
-- **不适用**：`ob` 显然不涉足的动作（手改 recipe、解析 D-Bus 日志、写 skill、分析 BitBake 日志等）。这些是 agent 自由发挥区，不必先问 `ob`。
+- **不适用**：`ob` 显然不涉足的动作（手改 recipe、解析 D-Bus 日志、写 know-how、分析 BitBake 日志等）。这些是 agent 自由发挥区，不必先问 `ob`。
 - **判定入口**：`ob --help`。凡 help 列出的子命令覆盖的意图，一律走 ob 优先；help 没有的，才是自由区。
 
 ## 能力发现：`ob --help` 是唯一权威清单

@@ -7,9 +7,9 @@
 - **创建日期**: 2026-06-24
 - **来源**: 克谦方法论质量门禁原则 × 本仓库 eval 设施归纳
 
-## 这个 skill 干什么
+## 这个 know-how 干什么
 
-本仓库的 eval 实践（`exit_contract.py` / `ob_check.sh` / `coverage_radar.py` / 四层测试）散落在工具脚本和 OBSERVATIONS 里。这个 skill 把它们**反向归纳成可复用的门禁模式**，让你遇到"怎么给某个 action 加门禁"时有现成范式可套，而不是每次重新发明。
+本仓库的 eval 实践（`exit_contract.py` / `ob_check.sh` / `coverage_radar.py` / 四层测试）散落在工具脚本和 OBSERVATIONS 里。这个 know-how 把它们**反向归纳成可复用的门禁模式**，让你遇到"怎么给某个 action 加门禁"时有现成范式可套，而不是每次重新发明。
 
 它不是 SOP——给的是模式 + 本仓库实例锚定 + 已知陷阱，具体怎么用由你按场景判断。核心原则是 [V6 概率乘](../axioms/v06_probability_multiplication.md)：每个 action 配一个 eval，让概率乘的分母里没有黑箱环节。
 
@@ -72,9 +72,9 @@
 | 文档 eval 比代码 eval 难 | 代码能跑测试，文档质量难自动化 | 技术栈选择模板化；功能点别只给 3 个用例敷衍，但防过度设计 |
 | 黑箱 action | action 没 eval，成功率未知 | 每个 action 配 eval；拿不准就配（概率乘的隐形炸弹） |
 | 优化错环节 | 给已 0.99 的环节加投入 | 杠杆点是最弱环节，加修复轮数而非堆严格度 |
-| 忘记更新 SKILLS_INDEX | 新门禁设施没人知道 | 写完工具立即更新 `rules/03_WORKSPACE.md` 路由 + 本 skill 可用资源 |
+| 忘记更新 KNOWHOW_INDEX | 新门禁设施没人知道 | 写完工具立即更新 `rules/03_WORKSPACE.md` 路由 + 本 know-how 可用资源 |
 
-## 与现有 skill 的关系
+## 与现有 know-how 的关系
 
 - 是 [bestpractice_02 AI 编程核心方法论](bestpractice_02-ai_programming_mindset.md)「70% 问题 / 成功标准」的落地形态——02 讲为什么要有 feedback loop，08 讲门禁的具体模式。
 - 与 [bestpractice_06 ob 优先](bestpractice_06-ob_first.md) 同属"可机器验证的纪律"族：exit 码契约是门禁，ob 优先是门禁。

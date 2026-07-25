@@ -136,6 +136,6 @@ count=$(wc -l "$calls" 2>/dev/null | awk '{print $1+0}')
 
 与 exec 持久重定向、errexit 禁用上下文同属"bash 重定向/执行语义"族——作用域错(exec 持久 vs 单条)、时机错(输入重定向 open 早于子命令 fd2)、触发位错(set -e 在条件位不生效),解药都是把语义显式化(块作用域/文件参数/显式 `|| return`)而非靠隐式重定向。
 
-## 与现有 skill 的关系
+## 与现有 know-how 的关系
 
 - `workflow_01-obmc_env_init.md` 记录的「BitBake `??=` 优先级陷阱」是 strict mode 之外的另一类"看起来赋值了实际没生效"的 shell 相邻陷阱，可互为补充。

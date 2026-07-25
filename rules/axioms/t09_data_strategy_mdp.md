@@ -41,4 +41,4 @@ updated: 2026-03-01
 - **T04 数据优于观点**：在更高层面确立数据优先的思维方式
 - **M01 闭环校准**：数据飞轮本质上是一个校准循环，通过反馈不断逼近真实
 
-**参见**: [知识飞轮设计模式](../skills/workflow_knowledge_flywheel.md) — 知识工程中的笨方法迭代
+**参见**: [知识飞轮设计模式](../knowhow/workflow_03-knowledge_flywheel.md) — 知识工程中的笨方法迭代
