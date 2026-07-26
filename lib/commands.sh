@@ -443,73 +443,10 @@ cmd_dev() {
     # 无子命令 + TTY → 交互引导(选 list/modify/refresh, 按需补 pattern/recipe)。
     # 非 TTY 不进此段, 落到下面 case "" 分支维持 agent/CI 契约(exit 3 + remedy)。
     if [[ -z "$dev_subcmd" && -t 0 ]]; then
-        # 1) 子命令菜单(列已实现 7 个: list/modify/refresh/reset/status/finish/build; deploy 已退役, 迁至 ob deploy-to-qemu)
-        echo "  ob dev subcommands:"
-        echo "    1) list     Search/list recipes (read-only, reads cache)"
-        echo "    2) modify   devtool modify a recipe (outputs srctree path)"
-        echo "    3) refresh  Regenerate recipe metadata cache"
-        echo "    4) reset    devtool reset a recipe (outputs disposition JSON)"
-        echo "    5) status   List modified recipes (read-only, outputs JSONL)"
-        echo "    6) finish   devtool finish a recipe (land patches back to layer, outputs JSON)"
-        echo "    7) build   devtool build a recipe (outputs nothing on stdout, exit code carries result)"
-        local _sub_choice=""
-        if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Select subcommand [1-7] (0 to cancel): ")" _sub_choice; then
-            error "Unable to read subcommand selection from stdin." >&2
-            exit 1
-        fi
-        case "$_sub_choice" in
-            0) warn "ob dev cancelled by user."; exit 2 ;;
-            1) dev_subcmd="list" ;;
-            2) dev_subcmd="modify" ;;
-            3) dev_subcmd="refresh" ;;
-            4) dev_subcmd="reset" ;;
-            5) dev_subcmd="status" ;;
-            6) dev_subcmd="finish" ;;
-            7) dev_subcmd="build" ;;
-            *) error "ob dev: invalid subcommand selection '$_sub_choice'." >&2; exit 1 ;;
-        esac
-        # 2) 按子命令补必填/可选位置参数
-        case "$dev_subcmd" in
-            list)
-                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} pattern (Enter = all recipes): ")" dev_pattern; then
-                    error "Unable to read pattern." >&2
-                    exit 1
-                fi
-                ;;
-            modify)
-                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} recipe name: ")" dev_recipe; then
-                    error "Unable to read recipe name." >&2
-                    exit 1
-                fi
-                if [[ -z "$dev_recipe" ]]; then
-                    error "ob dev modify: no recipe specified." >&2
-                    error "Run 'ob dev --machine $dev_machine list [pattern]' to discover recipes first." >&2
-                    exit 3
-                fi
-                ;;
-            reset|finish|build)
-                # TTY 选 modified recipe → helper(leaf-pure, 5 态 status_outvar) + exit-code 映射留 cmd_dev
-                local _pick_st=""
-                devtool_pick_modified_recipe "$dev_machine" "$dev_build_dir" "$dev_subcmd" _pick_st
-                case "$_pick_st" in
-                    ok:*)
-                        dev_recipe="${_pick_st#ok:}" ;;
-                    empty)
-                        warn "No modified recipes for $dev_machine." >&2
-                        error "Run 'ob dev --machine $dev_machine modify <recipe>' first." >&2
-                        exit 3 ;;
-                    cancel)
-                        exit 2 ;;
-                    read-fail|status-failed)
-                        # read-fail: read_list_choice 读失败; status-failed: 文案已由 dev_relay_result 打印
-                        exit 1 ;;
-                esac
-                # ok 选号成功: dev_recipe 已填, fall through 出 TTY 引导段(fi);
-                # 下游 dispatch case(reset/finish/build 各自跑 devtool_*_run + DRY_RUN/recipe 再校验)继续执行,
-                # dev_recipe 非空 → 下游 [[ -z "$dev_recipe" ]] exit 3 check 不误触发。
-                ;;
-            refresh|status) ;;
-        esac
+        local _trc=0
+        dev_intake_tty "$dev_machine" "$dev_build_dir" dev_subcmd dev_pattern dev_recipe || _trc=$?
+        # cmd_dev 字面 case 收口（exit_contract X 禁 exit $?, || _rc=$? 防 set -e）
+        case "$_trc" in 0) ;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
     fi
 
     local _rc=0
