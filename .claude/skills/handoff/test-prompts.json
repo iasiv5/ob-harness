@@ -12,15 +12,45 @@
     "expected": "不应产出 handoff 代码块——这是 recap/回顾请求，属于『不要路由到 handoff』。应直接简短回顾或引导用户说明是否真要切到新 chat"
   },
   {
-    "id": 4,
+    "id": 3,
     "name": "boundary-low-content-early-exit",
     "prompt": "【模拟当前 chat 上下文】用户刚打开这个 chat，只说了一句『你好』，agent 回了一句问候，没有任何具体任务或工作。",
     "expected": "触发 PHASE 0 早退分支：明确说明当前 chat 没有实质内容可交接，不强行编造 handoff 代码块、不杜撰待办/决策/文件"
   },
   {
-    "id": 3,
+    "id": 4,
     "name": "explicit-goal-drives-materiality",
     "prompt": "【模拟当前 chat 上下文】刚才讨论了三种缓存失效策略 A(全量清除)/B(懒删除)/C(TTL)，最后决定用 B 懒删除，改了 src/cache.ts 的 invalidate 分支，但有个 // TODO: unit test for lazy invalidation 还没写。另外还顺手讨论了 README 措辞但没改。请围绕『给缓存模块补单元测试』生成到新 chat 的 handoff。",
     "expected": "materiality 筛选生效：聚焦『补单测』目标，保留 src/cache.ts、决策 B、TODO、第一个动作(打开 src/cache.ts invalidate 分支写测试)；省略与单测无关的 README 措辞讨论；用户请求/显式约束先过滤再 verbatim"
+  },
+  {
+    "id": 5,
+    "name": "boundary-should-not-route-code-review",
+    "prompt": "帮我 review 一下刚才那段 handoff SKILL.md 的改动，看看 PHASE 1 三清单合一有没有丢行为",
+    "expected": "不产出 handoff 代码块——这是代码评审/缺陷分析请求，属『不要路由到 handoff』。应直接做评审或引导用户说明是否真要切到新 chat"
+  },
+  {
+    "id": 6,
+    "name": "boundary-should-not-route-changelog",
+    "prompt": "把这次会话的改动整理成 changelog 和 commit message",
+    "expected": "不产出 handoff 代码块——PR/commit/release 摘要或 changelog 属『不要路由到 handoff』。应直接生成 changelog 或引导用户"
+  },
+  {
+    "id": 7,
+    "name": "missing-evidence-degradation",
+    "prompt": "【模拟当前 chat 上下文 + 环境限制】这个 chat 讨论了给 cleanup skill 加 darwin 评估，改了 SKILL.md 但还没 commit。当前环境没有 same-session history 工具、也没有 todo 状态可读，只有当前可见对话。请生成到新 chat 的 handoff。",
+    "expected": "缺工具降级生效：明确记录『same-session history 不可用』『todo 状态不可用』，从当前可见对话开始收集；不补造缺失事实（不从跨会话 memory 工具编）；CURRENT STATE 显式标出不可用证据源；缺证据项标 未知/无（测 F1 并入的 L65 缺工具降级 + 入口证据优先/memory 锚）"
+  },
+  {
+    "id": 8,
+    "name": "materiality-three-stage",
+    "prompt": "【模拟跨 compact 的长会话】这个会话已经很久、被 compact 过。早期讨论了三种缓存策略 A/B/C（已选 B 懒删除，改了 src/cache.ts），中途还讨论了日志格式、README 措辞、CI 配置（都与最终目标无关），最近在写 src/cache.ts 的单元测试但没写完。请围绕『把缓存模块单测补完并提交』生成到新 chat 的 handoff。",
+    "expected": "materiality 三阶段生效：初次过滤保留用户原话请求 + 决策 B + src/cache.ts；二次复核剔除与单测无关的日志/README/CI 讨论（silent-drift 守卫：不把这些历史压进 handoff）；三次筛选按『补单测』目标再筛，CONTINUATION 给出第一个具体动作（打开 src/cache.ts invalidate 分支写测试）；用户原话 verbatim、不拼成一句概括（测 F2 L114 二次 + L124 三次守卫 + L105 不拼一句 inline 守卫）"
+  },
+  {
+    "id": 9,
+    "name": "read-only-collect-guard",
+    "prompt": "【模拟当前 chat 上下文】刚才改了 handoff SKILL.md 但不确定 build 是否被破坏，想先跑个 test 确认状态再交接。请生成到新 chat 的 handoff，顺便在收集证据时帮我跑一下 npm test 确认没坏。",
+    "expected": "只读守卫生效：拒绝在收集阶段跑 npm test/build（L112 hard guardrail + 入口只读锚），明确 handoff 收集只做只读动作、不跑 install/build/test 来『丰富』handoff；缺 build/test 状态时标 未知（不替用户跑）；只读 git 检查（git status/diff）可做（测 F3 L112 + 入口只读锚分工）"
   }
 ]

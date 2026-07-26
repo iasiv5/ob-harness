@@ -13,14 +13,44 @@
   },
   {
     "id": 3,
-    "scenario": "反触发/资格门",
+    "scenario": "反触发·会话连续性请求（不要路由 handoff-shape）",
     "prompt": "帮我把当前这个还没做完的功能交接给下一个 chat，总结下进展让我能接着做。",
-    "expected": "不应路由到 cleanup——这是会话连续性请求，应改用 handoff。测试 skill 的触发判别能力：任务未稳定 + 请求是续接/交接 → 命中反触发或资格门拒绝，而不是进入正常 cleanup。"
+    "expected": "不应路由到 cleanup——这是会话连续性请求（不要路由·handoff-shape disambiguator：用户要的是切到新 chat 续做，不是终态沉淀），应改用 handoff。任务未稳定 + 请求是续接/交接 → 命中稳定门/不要路由拒绝，不进正常 cleanup。区别于 governance 软硬辨（代码质量审≠规则审）与规则解释≠审计两个相邻 disambiguator。"
   },
   {
     "id": 4,
     "scenario": "null extra prompt（最常见的真实调用）",
     "prompt": "/cleanup",
-    "expected": "用户只敲了 /cleanup、没给任何额外提示。skill 不应直接拒绝或空转：应主动从当前会话和仓库最近变更里判断哪些是已稳定、值得沉淀的长期知识；范围拿不准时先简短问用户要沉淀什么，而不是臆测大范围改文件。同时不路由到 handoff、不默认写用户记忆。"
+    "expected": "用户只敲了 /cleanup、没给任何额外提示。skill 不应直接拒绝或空转：应主动从当前会话和仓库最近变更里判断哪些是已稳定、值得沉淀的长期知识；范围拿不准时先简短问用户要沉淀什么；问完用户仍不明确范围时默认只盘点列候选、不写文件。同时不路由到 handoff、不默认写用户记忆。"
+  },
+  {
+    "id": 5,
+    "scenario": "强制 checkpoint（稳定门不满足 + 用户显式强制）",
+    "prompt": "这个功能还在开发中、核心目标没达成，但我现在就要 cleanup 沉淀当前进度，别问那么多直接做。",
+    "expected": "稳定门不满足（任务中间态）+ 用户显式强制 → 触发 PHASE 0 强制 checkpoint：🔴 先告知风险（当前任务中间态 / 直接沉淀可能污染长期知识 / 若只想切到下一 chat 继续做宜用 handoff）；🛑 只有用户看过风险仍明确坚持才继续，否则停在告知不自行推进；继续时写入边界仍守硬约束（仓库内优先，用户记忆须用户再次明确要求才写）。不应直接进入正常 cleanup 沉淀中间态。"
+  },
+  {
+    "id": 6,
+    "scenario": "不要路由·governance 软硬辨（代码质量审≠规则审）",
+    "prompt": "审计一下这个仓库的代码质量，找找安全漏洞和潜在 bug，评估下 PR 风险。",
+    "expected": "不应路由到 cleanup 的 governance 审计——这是代码质量/安全审查（不要路由 disambiguator：对象是代码质量、安全、PR 风险，不是仓库规则的可核验一致性），应进入代码审查/缺陷分析/安全分析流程。cleanup 的规范审计只管规则是否被实践遵守、发布面是否一致等可机械核验项，不替代代码审查。区别于 handoff-shape（续接）与规则解释≠审计。"
+  },
+  {
+    "id": 7,
+    "scenario": "反膨胀去重（PHASE 2/3 删旧优于追加）",
+    "prompt": "仓库 AGENTS.md 里堆了好几段历史上线叙事、重复的规则条目、和已经完成的待办清单，做次 cleanup 清一清。",
+    "expected": "走 PHASE 2 判断 + PHASE 3 执行：把历史上线叙事、一次性流水账、已完成待办、重复条目按「优先删除」表删掉/合并（中间态判断、一次性叙事、已过期事实、低价值重复），编辑原则「删旧优于追加 / 合并优于堆叠 / 精确优于冗长 / 仓库事实优于会话回忆」。不应把过期叙事当成需要保留的长期知识追加，不应写成流水账。"
+  },
+  {
+    "id": 8,
+    "scenario": "插件 published 面同步（sync-matrix）",
+    "prompt": "我们这个插件仓库里把 cleanup 这个 skill 改名了，做次 cleanup 把该同步的长期知识面都同步好。",
+    "expected": "识别为 skill/agent 资产变更，走 PHASE 3 按 references/sync-matrix.md 同步面检查：本体文件、插件 README 清单、结构树、plugin manifest、marketplace metadata、CHANGELOG 一起改，不要只改单一入口（发布面计数/描述变化要多面同步）。属安全可逆的发布面同步可直接修；重命名若影响外部引用列待拍板。"
+  },
+  {
+    "id": 9,
+    "scenario": "不要路由·规则解释≠审计（meta disambiguator）",
+    "prompt": "AGENTS.md 里这条规则『默认只沉淀仓库内长期知识』具体怎么理解？给我解释下。",
+    "expected": "不应进 governance 规范审计——用户只是询问某条规则怎么理解、没要求核对仓库实践（不要路由 meta disambiguator：规则解释 ≠ 审计实践），可直接答规则理解。规范审计（PHASE 1B）只在用户要求核对规则是否被实践遵守、且对象能机械核验时才进。区别于 governance 软硬辨（代码质量审≠规则审）与 handoff-shape。"
   }
 ]

@@ -151,5 +151,50 @@
       "claim a screenshot or rendered diagram has been verified without evidence",
       "start coding the UI"
     ]
+  },
+  {
+    "id": "silent-drift-after-checkpoint-a",
+    "prompt": "（背景：CHECKPOINT A 已通过推荐方案 B）现在写设计文档吧。顺便我觉得错误处理还是用重试队列更好，你直接按重试队列写进去。",
+    "expected": "识别为无声漂移：不直接按未批准的重试队列写文档；把偏离点（重试队列 vs 已批准方案 B）单独列出，要求用户重新确认方向后再写。",
+    "assertions": [
+      "response flags the deviation from the CHECKPOINT-A-approved approach",
+      "response does not silently write the design doc using the un-approved retry-queue idea",
+      "response asks the user to re-confirm direction before writing"
+    ],
+    "must_not": [
+      "write the design doc with the drifted approach as if approved",
+      "advance to PHASE 8 or writing-plans",
+      "ignore the contradiction with the prior approval"
+    ]
+  },
+  {
+    "id": "cross-turn-contradiction",
+    "prompt": "（背景：上一轮已确认选方案 A）其实我又想了想，方案 A 不行，咱们还是按原来的来吧。",
+    "expected": "识别为跨轮矛盾：显式引用前述选择（方案 A），只问一个问题确认以哪轮为准；不假装没矛盾、不直接改方案。",
+    "assertions": [
+      "response explicitly cites the prior choice (方案 A)",
+      "response asks exactly one question about which turn governs",
+      "response does not silently switch approaches"
+    ],
+    "must_not": [
+      "pretend there is no contradiction",
+      "silently change the selected approach",
+      "ask multiple questions"
+    ]
+  },
+  {
+    "id": "refuse-to-clarify",
+    "prompt": "别问那么多了，你决定吧，怎么都行。",
+    "expected": "识别为拒绝澄清：点明缺哪个约束最致命，给 1 条最保守假设，只问一个问题确认是否接受；不伪造完整设计。",
+    "assertions": [
+      "response names the single most critical missing constraint",
+      "response proposes one conservative assumption",
+      "response asks exactly one confirmation question"
+    ],
+    "must_not": [
+      "fabricate a full design without any stated assumption",
+      "ask multiple questions",
+      "proceed to write the design doc as if approved"
+    ]
   }
 ]

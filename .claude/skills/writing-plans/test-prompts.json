@@ -64,5 +64,20 @@
       "guess repository paths or test commands",
       "treat uncertain design input as approved and sufficient"
     ]
+  },
+  {
+    "id": "skip-file-structure-first",
+    "prompt": "需求很清楚：给现有的用户导出接口加一个 CSV 格式选项。直接帮我写实施计划，任务列出来就行。",
+    "expected": "识别'直接列任务、跳过文件结构'为红灯信号；先回 PHASE 2 规划文件结构与职责（会改哪些文件、各承担什么），再拆任务；不直接吐一串任务清单。",
+    "assertions": [
+      "response flags jumping straight to a task list without file-structure planning",
+      "plan includes a file-structure-and-responsibilities section before the task list",
+      "response does not emit a bare task list with no file landing points"
+    ],
+    "must_not": [
+      "produce a task list before stating which files are created or modified",
+      "skip the file-structure phase because the change looks small",
+      "omit file responsibilities and just list actions"
+    ]
   }
 ]
