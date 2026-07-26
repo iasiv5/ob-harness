@@ -56,6 +56,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 失败 relay(stage/rc/phase verbatim 诊断) | dev_relay_result | unit/devtool_dispatch.sh | per-subcmd 文案表,服务 modify/status/reset/finish/build |
 | workspace 交互原语(env_exec/parse srctree/status) | _devtool_env_exec;_devtool_parse_srctree;_devtool_parse_status_all;_devtool_parse_status_entry | unit/devtool_workspace.sh | leaf-pure |
 | cmd_dev dispatch 非 TTY 路径 | cmd_dev | orchestration/cmd_dev.sh | exit 函数,radar 低估;非 TTY dispatch 路径 |
+| 命令入口 argv 解析 + TTY 子命令引导(intake module) | dev_intake_argv;dev_intake_tty | unit/devtool_intake.sh;protocol/devtool_intake_surface.sh | leaf-pure(ADR-0010/0012);argv return 0/1, tty return 0/1/2/3;nameref outvar 回填;-d 设全局 DRY_RUN |
 
 ## start-qemu
 
