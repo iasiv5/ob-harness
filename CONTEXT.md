@@ -60,6 +60,10 @@ _Avoid_: ob status view, status formatter（口语化）, dashboard（引入未�
 `lib/machine_picker.sh` 中 `pick_machine` 封装的交互选择 module。它在调用者已保证 machine 集合非空且为交互终端的前提下，渲染纯序号+名字选择表，读取用户输入（数字或名字），将选中的 machine 设入 `$MACHINE`，或以 return 2 表示取消。它是 leaf-pure L3（绝不 exit，不决定 `exit-code 契约`，不打印 `remedy line`）；不判断集合是否为空、不判断终端交互性、不做 arg 合法性校验——这些是调用者（L1 `cmd_*`）的命令级前置。它只管"选哪个 machine"，与 `machine lifecycle state`（machine 处于什么状态）正交。
 _Avoid_: machine picker（口语化，术语用 selection）, 把 selection 当 lifecycle state, resolve_machine（init 旧函数，含 arg 快路径与 confirm，职责更宽）
 
+**machine selection guard**:
+cmd_*（L1 exit seam）在交互选 machine 前对 `machine selection`（`pick_machine`）两条前提——machine 集合非空、当前为交互终端——的检测 module（`lib/machine_selection_guard.sh`，函数 `machine_selection_guard`）。它把这两条前提从 cmd_build/cmd_dev 各自内联的「枚举集合 + 空 guard + TTY guard」编排收口到单一 module，以 outvar status 回传（empty=集合空 / nontty=集合非空但非交互终端 / ok=非空且交互终端），恒返回 0；绝不 exit、不打印 `remedy line`、不做展示、不选号——exit/remedy/展示归调用方（cmd_* 据 status 做 display + exit 映射），选号归调用方在 ok 后调 `pick_machine`。leaf-pure L3。它对应 pick_machine 文档前提（"调用者保证集合非空 + 交互终端"）的检测部分。与 `machine selection`（pick_machine 纯选号原语）正交：guard 检测前提，selection 在前提满足后选号；二者不合并进单一 module（guard 是检测原语，selection 是选号原语，cmd_* 编排两者）。勿与 `resolve_machine`（init 已退役旧函数，含 arg 快路径与 confirm）混淆。
+_Avoid_: machine guard（口语化，语义太泛）, 把 guard 当 selection（前者检测前提，后者选号）, 把 guard 当完整 machine 解析（module 只检测 empty/nontty，不含选号；选号留调用方调 pick_machine）, machine resolution（曾用术语，已改：module 只检测前提不做完整解析，resolution 误导）
+
 **state file format**:
 ob 在 `workspace/configs/` 下的状态文件按数据形状选格式：扁平标量字段用 kv 文本（`key=value` + `#` 注释，如 `source manifest`，用 `read_kv_field` 读）；嵌套/列表结构用 JSON（如 `machine snapshot` 的 `sub_repos` 数组，用 python json 读写）。依据是数据形状匹配表达力，不为统一而把扁平数据塞进 JSON。
 _Avoid_: 强制单一格式, 把扁平状态文件写成 JSON
