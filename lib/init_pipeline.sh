@@ -354,6 +354,28 @@ generate_build_config() {
         info "PREMIRRORS: GNU -> tuna (Tsinghua mirror); disable with PREMIRRORS=\"\" in local.conf"
     fi
 
+    # GITLAB_IP: recipes 用 git://${GITLAB_IP}/<org>/... 拉私有源码,变量未定义时 fetcher
+    # 解析出空 host → "repository '/....<org>...git' does not exist"。本地 custom layer 的
+    # local.conf.sample 只给注释占位(#GITLAB_IP = ""),所以 ob 必须自动填。
+    # 优先级与 DL_DIR 同语义(ADR-0005 assignment-state): local.conf 有赋值行=set 接管,
+    # ob 不覆盖; 无赋值行=unset, ob 用 detect_runtime_git_host() 从主仓 origin 反推 host 写入。
+    # 注入用 ??= (弱默认): 允许 bblayers/local 后续 ??/+= 覆盖, 也避免覆盖机器模板里可能的
+    # 真实赋值(local.conf.sample 默认是注释, 但 customer 可能解注释填值)。
+    local _user_gitlab_ip_set=0
+    local _runtime_git_host=""
+    if read_local_conf_var "$local_conf" "GITLAB_IP" >/dev/null 2>&1; then
+        _user_gitlab_ip_set=1
+        info "GITLAB_IP set in local.conf — not overriding in .inc"
+    else
+        detect_runtime_git_host >/dev/null
+        _runtime_git_host="${_RUNTIME_GIT_HOST:-}"
+        if [[ -n "$_runtime_git_host" ]]; then
+            info "GITLAB_IP unset in local.conf — injecting from main-repo origin: $_runtime_git_host"
+        else
+            info "GITLAB_IP unset in local.conf and no detectable GitLab host — recipes using \${GITLAB_IP} may fail to fetch"
+        fi
+    fi
+
     # Generate .inc file — ob init managed configuration.
     # Most variables use ??= (weak default). DL_DIR/SSTATE_DIR are the exception: they use a
     # conditional = (written only when absent in local.conf) because ??= cannot override
@@ -394,6 +416,16 @@ generate_build_config() {
             echo "PREMIRRORS = \"https://ftpmirror.gnu.org/gnu/ https://mirrors.tuna.tsinghua.edu.cn/gnu/\""
         else
             echo "# PREMIRRORS defined in local.conf — not overridden."
+        fi
+
+        echo ""
+        echo "# GITLAB_IP for private recipes using git://\${GITLAB_IP}/<org>/... in SRC_URI."
+        echo "# Not defined here when local.conf already assigns GITLAB_IP (user takes over)."
+        echo "# Uses ??= (weak default): machine template's local.conf may carry a real value."
+        if [[ "$_user_gitlab_ip_set" -eq 0 && -n "$_runtime_git_host" ]]; then
+            echo "GITLAB_IP ??= \"$_runtime_git_host\""
+        else
+            echo "# GITLAB_IP managed in local.conf or no detectable host — not injected."
         fi
 
         echo ""

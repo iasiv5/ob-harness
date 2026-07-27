@@ -21,10 +21,15 @@ is_valid_repo_url() {
 }
 
 # detect_runtime_git_host — 提取 runtime Git mirror host(术语见 CONTEXT.md)。
-# vendor 脚本(meta-*/git-mirror-url.sh, legacy github-gitlab-url.sh)的 GIT_MIRROR_HOST/GITLAB_IP 优先;
-# fallback 主仓 origin(git remote get-url)。带一次性全局缓存——clone_sub_repos 遍历 ~570 个 dep repo,
-# 每个 ${GITLAB_IP} clone_url 都会触发解析,不缓存会重算 N 次。leaf-pure:绝不 exit;
-# 拿到/拿不到 host 都 return 0,不报错(配置缺失由调用者决定 remedy)。
+# 优先级: 主仓 origin(git remote get-url) > vendor 脚本(meta-*/git-mirror-url.sh,
+# legacy github-gitlab-url.sh)的 GIT_MIRROR_HOST/GITLAB_IP。origin 优先的理由:
+# vendor 脚本里的 IP 常是上游模板死值(如内网 RFC1918 地址),与本机实际可达 GitLab 不符;
+# 主仓 origin 是 init 时真实 fetch 成功的 host,代表"这台机器真正能连的 GitLab"。
+# 注意:更上层(generate_build_config 注入 .inc)还有 local.conf 的 GITLAB_IP,优先级更高,
+# 本函数只负责"无 local.conf 指定时从源码树反推 host"。
+# 带一次性全局缓存——clone_sub_repos 遍历 ~570 个 dep repo,每个 ${GITLAB_IP} clone_url
+# 都会触发解析,不缓存会重算 N 次。leaf-pure:绝不 exit;拿到/拿不到 host 都 return 0,
+# 不报错(配置缺失由调用者决定 remedy)。
 # 调用约定:生产调用必须 direct call(detect_runtime_git_host >/dev/null; x=${_RUNTIME_GIT_HOST:-}),
 # 因 $() subshell 不穿透全局缓存;echo 仅供测试/一次性捕获。Returns: echo host 或空串,恒 return 0。
 detect_runtime_git_host() {
@@ -37,19 +42,8 @@ detect_runtime_git_host() {
     # 本地化 OPENBMC_DIR(nounset 自洽):未设/未初始化时 graceful 返回空,不依赖调用者保证
     local openbmc_dir="${OPENBMC_DIR:-}"
     local host=""
-    local _rt_script=""
-    local _candidate
-    if [[ -n "$openbmc_dir" ]]; then
-        for _candidate in "$openbmc_dir"/meta-*/git-mirror-url.sh \
-                          "$openbmc_dir"/meta-*/github-gitlab-url.sh; do
-            [[ -f "$_candidate" ]] && { _rt_script="$_candidate"; break; }
-        done
-    fi
-    if [[ -f "$_rt_script" ]]; then
-        host=$(grep -oP '^(GITLAB_IP|GIT_MIRROR_HOST)=["'"'"']?\K[^"'"'"'\s]+' "$_rt_script" 2>/dev/null | head -1 || true)
-    fi
 
-    # fallback: 主仓 origin(git 官方 API,比手解 .git/config 文件更稳健)
+    # 优先: 主仓 origin(git 官方 API)。init 时真实 fetch 成功的 host,代表性最强。
     if [[ -z "$host" && -n "$openbmc_dir" ]]; then
         local _remote_url=""
         _remote_url=$(git -C "$openbmc_dir" remote get-url origin 2>/dev/null || true)
@@ -61,6 +55,20 @@ detect_runtime_git_host() {
         elif [[ "$_remote_url" == http://* || "$_remote_url" == https://* ]]; then
             host=$(printf '%s\n' "$_remote_url" | sed -E 's#^https?://([^/:]+).*#\1#')
         fi
+    fi
+
+    # 兜底: vendor 脚本(meta-*/git-mirror-url.sh, legacy github-gitlab-url.sh)。
+    # 历史上是主来源,但其中的 IP 常为上游模板死值,与实际可达 host 不符,降级为兜底。
+    local _rt_script=""
+    local _candidate
+    if [[ -z "$host" && -n "$openbmc_dir" ]]; then
+        for _candidate in "$openbmc_dir"/meta-*/git-mirror-url.sh \
+                          "$openbmc_dir"/meta-*/github-gitlab-url.sh; do
+            [[ -f "$_candidate" ]] && { _rt_script="$_candidate"; break; }
+        done
+    fi
+    if [[ -z "$host" && -f "$_rt_script" ]]; then
+        host=$(grep -oP '^(GITLAB_IP|GIT_MIRROR_HOST)=["'"'"']?\K[^"'"'"'\s]+' "$_rt_script" 2>/dev/null | head -1 || true)
     fi
 
     _RUNTIME_GIT_HOST="$host"
@@ -182,15 +190,43 @@ ensure_bootstrap_local_conf() {
     # 注意:url.git@<host>:.insteadOf 是 scp-like 语法,默认 SSH 22 端口,不支持 :port;
     # 非标准端口的 GitLab 需 ssh_config 配 Host alias,或独立改进 insteadOf 用 ssh:// URL(后者是
     # ensure_bootstrap 的独立改进,git@ origin/vendor script 同样受此 scp-like 端口限制)。
+    #
+    # 多值键处理:url.git@<host>:.insteadOf 是多值键(multi-valued),无端口源与带端口源是两个独立值,
+    # 必须用 --add 追加(单值写 git config <key> <val> 会覆盖前者)。统一走"判重 + --add"。
     if [[ -n "$gitlab_ip" ]]; then
-        local _existing_rewrite=""
-        _existing_rewrite=$(git config --global --get "url.git@${gitlab_ip}:.insteadOf" 2>/dev/null || true)
-        if [[ -z "$_existing_rewrite" ]]; then
-            git config --global "url.git@${gitlab_ip}:.insteadOf" "https://${gitlab_ip}/"
-            info "Configured git insteadOf: https://${gitlab_ip}/ → git@${gitlab_ip} (SSH rewrite for recipe fetches)"
-        else
-            verbose "Git insteadOf for ${gitlab_ip} already configured: ${_existing_rewrite} → git@${gitlab_ip}:"
+        local _key="url.git@${gitlab_ip}:.insteadOf"
+
+        # 收集要配的 insteadOf 源 URL: 无端口基准 + recipe 里该 host 出现的端口变体。
+        # 端口变体来源:custom-layer bbappend 常把 override SRC_URI 写死为带端口形式
+        # git://<host>:<port>/...(${GITLAB_IP} 已字面展开或硬编)。无端口 insteadOf 匹配不到这种 URL,
+        # HTTPS fetch 会撞自签证书/认证失败,需为每个 host:port 也配一条 → SSH 重写。
+        # 范围限定 meta-*/recipes-*/ (recipe 文件),不做 workspace 全盘扫描。
+        local _want_urls="https://${gitlab_ip}/"
+        local _openbmc_dir="${OPENBMC_DIR:-}"
+        if [[ -n "$_openbmc_dir" ]]; then
+            local _port
+            while IFS= read -r _port; do
+                [[ -z "$_port" ]] && continue
+                _want_urls+=$'\n'"https://${gitlab_ip}:${_port}/"
+            done < <(
+                grep -rhoE "git://${gitlab_ip}:[0-9]+/" "$_openbmc_dir"/meta-*/recipes-*/ 2>/dev/null \
+                    | sed -E "s#^git://${gitlab_ip}:([0-9]+)/\$#\1#" | sort -u
+            )
         fi
+
+        # 对每个源 URL,已存在则跳过,缺失则 --add 追加(幂等)。
+        local _want
+        while IFS= read -r _want; do
+            [[ -z "$_want" ]] && continue
+            local _have=""
+            _have=$(git config --global --get-all "$_key" 2>/dev/null || true)
+            if ! grep -qxF "$_want" <<<"$_have"; then
+                git config --global --add "$_key" "$_want" 2>/dev/null \
+                    && info "Configured git insteadOf: ${_want} → git@${gitlab_ip} (SSH rewrite for recipe fetches)"
+            else
+                verbose "Git insteadOf already configured: ${_want} → git@${gitlab_ip}:"
+            fi
+        done <<<"$_want_urls"
     fi
 
     # Add include to local.conf if not already present.
