@@ -410,25 +410,23 @@ cmd_dev() {
 
     # machine 前置: --machine 给定则用它; 否则枚举 initialized + 判 TTY + pick
     if [[ -z "$dev_machine" ]]; then
-        local -a _machines=()
-        local _line
-        while IFS= read -r _line; do
-            [[ -n "$_line" ]] && _machines+=("$_line")
-        done < <(machine_state_initialized_machines)
-        if [[ ${#_machines[@]} -eq 0 ]]; then
-            error "No initialized machines found." >&2
-            error "Run 'ob init <machine>' first." >&2
-            exit 3
-        fi
-        if [[ ! -t 0 ]]; then
-            error "No --machine specified and no interactive terminal." >&2
-            error "Specify a machine: ob dev --machine <machine> ${dev_subcmd:-list}" >&2
-            exit 3
-        fi
+        local _msg=""
+        machine_selection_guard machine_state_initialized_machines _msg
+        case "$_msg" in
+            empty)
+                error "No initialized machines found." >&2
+                error "Run 'ob init <machine>' first." >&2
+                exit 3 ;;
+            nontty)
+                error "No --machine specified and no interactive terminal." >&2
+                error "Specify a machine: ob dev --machine <machine> ${dev_subcmd:-list}" >&2
+                exit 3 ;;
+            ok) ;;
+        esac
         local _pm_rc=0
         pick_machine machine_state_initialized_machines "Develop" >&2 || _pm_rc=$?
-        if [[ "$_pm_rc" -eq 2 ]]; then exit 2; fi       # cancel
-        if [[ "$_pm_rc" -ne 0 ]]; then exit 1; fi       # read failure(1) 或其他错误(原所有非零当 cancel)
+        if [[ "$_pm_rc" -eq 2 ]]; then exit 2; fi
+        if [[ "$_pm_rc" -ne 0 ]]; then exit 1; fi
         dev_machine="$MACHINE"
     fi
 
