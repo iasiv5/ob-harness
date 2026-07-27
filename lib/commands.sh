@@ -134,25 +134,25 @@ cmd_build() {
 
         BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
     else
-        # === Discover initialized machines ===
-        local -a machines=()
-        local initialized_machine
-        while IFS= read -r initialized_machine; do
-            [[ -n "$initialized_machine" ]] || continue
-            machines+=("$initialized_machine")
-        done < <(machine_state_initialized_machines)
+        local _msg=""
+        machine_selection_guard machine_state_initialized_machines _msg
+        case "$_msg" in
+            empty)
+                step_header "Initialized Machines"
+                echo ""
+                echo "  (none)"
+                echo ""
+                error "No initialized machines found."
+                error "Run 'ob init <machine>' first."
+                exit 3 ;;
+            nontty)
+                error "No machine specified and no interactive terminal. Run 'ob status' to list initialized machines."
+                error "Specify a machine: ob build <machine>"
+                exit 3 ;;
+            ok) ;;
+        esac
 
-        if [[ ${#machines[@]} -eq 0 ]]; then
-            step_header "Initialized Machines"
-            echo ""
-            echo "  (none)"
-            echo ""
-            error "No initialized machines found."
-            error "Run 'ob init <machine>' first."
-            exit 3
-        fi
-
-        # === Read main repo info（仓库信息块；machine 元数据看 ob status，选择表只列名字）===
+        # === Read main repo info（仓库信息块；原位不动，仅 ok 路径展示）===
         local manifest_origin_url manifest_source_label
         manifest_origin_url=$(read_manifest_field origin_url || echo "<unknown>")
         manifest_source_label=$(read_manifest_field source_label || echo "")
@@ -163,13 +163,6 @@ cmd_build() {
         echo ""
 
         step_header "Initialized Machines"
-
-        # === Interactive selection ===
-        if [[ ! -t 0 ]]; then
-            error "No machine specified and no interactive terminal. Run 'ob status' to list initialized machines."
-            error "Specify a machine: ob build <machine>"
-            exit 3
-        fi
 
         local pm_rc=0
         pick_machine machine_state_initialized_machines "Build" || pm_rc=$?
