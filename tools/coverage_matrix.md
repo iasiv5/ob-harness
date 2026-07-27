@@ -101,6 +101,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 并行度/WSL | calc_parallelism;detect_wsl | unit/paths.sh | |
 | 交互叶子(stdin) | confirm_action;prompt_for_absolute_path;exit_on_user_cancel;prompt_for_available_port | unit/interact.sh | select_from_list 已退役(ob_check 回归锁禁复活) |
 | machine 交互选择 | pick_machine | unit/pick_machine.sh | leaf-pure L3,多态返回码表达取消/失败 |
+| machine selection guard(枚举+empty/nontty 检测) | machine_selection_guard | unit/machine_selection_guard.sh;protocol/machine_selection_guard_surface.sh | leaf-pure(横切惯例,同 machine_picker.sh);恒返回0+outvar empty/nontty/ok;cmd_build/cmd_dev 共享, pick 留调用方 |
 | require_path 前置 | require_path | unit/require_path.sh | exit 函数,radar 低估 |
 | 字符串/工具子函数 | is_valid_repo_url;read_kv_field;read_manifest_field;trim_whitespace | unit/url.sh;unit/source_manifest.sh | 子工具,被上层调用 |
 | QEMU launch profile 纯规则 | qemu_launch_profile_apply_system_name;qemu_launch_profile_apply_machine_name;machine_conf_chain_contains | unit/soc.sh | start-qemu SoC/机型派生 |
