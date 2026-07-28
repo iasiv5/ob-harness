@@ -5,6 +5,10 @@
 - **想使用某个能力** → 浏览下方分类，找到对应的 know-how 文件
 - **想添加新 know-how** → 见底部[「如何添加你自己的 Know-how」](#如何添加你自己的-know-how)
 
+## Know-how 消费速则（每会话强制）
+
+读任何 `knowhow/*.md` 全文时：① 必须读到尾部的"已知陷阱/故障排除/限制"段才算读够（最高价值的踩坑记录常沉在末段）；② 长文件（>100 行）先找顶部 TL;DR 拿核心判定；③ 前半段的"能力清单/边界"不足以安全使用，只读前半截就动手是高发陷阱。规则详见 [`bestpractice_01`](knowhow/bestpractice_01-knowhow_writing.md)「消费者视角」节。
+
 ---
 
 ## 分类索引
@@ -31,6 +35,8 @@
 - [质量门禁与 Eval 模式库](knowhow/bestpractice_08-eval_gate_patterns.md) — 给某个 action/流水线设计门禁时；归纳本仓库 exit_contract/ob_check/coverage_radar/四层测试成 4 种可复用门禁模式 + 缓存飞轮观测。
 - [非功能性改动的回归锁（调用次数 / 快路径断言）](knowhow/bestpractice_09-nonfunctional_regression_locks.md) — 做性能/去重/缓存这类不改输出的优化时，用调用次数或零调用断言把收益钉成可回归验证的硬约束。
 - [深模块抽取族（收敛散落逻辑 + leaf-pure 静态门禁）](knowhow/bestpractice_10-deep_module_extraction.md) — 在 ob/lib 把散落 helper/决策/选择/实例逻辑收敛到一个深 module 时；含 god-function 拆解的副作用次序不变量 + leaf-pure 纯度门禁。
+- [CLI 交互 prompt 卡壳：读逃生路径，别逐行回答](knowhow/bestpractice_11-interactive_prompt_bypass.md) — ob 或其他 CLI 弹出交互菜单时，别用 send_to_terminal 逐行喂答案；先读 prompt/报错自带的逃生提示、查 --help 的 --flag/ENV_VAR，一步跳过。
+- [经验沉淀的分层判定](knowhow/bestpractice_12-knowledge_layering.md) — 踩坑后有了一条经验，先走"三问路由"判定它该进哪层：源于 ob-harness 自身且别人会同样复发的进仓库分发层（rules/knowhow），纯环境/个人健忘的只记会话记忆。落盘即收口（覆盖检查 + 写入 + 更新入口）。
 
 ---
 

@@ -1,4 +1,4 @@
-# Know-how 写作指南（Meta）
+# Know-how 写作与阅读指南（Meta）
 
 ## 元数据
 
@@ -84,9 +84,34 @@ Know-how 文件的读者是一个有推理能力的 agent，它的 context windo
 | 堆砌背景知识 | 大段介绍领域知识，消耗 agent 的 context window | 背景知识只保留直接影响任务执行的部分，其余通过文件路径引用 |
 | 封装错误信息 | CLI/工具把底层错误包装成笼统的 "something went wrong"，丢失 status_code、response body 等 debug 关键信息 | 透传原始错误细节（HTTP status、response body、exception type），让 AI agent 能从错误输出中直接定位根因。宁可多暴露信息，也不要让 agent 走一轮无意义的猜测 |
 | 忘记更新 KNOWHOW_INDEX.md | 新 know-how 没人能找到 | 写完 know-how 后立即更新 `rules/05_KNOWHOW_INDEX.md` |
+| **只读前半截就动手**（消费者陷阱，高发） | agent 读到"目标/边界/可用资源"就开跑，没读到尾部的"已知陷阱/故障排除/限制"段，结果正好踩中那条被写明但没读到的陷阱 | 读 know-how 的默认粒度：必须读到尾部"已知陷阱/故障排除/限制"段才算读完。长文件（>100 行）额外在顶部放 TL;DR。详见下文"消费者视角"节 |
+
+## 消费者视角：怎么读一个 know-how（本文件长期缺失的一节）
+
+本文件历来只讲"怎么写"。但 know-how 的消费者是 agent，它怎么读、读到什么程度、按什么粒度加载同样决定 know-how 是否生效。漏掉这一节，等于只规定了产出规则、没规定使用规则——agent 自由发挥读法，结果就是上面表里"只读前半截就动手"这个高发陷阱。
+
+### 默认消费粒度（按文件类型）
+
+| 文件 | 自动加载 | 消费规则 |
+|------|:--------:|----------|
+| `rules/01_SOUL`~`05_KNOWHOW_INDEX` | ✅ 每会话 | 全读（含 05 全文路由表——漏一行就漏掉一个能力入口）。注：`06_AXIOMS_INDEX` 按需检索，**非**每会话自动加载 |
+| `rules/06_AXIOMS_INDEX` 摘要行 | ❌ 按需 | 涉及价值观/架构取舍时读全文；纯执行动作时可不加载 |
+| `rules/knowhow/*.md`（单条全文） | ❌ 按需 | **必须读到尾部的"已知陷阱/故障排除/限制"段才算读够**。前半段"目标/边界/可用资源"是能力概览，真正阻止犯错的内容常沉在尾部——因为写作惯例把真实失败案例留在末段（见本文件"已知陷阱"原则），跳读末段等于主动放弃最高价值段落 |
+| `rules/axioms/*.md`（公理全文） | ❌ 按需 | 做涉及价值观/架构取舍的决策时读全文；仅做执行层动作时读 `06_AXIOMS_INDEX` 的摘要行即可 |
+| `contexts/memory/OBSERVATIONS.md` | ❌ 按需 | **不要全文加载**（可能很大）。按主题 grep 检索，只取命中行附近的上下文 |
+
+### 三条消费者硬约束
+
+1. **"读完"的定义包含尾部陷阱段**。判断一个 know-how 是否读够，不是"读到了我想找的那段"，而是"连尾部的已知陷阱/限制都扫过了"。动手前至少 `wc -l` 看一眼文件长度，确认没停在半截。
+2. **长文件优先找 TL;DR**。设计良好的长 know-how（如 [`bestpractice_12`](bestpractice_12-knowledge_layering.md)）会在顶部放 30 秒决策块。先读 TL;DR 拿到核心判定，再决定要不要深读全文，降低"被前半段误导"的概率。
+3. **"能力清单"不足以安全使用**。前半段的"X 工具可以做 A/B/C"只告诉你能力边界，不告诉你踩过什么坑。能力清单读完只能"知道能做"，读完尾部陷阱段才能"知道怎么做不翻车"。
+
+### 与生产者视角的呼应
+
+这条消费者视角反向约束了生产者：写 know-how 时，要承认"读者大概率会停在前面"这个现实——要么把最关键的安全约束（陷阱、退出条件、边界）提到目标段直接警告，要么给长文件配 TL;DR。**不要假设读者会自觉读完。** 生产者视角的原则（结果确定性、enabling 非 SOP）仍然有效，但它假定读者会读全；消费者视角补的是"读者不一定读全，生产者要对此有预案"。
 
 ## 与现有 know-how 的关系
 
 写新 know-how 之前，先读 `rules/05_KNOWHOW_INDEX.md` 确认没有重复。如果已有类似 know-how，优先修改而非新建。
 
-格式参考可以看 `rules/knowhow/workflow_01-obmc_env_init.md`（工作流类 know-how 的范本）和 `rules/knowhow/bestpractice_04-temporal_info_verification.md`（最佳实践类 know-how 的范本）。注意这些只是格式参考，核心原则（结果确定性、enabling 而非 SOP）比格式更重要。
+格式参考可以看 `rules/knowhow/workflow_01-obmc_env_init.md`（工作流类 know-how 的范本）和 `rules/knowhow/bestpractice_04-temporal_info_verification.md`（最佳实践类 know-how 的范本）。注意这些只是格式参考，核心原则（结果确定性、enabling 非 SOP）比格式更重要。

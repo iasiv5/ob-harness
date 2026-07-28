@@ -75,7 +75,7 @@ Observer 扫描以下路径，检测有意义的变更：
      - 新增或重写 know-how 前，先读 `rules/knowhow/bestpractice_01-knowhow_writing.md`，按目标、验收标准、可用资源和输出规格定义 know-how，不要把 know-how 写成机械步骤清单。
      - 文件命名建议采用 `<category>_<NN>-<name>.md`，例如 `workflow_01-my_process.md`、`bestpractice_01-my_insight.md`。
      - 修改或新增后，必须同步更新 `rules/05_KNOWHOW_INDEX.md`，确保后续 agent 能找到。
-  3. **记忆层 (L1/L2)**: 重写 `contexts/memory/OBSERVATIONS.md`。执行垃圾回收，删除已被固化进 rules 的内容以及过期的 🟢 记录。
+  3. **记忆层 (L1/L2)**: 重写 `contexts/memory/OBSERVATIONS.md`。执行垃圾回收，删除已被固化进 rules 的内容以及过期的 🟢 记录。**注**：此处的“删除已固化内容”是 reflector（自动化通道）的 GC 行为；另有**手动通道**（agent 在会话中直接写 know-how，不走 observer/reflector），手动晋升后 OBSERVATIONS 原观测**保留**、不触发本删除——两条通道并存，详见 `rules/knowhow/bestpractice_12-knowledge_layering.md`「沉淀通道」。
 - **职责**: 确保 `rules/` 始终代表系统的最新“进化状态”。
 
 ### 4.3 状态回写与执行边界

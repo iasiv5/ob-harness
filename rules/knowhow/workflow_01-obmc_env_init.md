@@ -153,6 +153,7 @@ PARALLEL_MAKE ?= "-j <N>"
 
 - **BitBake 赋值操作符优先级**：`.inc` 文件中覆盖 OE-core 默认值时，必须选对操作符。优先级（从弱到强）：`??=` < `?=` < `=`。OE-core 在 `bitbake.conf` 用 `?=` 设置 `BB_NUMBER_THREADS`/`PARALLEL_MAKE`，如果 `.inc` 用 `??=` 写自定义值，会被 OE-core 的 `?=` 覆盖（`??=` 是最弱赋值，只在没有其他赋值时生效）。正确做法：用 `?=`（同级后写者胜）或 `=`（强覆盖）。`??=` 只适用于"确认没有任何人设过"的场景。
 - **bare mirror 失败不阻塞编译**：个别 mirror clone 失败时 `ob init` 只记录 warning，不退出。BitBake `do_fetch` 阶段会从远程 URL 直接拉取。如果远程也不可达，编译时才会报错。
+- **冷启动（主仓未克隆）时 `--dry-run` 无法校验 machine 有效性**：`ob init` 的 machine 列表来自克隆后的 `source setup` 输出，没有主仓就没有列表（`lib/repo.sh:list_available_machines` 第一行 `[[ -d "$OPENBMC_DIR/.git" ]] || return 0` 直接返回空）。dry-run 下 `clone_openbmc` 只打印 `[DRY-RUN] Would run: git clone ...` 后 `return 0`，主仓不落地，`list_available_machines` 返回空——此时传入的 machine 名既不会被确认也不会被驳倒，是无效校验，会给"通过"的误导信号。冷启动首次 init 应直接执行（主仓 clone 本身就是"下载社区代码"目标），machine 校验由 clone 后的真实列表 guard（`cmd_init` 的 `grep -qx` 匹配 + warn/exit 3 分支）保证；`--dry-run` 只对**已 init 过的 machine 重跑预览副作用**有意义。
 
 ---
 
