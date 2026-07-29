@@ -17,8 +17,9 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
 | 参数解析 | parse_args | protocol/smoke_ob.sh | exit 函数,radar 低估 |
-| 非 TTY → exit 3 | cmd_init | protocol/manual_matrix.exp | TTY 真路径靠 expect |
-| 取消 → exit 2 | cmd_init;confirm_action | protocol/manual_matrix.exp | confirm_action 见 unit/interact.sh |
+| 命令入口机器解析+确认(intake module) | init_intake | unit/init_intake.sh;protocol/init_intake_surface.sh | leaf-pure(同 devtool_intake);return 0/1/2/3,exit 由 cmd_init 字面 case 收口;empty/arg-fastpath/nontty 三态 unit 覆盖,pick+confirm cancel/ok 留 .exp |
+| 非 TTY → exit 3 | cmd_init;init_intake | protocol/manual_matrix.exp;unit/init_intake.sh | 决策在 intake,exit 在 cmd_init;TTY 真路径靠 expect |
+| 取消 → exit 2 | cmd_init;init_intake;confirm_action | protocol/manual_matrix.exp | confirm/pick 在 intake;confirm_action 见 unit/interact.sh |
 | source manifest 读写 | read_source_label;write_source_manifest;normalize_repo_url;derive_source_label | unit/source_manifest.sh;unit/url.sh | |
 | 前置检查 | prerequisites_check | orchestration/prerequisites_check.sh | exit 函数 |
 | BitBake 环境初始化 | init_bitbake_env;build_env_enter | orchestration/build_env_enter.sh;protocol/build_env_enter_structure.sh | local.conf 产物检查仍在 init_bitbake_env |
