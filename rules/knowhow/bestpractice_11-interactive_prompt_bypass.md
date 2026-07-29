@@ -1,5 +1,9 @@
 # CLI 交互 prompt 卡壳：读逃生路径，别逐行回答
 
+## TL;DR
+
+遇到 CLI（含 `ob`）交互菜单 / 选择 prompt 卡壳时，**第一反应是"这个 prompt 怎么绕过"而非"怎么回答"**——用 `--flag` / ENV_VAR 一步跳过，不要用 `send_to_terminal` 逐行喂答案。两条最该先知道的：(1) 先逐字重读 prompt 文本 / 上一条报错——设计良好的 CLI 会在里面直接写逃生路径（ob 的惯例：非交互遭 prompt 时 exit 3 并打印带字面 flag 的 remedy line）；(2) `ob` 的 prompt 几乎总有 flag / ENV_VAR 绕过（`--url` / `OB_OPENBMC_URL` / `--force`），无 TTY 时裸跑 `ob init` 直接 exit 3、**不会**替你选菜单——两种场景都要显式给 flag。决策顺序见 §通用决策框架。
+
 ## 元数据
 
 - **类型**: BestPractice

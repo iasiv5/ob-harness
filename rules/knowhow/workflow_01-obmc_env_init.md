@@ -1,5 +1,16 @@
 # OpenBMC 开发环境初始化与构建
 
+## TL;DR
+
+初始化与构建 OpenBMC 开发环境，按场景路由（环境动作先走 `ob`，见 [`bp_06 ob 优先`](bestpractice_06-ob_first.md)）：
+
+- **首次初始化 machine** → `./ob init <machine>`（bare mirror 预填充到 `DL_DIR/git2/` + 生成构建配置 `.inc` + 版本快照）
+- **编译固件镜像** → `./ob build`（交互选已 init 的 machine，跑 `bitbake obmc-phosphor-image`）
+- **重试失败的 bare mirror** → `./ob init <machine> -s`（跳过依赖解析，只重填 mirror）
+- **预览副作用** → `./ob init <machine> -d`（仅对**已 init 过的** machine 有意义）
+
+两条最该先知道的：(1) BitBake 赋值操作符优先级 `??=` < `?=` < `=`——`.inc` 覆盖 OE-core 默认值用 `?=`/`=`，别用最弱的 `??=`（会被 OE-core 的 `?=` 覆盖）；(2) 冷启动（主仓未克隆）首次 init **不要**用 `-d`——machine 列表来自克隆后的 setup 输出，主仓没落地时 machine 校验无效、会给"通过"的误导。详细踩坑见尾部 §已知陷阱 / §故障排除 / §已知限制。
+
 ## 元数据
 
 - **类型**: Workflow
