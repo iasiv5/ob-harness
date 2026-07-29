@@ -1,5 +1,9 @@
 # Yocto 编译中 npm 网络超时的诊断与解决
 
+## TL;DR
+
+解决 `bitbake webui-vue`（等含 `npm install` 的 recipe）在 `do_compile` 报 `ETIMEDOUT` 的问题。**根因判定**：这是"网络慢/不稳"（GET 返回 200 但单包 >15s，尾部延迟），不是"网络不通"。两条最该先知道的：(1) 用 `ob build` 基本无需手动——它已内置镜像探测（默认 npmmirror.com）+ 600s 超时参数注入，并缓存 24h；(2) 直接 bitbake 时全局 `npm config set` **无效**（bitbake 内的 npm 不读全局配置），npm 配置必须经环境变量（`npm_config_*`）或 `.npmrc` 注入。修复策略见 §修复策略（从易到难）；海外用户用 `OB_NPM_REGISTRY= ob build` 禁用自动检测。
+
 ## 元数据
 
 - **类型**: BestPractice
