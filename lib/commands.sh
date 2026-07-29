@@ -263,47 +263,22 @@ cmd_init() {
     # [OEM] Step 2 扩展动作：如当前主仓需要 vendor bootstrap，继续补齐其子目录。
     run_repo_init_script
 
-    # 解析 machine（Step 2 的一部分，交互选择或确认命令行参数）。
-    # 显式编排（空 guard + arg 快路径 + 非TTY + 展示 + pick_machine + confirm）。
-    local -a _init_machines=()
-    local _im
-    while IFS= read -r _im; do
-        [[ -n "$_im" ]] && _init_machines+=("$_im")
-    done < <(list_available_machines)
-
-    if [[ ${#_init_machines[@]} -eq 0 ]]; then
-        error "No machines found in $OPENBMC_DIR."
-        error "Check the OpenBMC main repository, or re-clone: cd $OPENBMC_DIR && git pull"
-        exit 3
-    fi
-
-    if [[ -n "$MACHINE" ]] && printf '%s\n' "${_init_machines[@]}" | grep -qx -- "$MACHINE"; then
-        print_previously_initialized _init_machines
-        info "Machine '$MACHINE' confirmed."
-    else
-        if [[ -n "$MACHINE" ]]; then
-            warn "Machine '$MACHINE' is not in the available list."
-        else
-            warn "No machine specified."
-        fi
-
-        if [[ ! -t 0 ]]; then
-            error "No valid machine and no interactive terminal. Pass a valid machine: ob init <machine>"
-            exit 3
-        fi
-
-        local pm_rc=0
-        # Previously 段作 pick_machine 的 post-list-msg: 列表后、提示词前打印,
-        # 用户选择时紧邻看到已 init 的 machine(不必往上翻序号列表对序号)
-        pick_machine list_available_machines "init" "$(print_previously_initialized _init_machines)" || pm_rc=$?
-        exit_on_user_cancel "$pm_rc" "init"
-
-        local ca_rc=0
-        confirm_action "init" "$MACHINE" || ca_rc=$?
-        exit_on_user_cancel "$ca_rc" "init"
-        echo ""
-        info "Init confirmed for machine '$MACHINE'."
-    fi
+    # 解析+确认 machine(经 ob init command intake module: empty/arg 校验/pick/confirm, return 0/1/2/3)。
+    # 原 L266-306 内联决策树(含 exit_on_user_cancel 2 处)已抽进 lib/init_intake.sh; exit 由本 L1 字面 case 收口。
+    local _irc=0
+    init_intake || _irc=$?
+    # intake return 契约: 0=ok / 1=read-fail / 2=cancel / 3=prereq-missing(空列表/非TTY)。
+    # 2/3 的 remedy 已在 intake 内打印; exit-code 由本 L1 字面 case 收口。
+    # 1)/*) 的 error 同时作 3) exit 3 的 exit_contract Z(b) 静态锚点: intake 抽取后 exit3 的 remedy
+    # 已随 leaf-pure 搬进 intake, Z(b) 同函数前文回溯扫不到 → case 内补 error 兜底
+    # (行为: exit3 路径只走 3) 不触达 1) error, 字节级不变; cmd_dev 是靠 case 外 guard error 满足, 路径不同)。
+    case "$_irc" in
+        0) ;;
+        1) error "ob init: failed to read machine selection input."; exit 1 ;;
+        2) exit 2 ;;
+        3) exit 3 ;;
+        *) error "ob init: unexpected intake status ($_irc)."; exit 1 ;;
+    esac
 
     # Re-derive paths (machine may have changed via interactive pick_machine)
     BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"

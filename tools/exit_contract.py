@@ -71,6 +71,7 @@ LEAF_EXIT_EXCEPTIONS_BY_BASENAME = {
     'devtool_workspace.sh': set(),
     'devtool_subcmd.sh': set(),
     'devtool_intake.sh': set(),
+    'init_intake.sh': set(),
     'image_build.sh': set(),
     'status_render.sh': set(),
 }
