@@ -119,3 +119,31 @@ Date: 2026-07-23
 🟡 Medium: [ob dev subcmd handler 族完整落地(ADR-0012)] 07-22 把 cmd_dev dispatch case 7 分支(list/modify/refresh/reset/finish/status/build)抽成 `lib/devtool_subcmd.sh` 的 `dev_subcmd_*` leaf-pure handler + `dev_dispatch_subcmd` dispatcher + 2 共享前置 helper(_dev_dryrun_gate/_dev_recipe_precondition)；cmd_dev 退化为 parse+precondition+TTY guide+dispatch entry(~311→~150 行)。D3 不强求统一模板(7 子命令 run→relay→emit 形状分 4 类：relay+emit JSON/relay+printf/空 stdout 自 cat+rm/read→三态机，保留差异不造统一骨架)；D5 not_mod 冻结(build handler 原样保留绕 relay 路径，显式 cat+rm+return 3，配 unit 计数 stub 锁定 relay 未被调——是 [[feedback-bash-outvar-name-shadowing]]+[[feedback-extract-test-blackbox-whitebox-axis]] 的复合落地)。exit_contract Y 规则登记 `devtool_subcmd.sh: set()`(grep 证零 exit，leaf-pure 自证)。
 🟡 Medium: [apply_npm_registry 去重 + resolve/apply 对偶落点决策] 07-23 把 cmd_build(commands.sh)+cmd_deploy_to_qemu(qemu_commands.sh)各复制的一份 npm registry passthrough 装配，提取成 `lib/util.sh` 的 `apply_npm_registry` leaf-pure，两调用点塌成 `resolve_npm_registry; apply_npm_registry` 两行(各文件 1 次调用已落地)，消除 qemu_commands.sh 自标"技术债:后续抽 build_obmc_image helper"。设计决策：apply 是 resolve 的对偶(resolve=决策→设 NPM_REGISTRY_RESOLVED 全局；apply=装配→export 5 变量+BB_ENV_PASSTHROUGH_ADDITIONS 前置拼接+verbose)；**落点选 util.sh 而非 build_env.sh，依据 locality 按概念族(probe/resolve/apply)归类优于按副作用机制归类**(probe/resolve 已在 util.sh，apply 同族同居避免割裂)。四态单测(skip/空 existing/非空 existing/空 registry)，态 4 锁死"!= skip 即装配"防误改 `[ -n ]` 导致空 registry 不装配。不立 CONTEXT 术语(实现函数非领域概念)+不立 ADR(三条 gate 不全中)。
 🟢 Low: [工作流驱动模式] 本会话架构抽取任务走 `/pick-one-arch-task`(选最值得做)→`/grill-with-docs`(grilling 共识锁决策点)→writing-plans 计划链；npm passthrough plan 即此链产出(6 决策点锁定，grilling 产出即设计依据无独立 design doc)。ADR-0012 plan 同基于 grill 共识 D1-D6——确认此工作流稳定在用(非新认知)。`.claude/skills/` 下大量 darwin/grilling 文件(results.tsv/test-prompts.json)系 skill 运行副产物，git log 无相关提交、07-21 已记 darwin 第三次迭代方法论无新突破→本次过滤不记。
+
+Date: 2026-07-28
+
+🟡 Medium: [QEMU 启动链收尾深化候选——暂缓登记,触发条件锚定] pick-one-arch-task 初始
+提案(QEMU 启动编排族深化)经评审 + 实测核对,多个关键论断失实,优先级从"头号任务"下调
+为"中优先级收尾,当前可暂缓"。保留的真实候选(评审一致认可):只动 lib/qemu.sh 的
+qemu_prepare_launch/qemu_execute_launch/build_qemu_cmd 三件(执行编排层),把 6 个
+ports/serial(QEMU_LAUNCH_*_PORT/SERIAL_LOG/SERIAL_SOCK)+ QEMU_CMD[] 全局数组共 7 个
+隐式回传 channel 收为 nameref outvar(范式参考 devtool_pick 的 status_outvar /
+bare_mirror 的 disposition,非 image_build 的 return rc);execute_launch 的
+setsid/PID 写/SSH 轮询真实副作用留执行层,配次序回归锁(tests/orchestration/
+start_qemu_force_restart.sh 已有)。绝不碰已深化的 profile 层(qemu_launch_profile.sh
+是 bestpractice_10 形态 B 的 canonical 先例,reset_qemu_launch_profile 防跨用例泄漏,
+不是债)。暂缓触发条件(按 ADR-0014 精神):(1) prepare/execute 出真实 friction(如端口
+复用 save/restore 改形真出 bug);(2) 硬 ports 参数化 unit 测试需求出现;(3) qemu.sh 进
+入高频改动区(当前 90 天 12 次,非热点;真热点是 commands.sh 67 次,与 QEMU 无关)。
+adoptive 路线:profile/binary/instance/runtime 在 07-01~07-06 已集中深化过,bestpractice_10
+形态 A-E 已沉淀 know-how,本候选是同路线的执行层收尾而非新方向。
+🔴 High: [subagent 产出数字必须独立复核——本次评审纠正实例] pick-one-arch-task 初始
+提案多失实,根因同 lessons-ob-init "别拿单值当铁证":subagent 给出"33 个 QEMU_LAUNCH_*"
+"devtool_ 物理文件 11 个"等数字,我未用 grep/wc 独立复核就写进优先级论证;评审逐条
+实测推翻(实测 19 个 / 12 个)。关键修正:profile 层(reset_qemu_launch_profile 清空 19
+个 QEMU_LAUNCH_*)是 deepening 的成果不是债(ADR-0007 Consequences 明确);端口
+save/restore 是单进程内动作非跨命令状态共享(真实载体是 PID 文件 PIDFILE_*_PORT);
+image_build 是 return rc 纯执行编排无 nameref(同构应援引 devtool_pick/bare_mirror);
+ADR-0011 约束( deploy 不调 cmd_*)在现状已兑现(已直接调 build_obmc_image+
+qemu_prepare_launch+execute_launch),不构成深化论据。教训强化:出优先级判断/反驳别
+人前,关键数字一律 sort -u|wc -l / 实跑一次独立锁死,不抄 subagent 的二手值。
