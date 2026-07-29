@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# tools/ob_check.sh — ob/lib 改动后一站式配套自检。
-# 聚合: extract_funcs(ob GAPS + lib 三段) / machine_state public surface gate / shellcheck baseline(flat 合成 + 纯文本 multiset) / exit-contract(多文件) / run_all。
-# 固定顺序: extract_funcs → machine_state gate → baseline → exit-contract → run_all。
+# tools/ob_check.sh — ob/lib 与 know-how 文档改动后一站式配套自检。
+# 聚合: extract_funcs(ob GAPS + lib 三段) / 多项 surface gate / 交互 prompt 文案契约 / know-how 长文件 TL;DR 门禁(ADR-0015) / shellcheck baseline(flat 合成 + 纯文本 multiset) / exit-contract(多文件) / run_all / know-how TL;DR drift advisory。
+# 固定顺序: extract_funcs → machine_state gate(1b) → surface gates(1c 族) → 交互 prompt 文案(1d) → know-how TL;DR gate(1e) → baseline(2) → exit-contract(3) → run_all(4) → drift advisory(5,advisory 不阻断;OB_CHECK_SKIP_TESTS 连带跳过)。
 # OB_SOURCES = ob + lib/*.sh(nullglob);用于 extract_funcs/exit_contract。shellcheck 用合成 flat(保留单文件可见性,避 per-file SC2034 假阳)。
 # 用法: tools/ob_check.sh
 #       OB_CHECK_SKIP_TESTS=1 tools/ob_check.sh    # 跳过 run_all(被 run_all 递归调用时用,如 smoke)
@@ -132,6 +132,31 @@ else
     ok "交互 prompt 文案契约一致"
 fi
 
+# ── 1e. know-how 长文件 TL;DR 门禁(ADR-0015: 行数>100 必须有 ## TL;DR) ──
+# 生产者硬义务: rules/knowhow/*.md 行数>100 且非豁免必须有 ## TL;DR。豁免清单照搬
+# exit_contract.py LEAF_EXIT_EXCEPTIONS_BY_BASENAME 的 basename 枚举模式(初始空=无豁免,
+# 机制预留;需豁免时在此加 basename,勿默认放宽)。
+KNOWHOW_TLDR_EXEMPT=()
+shopt -s nullglob
+_kh_files=(rules/knowhow/*.md)
+shopt -u nullglob
+_kt_missing=""
+for f in "${_kh_files[@]}"; do
+    bn=$(basename "$f")
+    _kt_exempt=0
+    for e in "${KNOWHOW_TLDR_EXEMPT[@]}"; do [[ "$bn" == "$e" ]] && _kt_exempt=1; done
+    (( _kt_exempt == 1 )) && continue
+    lines=$(wc -l < "$f")
+    if (( lines > 100 )) && ! grep -qE '^## TL;DR' "$f"; then
+        _kt_missing="$_kt_missing $bn(${lines}行)"
+    fi
+done
+if [[ -n "$_kt_missing" ]]; then
+    bad "know-how 长文件缺 ## TL;DR(ADR-0015):$_kt_missing"
+else
+    ok "know-how 长文件 TL;DR 门禁通过"
+fi
+
 # ── 2. shellcheck baseline(合成 flat + 纯文本 multiset;不 per-file 避 SC2034 跨文件假阳) ──
 flat=/tmp/ob_check_sc.flat
 : > "$flat"
@@ -196,6 +221,21 @@ else
         tail -20 /tmp/ob_check_runall.out
     fi
     echo "  注: 本次跑 run_all 快速子集(.sh);未跑 .exp/integration;改了交互/退出码请 tests/run_all.sh --full"
+fi
+
+# ── 5. know-how TL;DR drift advisory(ADR-0015; 随 ob_check 触发, 防 orphan) ──
+# git diff 结构检测: 长文件正文改但 ## TL;DR 没改 → flag(疑似漂移)。advisory 不阻断:
+# flag 只 echo, 不进 FAIL 计数/不影响 exit。SKIP_TESTS 连带跳过(smoke 反递归守护同源)。
+if [[ "${OB_CHECK_SKIP_DRIFT:-0}" == "1" || "${OB_CHECK_SKIP_TESTS:-0}" == "1" ]]; then
+    echo "• skip know-how TL;DR 一致性预警 (advisory)"
+else
+    _drift_out=$(python3 tools/knowhow_tldr_drift_check.py 2>/dev/null || true)
+    if [[ -n "$_drift_out" ]]; then
+        echo "• advisory drift (不阻断, 请人工复查 TL;DR 是否需更新):"
+        printf '%s\n' "$_drift_out"
+    else
+        ok "know-how TL;DR 无漂移信号"
+    fi
 fi
 
 # ── 汇总 ──
