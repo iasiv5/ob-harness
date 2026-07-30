@@ -9,6 +9,8 @@
 
 读任何 `knowhow/*.md` 全文时：① 必须读到尾部的"已知陷阱/故障排除/限制"段才算读够（最高价值的踩坑记录常沉在末段）；短文件（≤100 行）整篇可扫完，尾段约束主要针对长文件；② 长文件（>100 行）顶部**必须**配 TL;DR（30 秒核心判定），生产者义务见 ADR-0015；消费者先读 TL;DR 拿判定；③ 前半段的"能力清单/边界"不足以安全使用，只读前半截就动手是高发陷阱。规则详见 [`bestpractice_01`](knowhow/bestpractice_01-knowhow_writing.md)「消费者视角」节。
 
+**④ 每会话 user 层注入（硬要求）**：加载本 INDEX 后，检查 `contexts/knowhow/07_USER_KNOWHOW_INDEX.md`——存在则读其全文注入上下文（user know-how 概览，与 product 层对称），不存在则跳过（新环境无 user 沉淀）。详见文末「User Know-how」段。
+
 ---
 
 ## 分类索引
@@ -19,7 +21,7 @@
 
 - [OpenBMC 开发环境初始化](knowhow/workflow_01-obmc_env_init.md) — 首次 `ob init` 或重建 OpenBMC 开发环境时使用。
 - [OpenBMC recipe 源码开发（ob dev modify）](knowhow/workflow_02-obmc_dev_modify.md) — 改 recipe 源码时用 `ob dev modify`/`list`/`refresh`/`build`/`reset`/`finish` 等子命令，而非手动 devtool。
-- [知识飞轮设计模式](knowhow/workflow_03-knowledge_flywheel.md) — 知识工程/非结构化信息/知识图谱场景，用"笨方法 + 四步飞轮"逐步提纯知识纯度。
+- [手动经验沉淀（ob 沉淀四步）](knowhow/workflow_04-manual_sedimentation.md) — 踩坑/学到经验后，走"判所有权 → 判层 → 写 → 收口"四步，把它沉淀到正确的层（product/user）与子层，落盘即收口。
 
 ### BestPractice（最佳实践）
 
@@ -51,3 +53,11 @@
 Know-how 采用渐进式披露原则：
 - **05_KNOWHOW_INDEX.md** 提供概览，快速定位
 - **具体 know-how 文件** 包含完整的操作步骤和示例
+
+---
+
+## User Know-how（本地，可能不存在）
+
+除上述随产品分发的 product know-how 外，本环境可能有**本地 user know-how**——不回上游、落在 `contexts/knowhow/`（`.gitignore` 排除，见 [ADR-0017](../docs/adr/0017-knowhow-distribution-boundary.md)），仅本环境有效。其索引为 `contexts/knowhow/07_USER_KNOWHOW_INDEX.md`。
+
+**每次会话加载本 INDEX（05）后，执行一次 user 层注入检查**：检查 `contexts/knowhow/07_USER_KNOWHOW_INDEX.md` 是否存在——**存在则读取其完整内容**（把本环境 user know-how 概览注入上下文，与 product 层对称）；**不存在则跳过**（新环境或尚无 user 沉淀，正常，不报错）。沉淀 user know-how 的流程见 [`workflow_04`](knowhow/workflow_04-manual_sedimentation.md)。

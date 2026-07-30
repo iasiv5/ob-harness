@@ -1,8 +1,10 @@
 # Axioms 索引
 
-> **公理（Axioms）** 是用户的核心认知滤镜——从个人经历中提炼的深层哲学原则。
+> **公理（Axioms）** 是用户的核心认知滤镜——提炼自工程实践的深层哲学原则。
 > 
 > 不同于 Know-how（执行层，"怎么做"），Axioms 是思考层（"为什么"），用于启发深度思考和提供 Alternative 视角。
+>
+> **定位**：Axioms 是**参考认知视角库**（启发思考、提供 alternative），非外部使用者必须遵守的产品约束；措辞去个人化后随上游全分发（[ADR-0017](../docs/adr/0017-knowhow-distribution-boundary.md) D4）。
 
 ---
 

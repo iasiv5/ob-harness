@@ -11,3 +11,7 @@ periodic_jobs/ai_heartbeat/state/heartbeat_status.json
 
 # 临时一次性项目（见 rules/03_WORKSPACE.md 命名规则：tmp_<name>/）
 tmp_*/
+
+# user know-how：本地定制经验，不回上游（ADR-0017）
+contexts/knowhow/*
+!contexts/knowhow/.gitkeep
