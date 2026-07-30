@@ -69,6 +69,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | PID 校验 | qemu_instance_is_alive | unit/ports.sh | |
 | 失效 host key 检测 | check_ssh_hostkey_conflict;_clear_stale_hostkey_menu | unit/hostkey_conflict.sh | Track A 删除菜单(确证失效);Track B sshd 未就绪仅提示不删 |
 | 取消 → exit 2 | cmd_start_qemu | protocol/manual_matrix.exp | TTY |
+| machine-selection 序言(empty/nontty/ok 走 guard) | cmd_start_qemu;machine_selection_guard | protocol/start_qemu_remedy.sh;protocol/qemu_commands_guard_surface.sh | empty 带子分类(先 build/先 init remedy 区分,留 cmd D2);与 cmd_build/cmd_dev 同构 |
 | kill-restart | cmd_start_qemu | integration/manual_matrix_qemu.exp | integration |
 | launch prepare 半段(profile/binary/firmware/ports/build) | qemu_prepare_launch | orchestration/qemu_prepare_launch.sh | Shape 2 half 1 |
 | launch execute 半段(setsid+PID+summary) | qemu_execute_launch | orchestration/qemu_execute_launch.sh | Shape 2 half 2;QEMU_NO_WAIT 跳 BMC-wait |
@@ -93,6 +94,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
 | build-first 编排(image 重建 + QEMU 重启,端口复用) | cmd_deploy_to_qemu | orchestration/deploy_to_qemu.sh;integration/ob_deploy_to_qemu.sh | exit 函数,radar 低估;build-first 链 + QEMU 在跑则端口复用(ADR-0011) |
+| machine-selection 序言(empty/nontty/ok 走 guard) | cmd_deploy_to_qemu;machine_selection_guard | protocol/deploy_to_qemu_machine_selection.sh;protocol/qemu_commands_guard_surface.sh | 干净 1:1 同 cmd_build(initialized);empty/nontty remedy 字节级不变 |
 
 ## 横切(通用)
 
@@ -102,7 +104,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 并行度/WSL | calc_parallelism;detect_wsl | unit/paths.sh | |
 | 交互叶子(stdin) | confirm_action;prompt_for_absolute_path;exit_on_user_cancel;prompt_for_available_port | unit/interact.sh | select_from_list 已退役(ob_check 回归锁禁复活) |
 | machine 交互选择 | pick_machine | unit/pick_machine.sh | leaf-pure L3,多态返回码表达取消/失败 |
-| machine selection guard(枚举+empty/nontty 检测) | machine_selection_guard | unit/machine_selection_guard.sh;protocol/machine_selection_guard_surface.sh | leaf-pure(横切惯例,同 machine_picker.sh);恒返回0+outvar empty/nontty/ok;cmd_build/cmd_dev 共享, pick 留调用方 |
+| machine selection guard(枚举+empty/nontty 检测) | machine_selection_guard | unit/machine_selection_guard.sh;protocol/machine_selection_guard_surface.sh | leaf-pure(横切惯例,同 machine_picker.sh);恒返回0+outvar empty/nontty/ok;cmd_build/cmd_dev/cmd_start_qemu/cmd_deploy_to_qemu 共享, pick 留调用方 |
 | require_path 前置 | require_path | unit/require_path.sh | exit 函数,radar 低估 |
 | 字符串/工具子函数 | is_valid_repo_url;read_kv_field;read_manifest_field;trim_whitespace | unit/url.sh;unit/source_manifest.sh | 子工具,被上层调用 |
 | QEMU launch profile 纯规则 | qemu_launch_profile_apply_system_name;qemu_launch_profile_apply_machine_name;machine_conf_chain_contains | unit/soc.sh | start-qemu SoC/机型派生 |

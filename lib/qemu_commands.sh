@@ -7,36 +7,30 @@
 cmd_start_qemu() {
     detect_harness_root
 
-    # ── Resolve machine ──
+    # ── Resolve machine(经 machine_selection_guard: empty/nontty/ok, 同 cmd_build/cmd_dev) ──
     if [[ -z "$MACHINE" ]]; then
-        # Discover firmware-image-ready machines (init-done + firmware image artifact)
-        local -a machines=()
-        local _machine
-        while IFS= read -r _machine; do
-            [[ -n "$_machine" ]] && machines+=("$_machine")
-        done < <(machine_state_firmware_image_ready_machines)
-
-        if [[ ${#machines[@]} -eq 0 ]]; then
-            local any_initdone=0
-            if [[ -n "$(machine_state_initialized_machines)" ]]; then
-                any_initdone=1
-            fi
-
-            if [[ "$any_initdone" -eq 1 ]]; then
-                error "No firmware-image-ready machines found."
-                error "Run 'ob build <machine>' first."
-            else
-                error "No initialized machines found."
-                error "Run 'ob init <machine>' first."
-            fi
-            exit 3
-        fi
-
-        if [[ ! -t 0 ]]; then
-            error "No interactive terminal. Specify machine: ob start-qemu <machine>"
-            exit 3
-        fi
-
+        local _msg=""
+        machine_selection_guard machine_state_firmware_image_ready_machines _msg
+        case "$_msg" in
+            empty)
+                # any_initdone 子分类留 cmd(D2): guard 是横切检测原语, 不承载 image-ready 领域逻辑。
+                # image-ready 空 → 再查 initialized 区分 remedy("先 build" vs "先 init")。
+                # 注: guard 拉 firmware_image_ready 判 empty + 本处拉 initialized 分 remedy, 是两个不同
+                # list_fn 各求值一次(非同一函数两次), 同改造前手写代码的两次查询, 非新引入冗余;
+                # 且仅在 empty 异常路径, 非 hot path(同 deploy 段 empty 分支的判空前置模式)。
+                if [[ -n "$(machine_state_initialized_machines)" ]]; then
+                    error "No firmware-image-ready machines found."
+                    error "Run 'ob build <machine>' first."
+                else
+                    error "No initialized machines found."
+                    error "Run 'ob init <machine>' first."
+                fi
+                exit 3 ;;
+            nontty)
+                error "No interactive terminal. Specify machine: ob start-qemu <machine>"
+                exit 3 ;;
+            ok) ;;
+        esac
         echo ""
         step_header "Select Machine"
         local pm_rc=0
@@ -271,24 +265,20 @@ cmd_stop_qemu() {
 cmd_deploy_to_qemu() {
     detect_harness_root
 
-    # ── Resolve machine(cmd_start_qemu :422-460 模式; deploy 自己 build, 用 initialized 不要求 image-ready) ──
-    #   评审 G3: 先判空 machines 数组再 pick_machine, 与 pick_machine 内部再拉一次 list_source 是二次拉取
-    #   —— 有意为之(判空/TTY 检测在前, pick_machine 自渲染列表在后), 与 cmd_start_qemu 同构, 不去重。
+    # ── Resolve machine(经 machine_selection_guard: empty/nontty/ok, 同 cmd_build/cmd_dev) ──
     if [[ -z "$MACHINE" ]]; then
-        local -a machines=()
-        local _machine
-        while IFS= read -r _machine; do
-            [[ -n "$_machine" ]] && machines+=("$_machine")
-        done < <(machine_state_initialized_machines)
-        if [[ ${#machines[@]} -eq 0 ]]; then
-            error "No initialized machines found."
-            error "Run 'ob init <machine>' first."
-            exit 3
-        fi
-        if [[ ! -t 0 ]]; then
-            error "No interactive terminal. Specify machine: ob deploy-to-qemu <machine>"
-            exit 3
-        fi
+        local _msg=""
+        machine_selection_guard machine_state_initialized_machines _msg
+        case "$_msg" in
+            empty)
+                error "No initialized machines found."
+                error "Run 'ob init <machine>' first."
+                exit 3 ;;
+            nontty)
+                error "No interactive terminal. Specify machine: ob deploy-to-qemu <machine>"
+                exit 3 ;;
+            ok) ;;
+        esac
         local pm_rc=0
         pick_machine machine_state_initialized_machines "Deploy to QEMU" || pm_rc=$?
         exit_on_user_cancel "$pm_rc" "Deploy to QEMU"
