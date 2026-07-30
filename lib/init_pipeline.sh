@@ -8,7 +8,7 @@ prerequisites_check() {
 
     # OS check
     if [[ "$(uname -s)" != "Linux" ]]; then
-        error "This script must run on Linux. Current OS: $(uname -s)"
+        error "Run ob on a Linux host (current OS: $(uname -s)); use WSL or a Linux container on macOS/Windows."
         exit 3
     fi
     verbose "OS: $(uname -s) OK"

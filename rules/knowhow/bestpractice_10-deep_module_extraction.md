@@ -5,7 +5,7 @@
 - **类型**: BestPractice
 - **适用场景**: 在 `ob`/`lib/*.sh` 里把散落在多个 helper / 多个 `cmd_*` 的同类判断收敛到一个深 module 时；拆 god-function 时；为新增 module 配纯度门禁时
 - **创建日期**: 2026-07-06
-- **来源**: 五次同构抽取提炼（`machine_state`(06-24)→`qemu_launch_profile`(07-01)→`qemu_binary`/`qemu.sh` runtime 拆(07-04)→`machine_picker`(07-05)→`qemu_instance`(07-06)）；后续 `devtool_pick`(modified recipe selection)→`devtool_dispatch`/`devtool_porcelain`(relay/emit，ADR-0010)→`devtool_subcmd`(subcommand handler，ADR-0012) 等沿用同一模式。通用深模块词汇见 [codebase-design DEEPENING](.claude/skills/codebase-design/DEEPENING.md)，本 know-how 是它在 ob/lib 的落地形态 + 本仓库特有的静态门禁机制。
+- **来源**: 五次同构抽取提炼（`machine_state`(06-24)→`qemu_launch_profile`(07-01)→`qemu_binary`/`qemu.sh` runtime 拆(07-04)→`machine_picker`(07-05)→`qemu_instance`(07-06)）；后续 `devtool_pick`(modified recipe selection)→`devtool_dispatch`/`devtool_porcelain`(relay/emit，ADR-0010)→`devtool_subcmd`(subcommand handler，ADR-0012) 等沿用同一模式。通用深模块词汇见 [codebase-design DEEPENING](../../.claude/skills/codebase-design/DEEPENING.md)，本 know-how 是它在 ob/lib 的落地形态 + 本仓库特有的静态门禁机制。
 
 ## 目标
 
@@ -71,6 +71,6 @@
 
 ## 与现有 know-how 的关系
 
-- **上游通用词汇**：[codebase-design DEEPENING](.claude/skills/codebase-design/DEEPENING.md)（module/interface/seam/adapter、依赖分类、replace-don't-layer 测试策略）。本 know-how 是它在 ob/lib bash 场景的落地 + 静态门禁。
+- **上游通用词汇**：[codebase-design DEEPENING](../../.claude/skills/codebase-design/DEEPENING.md)（module/interface/seam/adapter、依赖分类、replace-don't-layer 测试策略）。本 know-how 是它在 ob/lib bash 场景的落地 + 静态门禁。
 - **同族门禁**：[bestpractice_08 质量门禁与 Eval 模式库](bestpractice_08-eval_gate_patterns.md)（门禁架构）、[bestpractice_09 非功能性回归锁](bestpractice_09-nonfunctional_regression_locks.md)（调用次数/零调用断言手法）。三者同属"可机器验证的纪律"族：08 讲门禁怎么配、09 讲测试代码怎么写断言、本 know-how 讲深模块怎么抽 + 纯度怎么守。
 - **上游公理**：[V2 可验证性](../axioms/v02_verifiability.md)（leaf-pure 纯度由静态工具验证才是资产）、呼应 [V6 概率乘](../axioms/v06_probability_multiplication.md)（每环配 eval，防黑箱回退）。

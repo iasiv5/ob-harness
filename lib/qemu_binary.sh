@@ -383,7 +383,7 @@ ensure_qemu_binary_community() {
                 exit 2
             fi
             if [[ ! "$input_url" =~ ^https?:// ]]; then
-                error "Invalid URL (must start with http:// or https://): $input_url"
+                error "Provide a URL starting with http:// or https:// (got: $input_url)"
                 exit 3
             fi
 
