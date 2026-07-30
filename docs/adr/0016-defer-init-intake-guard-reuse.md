@@ -25,5 +25,8 @@ Status: accepted
   - guard 在 `list_available_machines` 输入下三态判定/文案经**独立验证不回归**。
   - `init_intake` 内 empty/nontty 检测**进入高频改动区**（反复改 → dedup 收益出现）。
   - 出现 guard 的**第 4 个消费方**（guard 复用价值上升，init 加入边际成本下降）。
+- **init 走 guard 的两条 control-flow 障碍**（条件 1"control-flow 重塑被证明干净"未满足的具体支撑，重开前须先消解）：
+  - (i) **前置 nontty 破坏非 TTY fastpath**——init 的 nontty 是后置（[init_intake.sh:42-45](../../lib/init_intake.sh#L42-L45)，仅 arg 非法/未给定、需 pick 时才查），合法 machine 走 arg fastpath（[init_intake.sh:30-34](../../lib/init_intake.sh#L30-L34)）`return 0` 不触发 nontty；guard 是 empty+nontty **合并前置**、无条件查 nontty，会把 agent/CI 的非交互 `ob init <valid>` 拦成 exit 3。
+  - (ii) **移 empty 进"MACHINE 空 else"破坏 pick 前集合非空不变量**——init 的 empty 是无条件前置（[init_intake.sh:24-28](../../lib/init_intake.sh#L24-L28)，保证走到 `pick_machine` 前集合非空，前提见 CONTEXT.md `machine selection`）；重塑成"MACHINE 给定→fastpath"后，`ob init <bad_machine>`（仓库空）会落到 pick 面对空集合，违反 `pick_machine` 前提。
 - 未来 explorer 看到 `init_intake` 内内联 empty/nontty 检测、未复用 guard，**不应视为待办疏漏**：见本 ADR 与 CONTEXT.md `ob init command intake` 条目（已指向本 ADR）。
 - 可逆性：本 ADR 是判断记录，无代码改动；Phase 2 前提改变时直接重开评审，无需"撤销"。
