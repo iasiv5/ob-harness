@@ -28,7 +28,7 @@ Don't ask permission. Just do it.
 
 ## Axioms（公理）
 
-从个人经历提炼的决策原则，用于启发深度思考。分类索引、使用指南和触发词见 `rules/06_AXIOMS_INDEX.md`。
+提炼自工程实践的决策原则，用于启发深度思考。分类索引、使用指南和触发词见 `rules/06_AXIOMS_INDEX.md`。
 
 ## Working Mode
 

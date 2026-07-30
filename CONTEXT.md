@@ -193,3 +193,23 @@ _Avoid_: skill / 技能（指 `rules/knowhow/` 时——会与 harness skill 混
 **harness skill**:
 `.claude/skills/` 下 Claude Code harness 原生的 skill，agent 通过 Skill 工具**调用**（非阅读），由 harness 自动发现与加载（如 brainstorming/grilling/domain-modeling）。与 `know-how`（`rules/knowhow/`，agent 读的参考文档）是两个概念：harness skill 是可调用能力，know-how 是参考文档。两者历史上都叫 "skill" 产生歧义，故 `rules/` 侧改用 know-how，`.claude/` 侧保留 skill。
 _Avoid_: 把 harness skill 与 know-how 混称 "skill"
+
+**product know-how**:
+随 ob-harness 上游 git 分发的 know-how，落在 `rules/knowhow/`（及 axioms / 核心 `rules/`），对所有使用者有效——是 ob-harness 作为可分发产品的产品内容。ai-heartbeat 的 reflector 可自动晋升观测到此层。与 `user know-how` 正交于"所有权 / 分发范围"维度（该维度正交于原有"层级"维度 axioms/rules/knowhow/memory），决策见 [ADR-0017](docs/adr/0017-knowhow-distribution-boundary.md)。
+_Avoid_: 内置 know-how（含糊，不区分分发范围）, 默认 know-how（无此概念）
+
+**user know-how**:
+本地沉淀、不回上游的定制经验，落在 `contexts/knowhow/`（gitignore 排除），仅本环境有效。只走手动通道（`workflow_04` + `/sediment`）；ai-heartbeat reflector 不 GC、不晋升——否则 user 内容被推上游、击穿 git 边界（[ADR-0017](docs/adr/0017-knowhow-distribution-boundary.md) D5）。
+_Avoid_: OEM know-how（与 OpenBMC `meta-oem` layer 撞名——仓库里 OEM 指该 layer，不可用于"用户定制"）, custom know-how, 个人 know-how
+
+**ship with product**:
+know-how 随产品上游 git 分发的属性（`product know-how` 的动作面）。一条 know-how "ships with product" = 它在 `rules/` 下、随上游分发给所有使用者。
+_Avoid_: 分发（仓库里"分发" = command dispatch，如 `dev_dispatch_subcmd` 分发子命令——与 know-how 随上游无关）, 内置（含糊）
+
+**自动化天花板**:
+经验沉淀中自动化通道（ai-heartbeat）不可越过的边界。两层（[ADR-0017](docs/adr/0017-knowhow-distribution-boundary.md) D5）：① 内容天花板 = product/user 边界，自动化只产 `product know-how`、绝不碰 `contexts/knowhow/`（user）；② 环节天花板 = 沉淀四环节中仅"触发 + 机械收口"可自动化，"判所有权 + 写作"永远 manual-in-the-loop。
+_Avoid_: 自动化上限 / automation cap（口语化变体，术语统一用"自动化天花板"）
+
+**contexts/knowhow（user 载体）**:
+`user know-how` 的物理落点，`contexts/` 下与 `contexts/memory/`（L1/L2 动态观测）平级。`.gitignore` 排除其内容、保留 `.gitkeep` 作骨架。区别于 `contexts/memory/OBSERVATIONS.md`：后者是动态观测（reflector 会 GC、内容骨架随上游分发），前者是 user 定制经验（reflector 不碰、不回上游）。
+_Avoid_: 把 contexts/knowhow 与 contexts/memory 混为一谈（前者 user 沉淀 / 不回上游 / reflector 不碰；后者动态观测 / 随上游分发 / reflector 会 GC）

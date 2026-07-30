@@ -1,0 +1,2 @@
+# contexts/knowhow/ — user know-how 物理载体（本地定制经验，不回上游）。
+# 内容由 .gitignore 排除（contexts/knowhow/*），本 .gitkeep 仅保留目录骨架。见 ADR-0017。

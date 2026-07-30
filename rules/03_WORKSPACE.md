@@ -12,7 +12,8 @@
 - OpenBMC 工作区（主仓库、子仓库源码、状态文件）：`workspace/`（整体 gitignore，仅保留 `.gitkeep`）；machine/源码状态在 `workspace/configs/`（`<machine>.snapshot` 依赖快照 + `openbmc-source.manifest` 主仓库归属，术语见 `CONTEXT.md`）
 
 ### 系统与规则
-- 可复用技术方案 / Know-how：`rules/knowhow/`（索引见 `rules/05_KNOWHOW_INDEX.md`）
+- 可复用技术方案 / Know-how（product，随上游分发）：`rules/knowhow/`（索引见 `rules/05_KNOWHOW_INDEX.md`）
+- User know-how（本地定制经验，不回上游）：`contexts/knowhow/`（索引 `contexts/knowhow/07_USER_KNOWHOW_INDEX.md`，gitignore 不入上游；沉淀流程见 `rules/knowhow/workflow_04-manual_sedimentation.md`）
 - 核心公理（Axioms）：`rules/axioms/`（索引见 `rules/06_AXIOMS_INDEX.md`）
 - 记忆系统：`contexts/memory/`
 - 领域术语表（canonical / avoid 用词）：根目录 `CONTEXT.md`（讨论 machine snapshot / source manifest / exit-code 契约 / function semantic layer 等术语时查阅）

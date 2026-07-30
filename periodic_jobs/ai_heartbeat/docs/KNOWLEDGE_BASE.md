@@ -36,6 +36,7 @@ Observer 扫描以下路径，检测有意义的变更：
 | `lib/` | ob 模块主体变更（cmd_* 编排 / devtool_* / qemu_* 等深模块，06-16 模块化后主体逻辑所在） |
 | `tools/` | 工具变更 |
 | `.claude/skills/` | 自定义 skill 变更 |
+| `contexts/knowhow/` | user know-how 变更 = 用户有本地定制经验待手动沉淀（**observer 只提示用户走手动通道，不喂给 reflector 晋升**——见 §4.2 边界、ADR-0017 D5） |
 
 **忽略**：`workspace/`（整体 gitignore，内容由 `ob init` 管理）、`.venv/`（Python 虚拟环境）、`__pycache__/`。
 
@@ -77,6 +78,7 @@ Observer 扫描以下路径，检测有意义的变更：
      - 修改或新增后，必须同步更新 `rules/05_KNOWHOW_INDEX.md`，确保后续 agent 能找到。
   3. **记忆层 (L1/L2)**: 重写 `contexts/memory/OBSERVATIONS.md`。执行垃圾回收，删除已被固化进 rules 的内容以及过期的 🟢 记录。**注**：此处的“删除已固化内容”是 reflector（自动化通道）的 GC 行为；另有**手动通道**（agent 在会话中直接写 know-how，不走 observer/reflector），手动晋升后 OBSERVATIONS 原观测**保留**、不触发本删除——两条通道并存，详见 `rules/knowhow/bestpractice_12-knowledge_layering.md`「沉淀通道」。
 - **职责**: 确保 `rules/` 始终代表系统的最新“进化状态”。
+- **边界（硬约束·前瞻性显式化）**: reflector 的 GC / 晋升目标**只限 `rules/`（product）与 `contexts/memory/OBSERVATIONS.md`**，**显式禁止**未来扩展到 `contexts/knowhow/`（user know-how）——该目录由 `.gitignore` 排除、不回上游，reflector 一旦碰它会自动把 user 内容推到上游、击穿 git 边界。observer 可扫描 `contexts/knowhow/` 变更提示用户手动沉淀（走 `workflow_04` + `/sediment`），但**绝不作为 reflector 的 GC / 晋升输入**。两层天花板详见 ADR-0017 D5（`docs/adr/0017-knowhow-distribution-boundary.md`）。
 
 ### 4.3 状态回写与执行边界
 - **自动记账**: `/ai-heartbeat` 在 observer / reflector 结束后，必须自动调用 `heartbeat_status_cli.py` 记录 `success`、`failed` 或 `skipped`。
