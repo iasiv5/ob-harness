@@ -18,7 +18,7 @@ Status: accepted
 
 ## Consequences
 
-- `lib/init_intake.sh` 内 empty/nontty 检测维持**内联原样**（empty 前置 + nontty 后置 else），不调 `machine_selection_guard`；`machine_selection_guard` 消费方维持 cmd_build / cmd_dev 两处。
+- `lib/init_intake.sh` 内 empty/nontty 检测维持**内联原样**（empty 前置 + nontty 后置 else），不调 `machine_selection_guard`；`machine_selection_guard` 消费方自本次（cmd_start_qemu/cmd_deploy_to_qemu 接入）起为 build / dev / start / deploy 四处。这让重评估触发条件之「第 4 个消费方」从待出现转为已出现——但本次顺带审视 init 接 guard 仍维持暂缓：两条 control-flow 障碍（见下 i/ii）未消解，重开评估不改变结论（条件 4 是重开信号而非自动接入；任一障碍单独存在即 init 仍 Phase 2 暂缓）。
 - Phase 1（intake 抽取 + testability 升级）独立进行、独立验收（既有 `.exp` 字节级回归锁 + 新增 init 选择矩阵 5 态 unit）。
 - **重新评估触发条件**（任一成立即重开本 ADR）：
   - control-flow 重塑被**证明干净**（empty 前置/后置语义差异消解，行为字节级可锁）。

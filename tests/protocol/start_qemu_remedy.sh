@@ -32,6 +32,14 @@ setup_orphan_artifact() {
     touch "$deploy_dir/romulus.static.mtd"
 }
 
+setup_firmware_image_ready() {
+    local tmp_root="$1"
+    local deploy_dir="$tmp_root/workspace/openbmc/build/romulus/tmp/deploy/images/romulus"
+    mkdir -p "$deploy_dir"
+    : > "$tmp_root/workspace/configs/romulus.init-done"
+    touch "$deploy_dir/romulus.static.mtd"
+}
+
 run_start_qemu_case() {
     local setup_fn="$1"
     shift
@@ -97,5 +105,11 @@ run_start_qemu_case setup_init_done_build_dir_no_image start-qemu
 assert_eq "start-qemu build dir without image rc" "$START_QEMU_CASE_RC" "3"
 assert_contains "start-qemu build dir without image diagnosis" "$START_QEMU_CASE_OUTPUT" "No firmware-image-ready machines found."
 assert_contains "start-qemu build dir without image remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob build <machine>' first."
+
+# nontty: 有 firmware-image-ready + 无 MACHINE + 非 TTY → exit 3 + terminal remedy(N1)
+run_start_qemu_case setup_firmware_image_ready start-qemu
+assert_eq "start-qemu nontty rc=3" "$START_QEMU_CASE_RC" "3"
+assert_contains "start-qemu nontty diagnosis" "$START_QEMU_CASE_OUTPUT" "No interactive terminal"
+assert_contains "start-qemu nontty remedy" "$START_QEMU_CASE_OUTPUT" "ob start-qemu <machine>"
 
 assert_summary
