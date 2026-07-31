@@ -127,4 +127,4 @@ Know-how 文件的读者是一个有推理能力的 agent，它的 context windo
 
 写新 know-how 之前，先读 `rules/05_KNOWHOW_INDEX.md` 确认没有重复。如果已有类似 know-how，优先修改而非新建。
 
-格式参考可以看 `rules/knowhow/workflow_01-obmc_env_init.md`（工作流类 know-how 的范本）和 `rules/knowhow/bestpractice_04-temporal_info_verification.md`（最佳实践类 know-how 的范本）。注意这些只是格式参考，核心原则（结果确定性、enabling 非 SOP）比格式更重要。
+格式参考可以看 `rules/knowhow/workflow_01-obmc_env_init.md`（工作流类 know-how 的范本）和 `rules/knowhow/bestpractice_04-temporal_info_verification.md`（最佳实践类 know-how 的范本）。注意这些只是格式参考，核心原则（结果确定性、enabling 非 SOP）比格式更重要。命名编号（`<NN>`）是永久创建序号、删除不重排，详见 [ADR-0018](../../docs/adr/0018-knowhow-numbering-stability.md)。

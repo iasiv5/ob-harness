@@ -46,7 +46,7 @@
 
 创建或重写 know-how 前，先读 [`bestpractice_01-knowhow_writing.md`](knowhow/bestpractice_01-knowhow_writing.md)。它说明如何用目标、验收标准、可用资源和输出规格定义一个 know-how，而不是把 know-how 写成机械步骤清单。
 
-文件命名建议采用 `<category>_<NN>-<name>.md`，例如 `workflow_01-my_process.md`、`bestpractice_01-my_insight.md`。写完后在本 INDEX 的对应分类下添加入口，确保后续 agent 能找到。
+文件命名建议采用 `<category>_<NN>-<name>.md`，例如 `workflow_01-my_process.md`、`bestpractice_01-my_insight.md`。`<NN>` 是**永久创建序号**：删除条目后编号不回收、不重排填补，缺口永久保留（所以 workflow 分类是 01/02/04——03 已删，属正常，见 [ADR-0018](../docs/adr/0018-knowhow-numbering-stability.md)）。写完后在本 INDEX 的对应分类下添加入口，确保后续 agent 能找到。
 
 ## Progressive Disclosure
 
