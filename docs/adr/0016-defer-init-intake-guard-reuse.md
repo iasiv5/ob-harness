@@ -2,12 +2,12 @@
 
 `cmd_init`（[commands.sh:255-394](../../lib/commands.sh)）是最后一个未抽瘦的 `cmd_*` god-function；其机器解析前置（L268-306）经 `/pick-one-arch-task` + 独立评审 + grilling 锁定抽成独立 leaf-pure module `lib/init_intake.sh`（Phase 1，intake-layer 抽取，与 `devtool_intake.sh` 同构，详见对应 implementation plan）。但 intake 内的 empty/nontty 检测**不复用** `machine_selection_guard`（即不让 init 成为 guard 的第 3 个消费者）——本 ADR 记录这个 Phase 2 子动作**现暂缓**，避免未来 explorer 看到 `init_intake` 内仍内联 empty/nontty 检测、想"为什么 init 不像 build/dev 那样复用 guard"而循环推荐。
 
-Status: accepted
+Status: accepted（2026-08 修订：Phase 1 已落地 commit 0518003——`cmd_init` 已抽瘦经 `lib/init_intake.sh`；开头 `commands.sh:255-394` 与选项 1a 的 `commands.sh:274/290` 是 Phase-1 抽取**前**的历史行号，现 machine 解析在 `init_intake.sh:24-45`。本 ADR 锁的 Phase 2 暂缓决策不变）
 
 ## Considered Options
 
 1. **Phase 1+2 合并：intake 抽出同时复用 guard（empty/nontty 检测改调 `machine_selection_guard`）** —— 拒绝（现阶段）。技术可行（guard 泛化消费 list_fn，init 喂 `list_available_machines` 即可），但四条承重前提使合并收益不成立：
-   - (a) **控制流不同形**——init 现状是 empty 前置（[commands.sh:274](../../lib/commands.sh#L274)，无条件、早于 arg 校验）+ nontty 后置（[commands.sh:290](../../lib/commands.sh#L290)，仅 else 分支、需 pick 时才查）；guard 是 empty+nontty 合并前置、一次返回三态。复用须把 empty 从"无条件前置"重塑为"else 内查"，control-flow 重塑耦合进接口收敛，回归风险叠加（empty 的 remedy 文案、`$MACHINE` 给定 + 空列表的走法都须逐一验证）。
+   - (a) **控制流不同形**——init 现状是 empty 前置（[init_intake.sh:24-28](../../lib/init_intake.sh#L24)，无条件、早于 arg 校验）+ nontty 后置（[init_intake.sh:42-45](../../lib/init_intake.sh#L42)，仅 else 分支、需 pick 时才查）；guard 是 empty+nontty 合并前置、一次返回三态。复用须把 empty 从"无条件前置"重塑为"else 内查"，control-flow 重塑耦合进接口收敛，回归风险叠加（empty 的 remedy 文案、`$MACHINE` 给定 + 空列表的走法都须逐一验证）。
    - (b) **list_fn 语义不同**——init 喂 `list_available_machines`（仓库所有可选 machine），build/dev 喂 `machine_state_initialized_machines`（已 init）。empty 分支 remedy 文案不同（init = `No machines found in $OPENBMC_DIR / re-clone`；build/dev = `No initialized machines / Run 'ob init'`）。guard 只回 status、文案留 caller，故技术可复用，但须独立验证 guard 在 `list_available_machines` 输入下三态判定/文案映射不回归。
    - (c) **Phase 1 收益不依赖 guard 复用**——testability 升级（init 选择矩阵 5 态从 `.exp`/PTY 升到 unit）只需 intake 原样保留控制流即可达成；guard 第 3 消费是 seam 深度证明的**红利**，非本体收益。
    - (d) **YAGNI**——dedup 收益（消除 intake 内 ~2 段 inline empty/nontty 检测）可能 < control-flow 重塑成本；init 控制流与 guard 不同形，复用不是机械替换。

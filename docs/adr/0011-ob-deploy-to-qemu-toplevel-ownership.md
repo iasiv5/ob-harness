@@ -14,7 +14,7 @@ Status: accepted
 
 ## Consequences
 
-- `ob deploy-to-qemu` 是 ob 顶层 cmd_*（L1 exit seam，`lib/commands.sh::cmd_deploy_to_qemu`），与 `cmd_start_qemu` / `cmd_stop_qemu` 同级；进 `ob --help` Commands 清单，agent 经 ob 优先原则（ADR-0003）发现。
+- `ob deploy-to-qemu` 是 ob 顶层 cmd_*（L1 exit seam，`lib/qemu_commands.sh::cmd_deploy_to_qemu`），与 `cmd_start_qemu` / `cmd_stop_qemu` 同级；进 `ob --help` Commands 清单，agent 经 ob 优先原则（ADR-0003）发现。
 - `ob dev` 保持 recipe 级 + 不碰运行态边界——`ob dev build`（单 recipe 编译）与 `ob deploy-to-qemu`（image 级重建 + QEMU 重启）正交：前者是 fast inner-loop 单 recipe 反馈（秒-分钟），后者是 image 级干净验证（1-4h + 重启）。workflow_02 引导两步模式：`ob dev build` 快速预失败 → `ob deploy-to-qemu` 完整验证。
 - deploy-to-qemu 的编排复用 ob 顶层 / 通用底层 module（`build_env_enter` / `qemu_instance_*` / `qemu_prepare_launch` / `qemu_execute_launch`），**不依赖 `ob dev`（devtool workspace）**——故与 ADR-0008（dev cleanup fail-safe）/ ADR-0009（dev workspace single-writer）无关。
 - 本 ADR 不约束未来 deploy target 扩展（真机部署）的命名——若未来加真机 target，重开评审（可能 `ob deploy-to-bmc` 或抽象 target 配置模型，届时 v1 的 `-to-qemu` 后缀价值兑现）。

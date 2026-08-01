@@ -51,7 +51,7 @@ Status: accepted
 ## Consequences
 
 - **user 载体落地（Task 4）**：`contexts/knowhow/` 建立，`.gitignore` 排除其内容、保留 `.gitkeep`。user know-how 有了不回上游的物理落点。
-- **reflector 边界显式化（Task 6）**：`KNOWLEDGE_BASE` §4.2 显式声明 reflector 的 GC / 晋升目标只限 `rules/`（product）+ `OBSERVATIONS.md`，**显式禁止**未来扩展到 `contexts/knowhow/`（user）——防止 reflector 扫描范围扩展时越界、把 user 内容推上游。§2.2 扫描路径表加 `contexts/knowhow/`：observer 可扫描其变更提示用户手动沉淀，但不作为 reflector 的 GC / 晋升输入。
+- **reflector 边界显式化（Task 6）**：`periodic_jobs/ai_heartbeat/docs/KNOWLEDGE_BASE.md` §4.2 显式声明 reflector 的 GC / 晋升目标只限 `rules/`（product）+ `OBSERVATIONS.md`，**显式禁止**未来扩展到 `contexts/knowhow/`（user）——防止 reflector 扫描范围扩展时越界、把 user 内容推上游。§2.2 扫描路径表加 `contexts/knowhow/`：observer 可扫描其变更提示用户手动沉淀，但不作为 reflector 的 GC / 晋升输入。
 - **术语入 glossary（Task 3）**：CONTEXT.md 加 product know-how / user know-how / ship with product / 自动化天花板 / contexts/knowhow（user 载体）等术语，带 `_Avoid_` 标注术语冲突（user know-how 避开 `OEM`——仓库里 OEM = OpenBMC `meta-oem` layer；ship with product 避开"分发"——仓库里"分发" = command dispatch 如 `dev_dispatch_subcmd`）。
 - **axioms 去个人化（Task 5）**：`06_AXIOMS_INDEX` / `01_SOUL` / `AGENTS.md` 三处"个人 / 团队经历"统一改"工程实践提炼"，配合 D4 全分发。
 - **手动通道编排（Task 1）**：`workflow_04` 把 D5 两层天花板落地到手动沉淀流程（第 0 步判所有权必须人），`/sediment` 双版本是其显式触发入口。
