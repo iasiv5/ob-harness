@@ -6,21 +6,7 @@
 # ob status 呈现层(原内联在 cmd_status 前的 4 个 section 渲染函数)已抽至 lib/status_render.sh(status_render_*);
 # cmd_status 负责 gather(machine_state_*/qemu_instance_*/git/manifest)→ render。术语见 CONTEXT.md status presentation module。
 
-# exit_on_user_cancel <rc> <verb>
-# 消费 pick_machine / confirm_action 的 rc (0=ok / 2=cancel / 1=read-fail)。
-# rc 0 → return 0 继续下行;rc 2 → warn "<verb> cancelled by user." + exit 2;
-# 否则 exit 1(read-fail 的 error 已由 L3 调用方 pick_machine/confirm_action 打印)。
-# L1 exit-seam helper;调用方负责先 `|| rc=$?` 捕获 rc 再传入。
-exit_on_user_cancel() {
-    local rc="$1" verb="$2"
-    if   [[ "$rc" -eq 2 ]]; then
-        warn "$verb cancelled by user."
-        exit 2
-    elif [[ "$rc" -ne 0 ]]; then
-        exit 1
-    fi
-}
-
+# ob status 呈现层注释见上方。cmd_* 的 pick/confirm rc→exit 映射已迁各调用点 inline case + cancel warn(ADR-0019)。
 cmd_status() {
     local repo_exists=0
     [[ -d "$OPENBMC_DIR/.git" ]] && repo_exists=1
@@ -162,7 +148,7 @@ cmd_build() {
     if [[ "$interactive_selection" -eq 1 ]]; then
         local ca_rc=0
         confirm_action "build" "$MACHINE" || ca_rc=$?
-        # confirm rc 迁 inline case+warn（替 exit_on_user_cancel; 保 cancel warn）。
+        # confirm rc 迁 inline case+warn（保 cancel warn; ADR-0019）。
         case "$ca_rc" in
             0) ;;
             2) warn "Build cancelled by user."; exit 2 ;;
@@ -250,7 +236,7 @@ cmd_init() {
     run_repo_init_script
 
     # 解析+确认 machine(经 ob init command intake module: empty/arg 校验/pick/confirm, return 0/1/2/3)。
-    # 原 L266-306 内联决策树(含 exit_on_user_cancel 2 处)已抽进 lib/init_intake.sh; exit 由本 L1 字面 case 收口。
+    # 原 L266-306 内联决策树已抽进 lib/init_intake.sh; exit 由本 L1 字面 case 收口。
     local _irc=0
     init_intake || _irc=$?
     # intake return 契约: 0=ok / 1=read-fail / 2=cancel / 3=prereq-missing(空列表/非TTY)。

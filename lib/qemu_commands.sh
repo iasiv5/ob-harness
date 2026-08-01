@@ -2,7 +2,6 @@
 # lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu.
 # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
 # 形态对照: L1 exit-seam 命令族(顶层命令直接 exit, 无 dispatcher 收口), 区别于 lib/devtool_subcmd.sh 的 L3 leaf-pure handler(return exit-code, 由 cmd_dev 收口 exit)。
-# 依赖: exit_on_user_cancel 定义于 lib/commands.sh, 跨文件调用; ob 用 for f in lib/*.sh 全量 source 后可见。
 
 cmd_start_qemu() {
     detect_harness_root
@@ -35,7 +34,11 @@ cmd_start_qemu() {
         step_header "Select Machine"
         local pm_rc=0
         pick_machine machine_state_firmware_image_ready_machines "Start QEMU" || pm_rc=$?
-        exit_on_user_cancel "$pm_rc" "Start QEMU"
+        case "$pm_rc" in
+            0) ;;
+            2) warn "Start QEMU cancelled by user."; exit 2 ;;
+            *) exit 1 ;;
+        esac
     fi
 
     # Re-derive paths after machine resolution
@@ -116,7 +119,11 @@ cmd_start_qemu() {
     # ── Safety confirmation (same pattern as ob init / ob build) ──
     local ca_rc=0
     confirm_action "start QEMU for" "$MACHINE" || ca_rc=$?
-    exit_on_user_cancel "$ca_rc" "QEMU start"
+    case "$ca_rc" in
+        0) ;;
+        2) warn "QEMU start cancelled by user."; exit 2 ;;
+        *) exit 1 ;;
+    esac
     echo ""
     info "QEMU start confirmed for machine '$MACHINE'."
 
@@ -179,7 +186,11 @@ cmd_stop_qemu() {
         done
         local pm_rc=0
         read_machine_choice "$total" "Stop QEMU" available || pm_rc=$?
-        exit_on_user_cancel "$pm_rc" "Stop QEMU"
+        case "$pm_rc" in
+            0) ;;
+            2) warn "Stop QEMU cancelled by user."; exit 2 ;;
+            *) exit 1 ;;
+        esac
         targets+=("$MACHINE")
     fi
 

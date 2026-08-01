@@ -102,7 +102,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 |---|---|---|---|
 | 路径推导 | detect_harness_root;derive_qemu_url_config_path | unit/paths.sh | |
 | 并行度/WSL | calc_parallelism;detect_wsl | unit/paths.sh | |
-| 交互叶子(stdin) | confirm_action;prompt_for_absolute_path;exit_on_user_cancel;prompt_for_available_port | unit/interact.sh | select_from_list 已退役(ob_check 回归锁禁复活) |
+| 交互叶子(stdin) | confirm_action;prompt_for_absolute_path;prompt_for_available_port | unit/interact.sh | rc→exit 映射 helper 已退役(ADR-0019; cancel warn 覆盖迁 machine_resolve unit + build_confirm_cancel); select_from_list 已退役(ob_check 回归锁禁复活) |
 | machine 交互选择 | pick_machine | unit/pick_machine.sh | leaf-pure L3,多态返回码表达取消/失败 |
 | machine selection guard(枚举+empty/nontty 检测) | machine_selection_guard | unit/machine_selection_guard.sh;protocol/machine_selection_guard_surface.sh | leaf-pure(横切惯例,同 machine_picker.sh);恒返回0+outvar empty/nontty/ok;cmd_build/cmd_dev/cmd_start_qemu/cmd_deploy_to_qemu 共享, pick 留调用方 |
 | command machine resolution(given/empty 解析 ritual 收口) | resolve_command_machine | unit/machine_resolve.sh | leaf-pure(ADR-0019);return 0/1/2/3,exit 由 cmd_build/cmd_dev/cmd_deploy_to_qemu 字面 case 收口;消费 guard+pick_machine+is_initialized, set $MACHINE;7 态 unit 覆盖,given+empty remedy 字节级 |
