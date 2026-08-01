@@ -49,7 +49,8 @@ assert_eq "② given+noinit rc=3" "$rc" "3"
 assert_contains "② verify remedy is not initialized" "$(cat "$_err")" "is not initialized"
 assert_contains "② verify remedy init hint" "$(cat "$_err")" "Run 'ob init romulus' first."
 
-# ③ empty+ok: 交互选号 → 0 + 设 $MACHINE
+# ③ empty+ok: 交互选号 → 0 + 设 $MACHINE。MOCK_INIT_RC=1 故意置 1 证 empty+ok 路径不查 is_initialized
+#    (pick 自 initialized_machines 源可信, 不重复 verify, ADR-0019; 若路径误查 init 会因 MOCK_INIT_RC=1 返 3 而非 0)
 MACHINE=""; MOCK_INIT_RC=1; MOCK_GUARD_STAT=ok; MOCK_PICK_RC=0; MOCK_PICK_RESULT="witherspoon"; rc=0
 resolve_command_machine machine_state_initialized_machines "$_verb" stdout "$_nontty" 2>"$_err" >"$_out" || rc=$?
 assert_eq "③ empty+ok rc=0" "$rc" "0"

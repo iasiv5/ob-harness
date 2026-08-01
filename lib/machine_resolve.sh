@@ -10,12 +10,15 @@
 # resolve_command_machine <list_fn> <verb> <pick_stream> <nontty_remedy>
 # 消费 machine_selection_guard + pick_machine + machine_state_is_initialized, 收口 cmd_* 的 machine 解析 ritual。
 # 后置条件: return 0 ⟹ 全局 $MACHINE 已 initialized(pick_machine 在当前 shell 设 $MACHINE, 不造 nameref)。
+#   范围: 单次命令内 init-done 不消失(ob 自身不 mid-command 删 marker); 并发外部进程删 marker 的 TOCTOU 需
+#   flock 防、超本 seam 范围——verify-then-use 窗口仍在, 故 empty 路径不重复 verify(重复 verify 只给假安全)。
 #   given 路径($MACHINE 非空, 调用方显式 argv): verify-init 通过 → return 0;
 #     未通过 → verify remedy(stderr) + return 3。
 #   empty 路径($MACHINE 空): guard 恒返回 0, 经 outvar 回传 empty/nontty/ok——
 #     empty → empty remedy(stderr) + return 3;nontty → nontty_remedy(stderr) + return 3;
 #     ok → pick_machine(按 pick_stream 决定 >&2: dev=stderr 护 porcelain stdout 契约, build/deploy=stdout)
-#          rc 0→return 0 / 2→warn "<verb> cancelled by user."(stdout) + return 2 / 否则 read-fail return 1。
+#          rc 0→return 0(pick 自 list_fn=initialized_machines, 源可信, 不重复 verify; given 路径 own verify)
+#              / 2→warn "<verb> cancelled by user."(stdout) + return 2 / 否则 read-fail return 1。
 # 两类 remedy 不混用: verify remedy(given 未 init, 带括号诊断) ≠ empty remedy(集合空, 不同文案)。
 # caller 边界: confirm / repo 显示 / DRY_RUN / 展示块留 cmd_*;nontty_remedy 与 pick_stream 由 caller 传入。
 # leaf-pure: 绝不 exit;前置 _prc=0/_gstat 是 ob set -u 必需(成功路径 || _prc=$? 不执行, 不预初始化则 nounset 崩)。
