@@ -2,7 +2,6 @@
 # lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu.
 # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
 # 形态对照: L1 exit-seam 命令族(顶层命令直接 exit, 无 dispatcher 收口), 区别于 lib/devtool_subcmd.sh 的 L3 leaf-pure handler(return exit-code, 由 cmd_dev 收口 exit)。
-# 依赖: exit_on_user_cancel 定义于 lib/commands.sh, 跨文件调用; ob 用 for f in lib/*.sh 全量 source 后可见。
 
 cmd_start_qemu() {
     detect_harness_root
@@ -35,7 +34,11 @@ cmd_start_qemu() {
         step_header "Select Machine"
         local pm_rc=0
         pick_machine machine_state_firmware_image_ready_machines "Start QEMU" || pm_rc=$?
-        exit_on_user_cancel "$pm_rc" "Start QEMU"
+        case "$pm_rc" in
+            0) ;;
+            2) warn "Start QEMU cancelled by user."; exit 2 ;;
+            *) exit 1 ;;
+        esac
     fi
 
     # Re-derive paths after machine resolution
@@ -116,7 +119,11 @@ cmd_start_qemu() {
     # ── Safety confirmation (same pattern as ob init / ob build) ──
     local ca_rc=0
     confirm_action "start QEMU for" "$MACHINE" || ca_rc=$?
-    exit_on_user_cancel "$ca_rc" "QEMU start"
+    case "$ca_rc" in
+        0) ;;
+        2) warn "QEMU start cancelled by user."; exit 2 ;;
+        *) exit 1 ;;
+    esac
     echo ""
     info "QEMU start confirmed for machine '$MACHINE'."
 
@@ -179,7 +186,11 @@ cmd_stop_qemu() {
         done
         local pm_rc=0
         read_machine_choice "$total" "Stop QEMU" available || pm_rc=$?
-        exit_on_user_cancel "$pm_rc" "Stop QEMU"
+        case "$pm_rc" in
+            0) ;;
+            2) warn "Stop QEMU cancelled by user."; exit 2 ;;
+            *) exit 1 ;;
+        esac
         targets+=("$MACHINE")
     fi
 
@@ -265,34 +276,20 @@ cmd_stop_qemu() {
 cmd_deploy_to_qemu() {
     detect_harness_root
 
-    # ── Resolve machine(经 machine_selection_guard: empty/nontty/ok, 同 cmd_build/cmd_dev) ──
-    if [[ -z "$MACHINE" ]]; then
-        local _msg=""
-        machine_selection_guard machine_state_initialized_machines _msg
-        case "$_msg" in
-            empty)
-                error "No initialized machines found."
-                error "Run 'ob init <machine>' first."
-                exit 3 ;;
-            nontty)
-                error "No interactive terminal. Specify machine: ob deploy-to-qemu <machine>"
-                exit 3 ;;
-            ok) ;;
-        esac
-        local pm_rc=0
-        pick_machine machine_state_initialized_machines "Deploy to QEMU" || pm_rc=$?
-        exit_on_user_cancel "$pm_rc" "Deploy to QEMU"
-    fi
+    # ── Resolve machine(经 resolve_command_machine: given verify / empty·nontty·ok, ADR-0019) ──
+    local _rc=0
+    resolve_command_machine machine_state_initialized_machines "Deploy to QEMU" stdout "No interactive terminal. Specify machine: ob deploy-to-qemu <machine>" || _rc=$?
+    # 字面 case 收口（同 cmd_build/cmd_dev; 1) error 作 3) exit 3 的 Z(b) 锚点）。
+    case "$_rc" in
+        0) ;;
+        1) error "ob deploy-to-qemu: failed to read machine selection input."; exit 1 ;;
+        2) exit 2 ;;
+        3) exit 3 ;;
+        *) exit 1 ;;
+    esac
 
     BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
     SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
-
-    # ── 前置: init-done(约束: 前置 = init-done) ──
-    if ! machine_state_is_initialized "$MACHINE"; then
-        error "Machine '$MACHINE' has not been initialized."
-        error "Run 'ob init $MACHINE' first."
-        exit 3
-    fi
 
     # ── DRY-RUN 短路(评审 Y2: 前移到探测 QEMU 前, 避免 DRY-RUN + QEMU 在跑时弹 confirm 交互;
     #   v3/G-new2: 前移后 DRY-RUN 也不探测 QEMU / 不读旧端口 / 不弹 banner, 输出仅 notice 一行) ──

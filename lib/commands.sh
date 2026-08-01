@@ -6,21 +6,7 @@
 # ob status 呈现层(原内联在 cmd_status 前的 4 个 section 渲染函数)已抽至 lib/status_render.sh(status_render_*);
 # cmd_status 负责 gather(machine_state_*/qemu_instance_*/git/manifest)→ render。术语见 CONTEXT.md status presentation module。
 
-# exit_on_user_cancel <rc> <verb>
-# 消费 pick_machine / confirm_action 的 rc (0=ok / 2=cancel / 1=read-fail)。
-# rc 0 → return 0 继续下行;rc 2 → warn "<verb> cancelled by user." + exit 2;
-# 否则 exit 1(read-fail 的 error 已由 L3 调用方 pick_machine/confirm_action 打印)。
-# L1 exit-seam helper;调用方负责先 `|| rc=$?` 捕获 rc 再传入。
-exit_on_user_cancel() {
-    local rc="$1" verb="$2"
-    if   [[ "$rc" -eq 2 ]]; then
-        warn "$verb cancelled by user."
-        exit 2
-    elif [[ "$rc" -ne 0 ]]; then
-        exit 1
-    fi
-}
-
+# ob status 呈现层注释见上方。cmd_* 的 pick/confirm rc→exit 映射已迁各调用点 inline case + cancel warn(ADR-0019)。
 cmd_status() {
     local repo_exists=0
     [[ -d "$OPENBMC_DIR/.git" ]] && repo_exists=1
@@ -125,52 +111,33 @@ cmd_build() {
     require_path "$SOURCE_MANIFEST_FILE" "Source manifest" "Run 'ob init' first." 3
 
     local interactive_selection=0
-    if [[ -n "$MACHINE" ]]; then
-        if ! machine_state_is_initialized "$MACHINE"; then
-            error "Machine '$MACHINE' is not initialized (no completed init-done marker - a previous init may have been interrupted)."
-            error "Run 'ob init $MACHINE' first."
-            exit 3
-        fi
+    # resolve_command_machine 据 $MACHINE 判 given/empty（与 caller 同源）。记 had_explicit 保 confirm 门:
+    # 仅交互选号（empty 路径 pick）才 confirm; 显式 `ob build <m>`（given 路径）不 confirm。
+    local had_explicit=0
+    [[ -n "$MACHINE" ]] && had_explicit=1
+    local _rc=0
+    resolve_command_machine machine_state_initialized_machines "Build" stdout "No machine specified and no interactive terminal. Run 'ob status' to list initialized machines. Specify a machine: ob build <machine>" || _rc=$?
+    # 字面 case 收口（exit_contract X 禁 exit $?, || _rc=$? 防 set -e; _rc=0 前置是 set -u 必需）;
+    # 1) 的 error 同时作 3) exit 3 的 exit_contract Z(b) 静态锚点（同 cmd_init）。
+    case "$_rc" in
+        0) ;;
+        1) error "ob build: failed to read machine selection input."; exit 1 ;;
+        2) exit 2 ;;
+        3) exit 3 ;;
+        *) exit 1 ;;
+    esac
+    [[ "$had_explicit" -eq 0 ]] && interactive_selection=1
+    BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
 
-        BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
-    else
-        local _msg=""
-        machine_selection_guard machine_state_initialized_machines _msg
-        case "$_msg" in
-            empty)
-                step_header "Initialized Machines"
-                echo ""
-                echo "  (none)"
-                echo ""
-                error "No initialized machines found."
-                error "Run 'ob init <machine>' first."
-                exit 3 ;;
-            nontty)
-                error "No machine specified and no interactive terminal. Run 'ob status' to list initialized machines."
-                error "Specify a machine: ob build <machine>"
-                exit 3 ;;
-            ok) ;;
-        esac
+    # === Read main repo info（仓库信息块; seam return 0 后打印, given/empty 两路均展示）===
+    local manifest_origin_url manifest_source_label
+    manifest_origin_url=$(read_manifest_field origin_url || echo "<unknown>")
+    manifest_source_label=$(read_manifest_field source_label || echo "")
 
-        # === Read main repo info（仓库信息块；原位不动，仅 ok 路径展示）===
-        local manifest_origin_url manifest_source_label
-        manifest_origin_url=$(read_manifest_field origin_url || echo "<unknown>")
-        manifest_source_label=$(read_manifest_field source_label || echo "")
-
-        step_header "OpenBMC Repository"
-        echo "  Source : $manifest_origin_url${manifest_source_label:+ ($manifest_source_label)}"
-        echo "  Path   : $OPENBMC_DIR"
-        echo ""
-
-        step_header "Initialized Machines"
-
-        local pm_rc=0
-        pick_machine machine_state_initialized_machines "Build" || pm_rc=$?
-        exit_on_user_cancel "$pm_rc" "Build"
-
-        BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
-        interactive_selection=1
-    fi
+    step_header "OpenBMC Repository"
+    echo "  Source : $manifest_origin_url${manifest_source_label:+ ($manifest_source_label)}"
+    echo "  Path   : $OPENBMC_DIR"
+    echo ""
 
     echo ""
     info "Selected: $MACHINE"
@@ -181,7 +148,12 @@ cmd_build() {
     if [[ "$interactive_selection" -eq 1 ]]; then
         local ca_rc=0
         confirm_action "build" "$MACHINE" || ca_rc=$?
-        exit_on_user_cancel "$ca_rc" "Build"
+        # confirm rc 迁 inline case+warn（保 cancel warn; ADR-0019）。
+        case "$ca_rc" in
+            0) ;;
+            2) warn "Build cancelled by user."; exit 2 ;;
+            *) exit 1 ;;
+        esac
     fi
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
@@ -264,7 +236,7 @@ cmd_init() {
     run_repo_init_script
 
     # 解析+确认 machine(经 ob init command intake module: empty/arg 校验/pick/confirm, return 0/1/2/3)。
-    # 原 L266-306 内联决策树(含 exit_on_user_cancel 2 处)已抽进 lib/init_intake.sh; exit 由本 L1 字面 case 收口。
+    # 原 L266-306 内联决策树已抽进 lib/init_intake.sh; exit 由本 L1 字面 case 收口。
     local _irc=0
     init_intake || _irc=$?
     # intake return 契约: 0=ok / 1=read-fail / 2=cancel / 3=prereq-missing(空列表/非TTY)。
@@ -376,34 +348,21 @@ cmd_dev() {
     # cmd_dev 字面 case 收口（exit_contract X 禁 exit $?, || _rc=$? 防 set -e）
     case "$_iarc" in 0) ;; *) exit 1;; esac
 
-    # machine 前置: --machine 给定则用它; 否则枚举 initialized + 判 TTY + pick
-    if [[ -z "$dev_machine" ]]; then
-        local _msg=""
-        machine_selection_guard machine_state_initialized_machines _msg
-        case "$_msg" in
-            empty)
-                error "No initialized machines found." >&2
-                error "Run 'ob init <machine>' first." >&2
-                exit 3 ;;
-            nontty)
-                error "No --machine specified and no interactive terminal." >&2
-                error "Specify a machine: ob dev --machine <machine> ${dev_subcmd:-list}" >&2
-                exit 3 ;;
-            ok) ;;
-        esac
-        local _pm_rc=0
-        pick_machine machine_state_initialized_machines "Develop" >&2 || _pm_rc=$?
-        if [[ "$_pm_rc" -eq 2 ]]; then exit 2; fi
-        if [[ "$_pm_rc" -ne 0 ]]; then exit 1; fi
-        dev_machine="$MACHINE"
-    fi
-
-    # init-done 前置(所有子命令)
-    if ! machine_state_is_initialized "$dev_machine"; then
-        error "Machine '$dev_machine' is not initialized." >&2
-        error "Run 'ob init $dev_machine' first." >&2
-        exit 3
-    fi
+    # machine 解析经 resolve_command_machine（ADR-0019）。无条件同步全局 $MACHINE ← 局部 dev_machine:
+    # seam 只看全局; 显式给定→同步该值、未给定→清空, 让 seam 正确进 given/empty（无条件而非 [[ -n ]] &&,
+    # 条件版留 stale $MACHINE 是 footgun）。pick_stream=stderr 护 ob dev porcelain stdout 契约。
+    MACHINE="$dev_machine"
+    local _rc=0
+    resolve_command_machine machine_state_initialized_machines "Develop" stderr "No --machine specified and no interactive terminal. Specify a machine: ob dev --machine <machine> ${dev_subcmd:-list}" || _rc=$?
+    # 字面 case 收口（同 cmd_build; 1) error 作 3) exit 3 的 Z(b) 锚点）。
+    case "$_rc" in
+        0) ;;
+        1) error "ob dev: failed to read machine selection input."; exit 1 ;;
+        2) exit 2 ;;
+        3) exit 3 ;;
+        *) exit 1 ;;
+    esac
+    dev_machine="$MACHINE"
     local dev_build_dir="$OPENBMC_DIR/build/$dev_machine"
 
     # 无子命令 + TTY → 交互引导(选 list/modify/refresh, 按需补 pattern/recipe)。

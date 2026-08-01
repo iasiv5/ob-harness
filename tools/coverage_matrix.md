@@ -32,7 +32,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
 | 空 workspace → exit 3 | cmd_build | protocol/smoke_ob.sh | |
-| 取消 → exit 2 | cmd_build;confirm_action | protocol/manual_matrix.exp | |
+| 取消 → exit 2 | cmd_build;confirm_action | orchestration/build_confirm_cancel.sh;protocol/manual_matrix.exp | confirm 迁 inline case+warn(ADR-0019);cancel warn 锁 orchestration(stub,不依赖 workspace) |
 | 进入 bitbake 环境 + bitbake handoff | build_env_enter;cmd_build | orchestration/build_env_enter.sh;orchestration/cmd_build_bitbake_handoff.sh;protocol/build_env_enter_structure.sh | build_env_enter=进入原语(副作用契约); cmd_build_bitbake_handoff=非 dry-run 调 bitbake + 失败 exit 1 兜底 |
 | npm registry passthrough 装配 | apply_npm_registry | unit/npm_registry.sh | leaf-pure(util.sh); cmd_build/cmd_deploy_to_qemu 共享; skip/空 existing/非空 existing/空 registry 四态 |
 | obmc-phosphor-image 构建编排 | build_obmc_image | unit/image_build.sh | leaf-pure(image_build.sh); cmd_build/cmd_deploy_to_qemu 共享 enter+npm+bitbake; 成功/失败/enter失败 三态 |
@@ -94,7 +94,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
 | build-first 编排(image 重建 + QEMU 重启,端口复用) | cmd_deploy_to_qemu | orchestration/deploy_to_qemu.sh;integration/ob_deploy_to_qemu.sh | exit 函数,radar 低估;build-first 链 + QEMU 在跑则端口复用(ADR-0011) |
-| machine-selection 序言(empty/nontty/ok 走 guard) | cmd_deploy_to_qemu;machine_selection_guard | protocol/deploy_to_qemu_machine_selection.sh;protocol/qemu_commands_guard_surface.sh | 干净 1:1 同 cmd_build(initialized);empty/nontty remedy 字节级不变 |
+| machine-selection 序言(经 resolve_command_machine) | cmd_deploy_to_qemu;resolve_command_machine | protocol/deploy_to_qemu_machine_selection.sh;protocol/qemu_commands_guard_surface.sh | 经 resolve_command_machine 同 cmd_build(ADR-0019);empty/nontty remedy 字节级不变 |
 
 ## 横切(通用)
 
@@ -102,9 +102,10 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 |---|---|---|---|
 | 路径推导 | detect_harness_root;derive_qemu_url_config_path | unit/paths.sh | |
 | 并行度/WSL | calc_parallelism;detect_wsl | unit/paths.sh | |
-| 交互叶子(stdin) | confirm_action;prompt_for_absolute_path;exit_on_user_cancel;prompt_for_available_port | unit/interact.sh | select_from_list 已退役(ob_check 回归锁禁复活) |
+| 交互叶子(stdin) | confirm_action;prompt_for_absolute_path;prompt_for_available_port | unit/interact.sh | rc→exit 映射 helper 已退役(ADR-0019; cancel warn 覆盖迁 machine_resolve unit + build_confirm_cancel); select_from_list 已退役(ob_check 回归锁禁复活) |
 | machine 交互选择 | pick_machine | unit/pick_machine.sh | leaf-pure L3,多态返回码表达取消/失败 |
-| machine selection guard(枚举+empty/nontty 检测) | machine_selection_guard | unit/machine_selection_guard.sh;protocol/machine_selection_guard_surface.sh | leaf-pure(横切惯例,同 machine_picker.sh);恒返回0+outvar empty/nontty/ok;cmd_build/cmd_dev/cmd_start_qemu/cmd_deploy_to_qemu 共享, pick 留调用方 |
+| machine selection guard(枚举+empty/nontty 检测) | machine_selection_guard | unit/machine_selection_guard.sh;protocol/machine_selection_guard_surface.sh | leaf-pure(横切惯例,同 machine_picker.sh);恒返回0+outvar empty/nontty/ok;cmd_build/cmd_dev/cmd_deploy_to_qemu 经 resolve_command_machine 间接消费、cmd_start_qemu 直接消费(cmd_stop_qemu 不经 guard), pick 留 seam/调用方 |
+| command machine resolution(given/empty 解析 ritual 收口) | resolve_command_machine | unit/machine_resolve.sh | leaf-pure(ADR-0019);return 0/1/2/3,exit 由 cmd_build/cmd_dev/cmd_deploy_to_qemu 字面 case 收口;消费 guard+pick_machine+is_initialized, set $MACHINE;7 态 unit 覆盖,given+empty remedy 字节级 |
 | require_path 前置 | require_path | unit/require_path.sh | exit 函数,radar 低估 |
 | 字符串/工具子函数 | is_valid_repo_url;read_kv_field;read_manifest_field;trim_whitespace | unit/url.sh;unit/source_manifest.sh | 子工具,被上层调用 |
 | QEMU launch profile 纯规则 | qemu_launch_profile_apply_system_name;qemu_launch_profile_apply_machine_name;machine_conf_chain_contains | unit/soc.sh | start-qemu SoC/机型派生 |
