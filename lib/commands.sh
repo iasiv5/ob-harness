@@ -362,34 +362,21 @@ cmd_dev() {
     # cmd_dev 字面 case 收口（exit_contract X 禁 exit $?, || _rc=$? 防 set -e）
     case "$_iarc" in 0) ;; *) exit 1;; esac
 
-    # machine 前置: --machine 给定则用它; 否则枚举 initialized + 判 TTY + pick
-    if [[ -z "$dev_machine" ]]; then
-        local _msg=""
-        machine_selection_guard machine_state_initialized_machines _msg
-        case "$_msg" in
-            empty)
-                error "No initialized machines found." >&2
-                error "Run 'ob init <machine>' first." >&2
-                exit 3 ;;
-            nontty)
-                error "No --machine specified and no interactive terminal." >&2
-                error "Specify a machine: ob dev --machine <machine> ${dev_subcmd:-list}" >&2
-                exit 3 ;;
-            ok) ;;
-        esac
-        local _pm_rc=0
-        pick_machine machine_state_initialized_machines "Develop" >&2 || _pm_rc=$?
-        if [[ "$_pm_rc" -eq 2 ]]; then exit 2; fi
-        if [[ "$_pm_rc" -ne 0 ]]; then exit 1; fi
-        dev_machine="$MACHINE"
-    fi
-
-    # init-done 前置(所有子命令)
-    if ! machine_state_is_initialized "$dev_machine"; then
-        error "Machine '$dev_machine' is not initialized." >&2
-        error "Run 'ob init $dev_machine' first." >&2
-        exit 3
-    fi
+    # machine 解析经 resolve_command_machine（ADR-0019）。无条件同步全局 $MACHINE ← 局部 dev_machine:
+    # seam 只看全局; 显式给定→同步该值、未给定→清空, 让 seam 正确进 given/empty（无条件而非 [[ -n ]] &&,
+    # 条件版留 stale $MACHINE 是 footgun）。pick_stream=stderr 护 ob dev porcelain stdout 契约。
+    MACHINE="$dev_machine"
+    local _rc=0
+    resolve_command_machine machine_state_initialized_machines "Develop" stderr "No --machine specified and no interactive terminal. Specify a machine: ob dev --machine <machine> ${dev_subcmd:-list}" || _rc=$?
+    # 字面 case 收口（同 cmd_build; 1) error 作 3) exit 3 的 Z(b) 锚点）。
+    case "$_rc" in
+        0) ;;
+        1) error "ob dev: failed to read machine selection input."; exit 1 ;;
+        2) exit 2 ;;
+        3) exit 3 ;;
+        *) exit 1 ;;
+    esac
+    dev_machine="$MACHINE"
     local dev_build_dir="$OPENBMC_DIR/build/$dev_machine"
 
     # 无子命令 + TTY → 交互引导(选 list/modify/refresh, 按需补 pattern/recipe)。
