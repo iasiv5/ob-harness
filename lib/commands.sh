@@ -125,52 +125,33 @@ cmd_build() {
     require_path "$SOURCE_MANIFEST_FILE" "Source manifest" "Run 'ob init' first." 3
 
     local interactive_selection=0
-    if [[ -n "$MACHINE" ]]; then
-        if ! machine_state_is_initialized "$MACHINE"; then
-            error "Machine '$MACHINE' is not initialized (no completed init-done marker - a previous init may have been interrupted)."
-            error "Run 'ob init $MACHINE' first."
-            exit 3
-        fi
+    # resolve_command_machine 据 $MACHINE 判 given/empty（与 caller 同源）。记 had_explicit 保 confirm 门:
+    # 仅交互选号（empty 路径 pick）才 confirm; 显式 `ob build <m>`（given 路径）不 confirm。
+    local had_explicit=0
+    [[ -n "$MACHINE" ]] && had_explicit=1
+    local _rc=0
+    resolve_command_machine machine_state_initialized_machines "Build" stdout "No machine specified and no interactive terminal. Run 'ob status' to list initialized machines. Specify a machine: ob build <machine>" || _rc=$?
+    # 字面 case 收口（exit_contract X 禁 exit $?, || _rc=$? 防 set -e; _rc=0 前置是 set -u 必需）;
+    # 1) 的 error 同时作 3) exit 3 的 exit_contract Z(b) 静态锚点（同 cmd_init）。
+    case "$_rc" in
+        0) ;;
+        1) error "ob build: failed to read machine selection input."; exit 1 ;;
+        2) exit 2 ;;
+        3) exit 3 ;;
+        *) exit 1 ;;
+    esac
+    [[ "$had_explicit" -eq 0 ]] && interactive_selection=1
+    BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
 
-        BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
-    else
-        local _msg=""
-        machine_selection_guard machine_state_initialized_machines _msg
-        case "$_msg" in
-            empty)
-                step_header "Initialized Machines"
-                echo ""
-                echo "  (none)"
-                echo ""
-                error "No initialized machines found."
-                error "Run 'ob init <machine>' first."
-                exit 3 ;;
-            nontty)
-                error "No machine specified and no interactive terminal. Run 'ob status' to list initialized machines."
-                error "Specify a machine: ob build <machine>"
-                exit 3 ;;
-            ok) ;;
-        esac
+    # === Read main repo info（仓库信息块; seam return 0 后打印, given/empty 两路均展示）===
+    local manifest_origin_url manifest_source_label
+    manifest_origin_url=$(read_manifest_field origin_url || echo "<unknown>")
+    manifest_source_label=$(read_manifest_field source_label || echo "")
 
-        # === Read main repo info（仓库信息块；原位不动，仅 ok 路径展示）===
-        local manifest_origin_url manifest_source_label
-        manifest_origin_url=$(read_manifest_field origin_url || echo "<unknown>")
-        manifest_source_label=$(read_manifest_field source_label || echo "")
-
-        step_header "OpenBMC Repository"
-        echo "  Source : $manifest_origin_url${manifest_source_label:+ ($manifest_source_label)}"
-        echo "  Path   : $OPENBMC_DIR"
-        echo ""
-
-        step_header "Initialized Machines"
-
-        local pm_rc=0
-        pick_machine machine_state_initialized_machines "Build" || pm_rc=$?
-        exit_on_user_cancel "$pm_rc" "Build"
-
-        BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
-        interactive_selection=1
-    fi
+    step_header "OpenBMC Repository"
+    echo "  Source : $manifest_origin_url${manifest_source_label:+ ($manifest_source_label)}"
+    echo "  Path   : $OPENBMC_DIR"
+    echo ""
 
     echo ""
     info "Selected: $MACHINE"
@@ -181,7 +162,12 @@ cmd_build() {
     if [[ "$interactive_selection" -eq 1 ]]; then
         local ca_rc=0
         confirm_action "build" "$MACHINE" || ca_rc=$?
-        exit_on_user_cancel "$ca_rc" "Build"
+        # confirm rc 迁 inline case+warn（替 exit_on_user_cancel; 保 cancel warn）。
+        case "$ca_rc" in
+            0) ;;
+            2) warn "Build cancelled by user."; exit 2 ;;
+            *) exit 1 ;;
+        esac
     fi
 
     if [[ "$DRY_RUN" -eq 1 ]]; then
