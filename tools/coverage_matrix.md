@@ -94,7 +94,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |
 |---|---|---|---|
 | build-first 编排(image 重建 + QEMU 重启,端口复用) | cmd_deploy_to_qemu | orchestration/deploy_to_qemu.sh;integration/ob_deploy_to_qemu.sh | exit 函数,radar 低估;build-first 链 + QEMU 在跑则端口复用(ADR-0011) |
-| machine-selection 序言(empty/nontty/ok 走 guard) | cmd_deploy_to_qemu;machine_selection_guard | protocol/deploy_to_qemu_machine_selection.sh;protocol/qemu_commands_guard_surface.sh | 干净 1:1 同 cmd_build(initialized);empty/nontty remedy 字节级不变 |
+| machine-selection 序言(经 resolve_command_machine) | cmd_deploy_to_qemu;resolve_command_machine | protocol/deploy_to_qemu_machine_selection.sh;protocol/qemu_commands_guard_surface.sh | 经 resolve_command_machine 同 cmd_build(ADR-0019);empty/nontty remedy 字节级不变 |
 
 ## 横切(通用)
 
