@@ -5,6 +5,9 @@ on:
     branches: [main, 'refactor/**']
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   fast:
     name: protocol + unit + orchestration (快速 .sh)
