@@ -68,6 +68,19 @@ assert_false "json无尾换行: tmpfile删" test -e "$JFILE"
 jtest "json非法" 1 '%s\n' '{a:1}'
 assert_false "json非法: tmpfile删" test -e "$JFILE"
 
+# 截断对象(缺闭合 })→ json.loads 失败 → rc=1 + 删
+jtest "json截断对象缺}" 1 '%s\n' '{"recipe":"foo"'
+assert_false "json截断对象缺}: tmpfile删" test -e "$JFILE"
+
+# 合法对象后尾垃圾 → json.loads Extra data 失败 → rc=1 + 删
+jtest "json尾垃圾" 1 '%s\n' '{"a":1}garbage'
+assert_false "json尾垃圾: tmpfile删" test -e "$JFILE"
+
+# 截断数组(缺闭合 ])→ json.loads 失败 → rc=1 + 删
+# 注: 完整数组 [1,2,3] json.loads 合法 → rc=0, 故只取截断形态
+jtest "json截断数组缺]" 1 '%s\n' '[1,2'
+assert_false "json截断数组缺]: tmpfile删" test -e "$JFILE"
+
 # 空文件 → rc=1 + 删
 jtest "json空" 1 ''
 assert_false "json空: tmpfile删" test -e "$JFILE"
