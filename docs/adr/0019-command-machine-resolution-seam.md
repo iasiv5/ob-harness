@@ -1,6 +1,6 @@
 # `command machine resolution` seam：把 cmd_* 的 machine 解析编排收口成 leaf-pure module（own exit/remedy + return 契约）
 
-`cmd_build` / `cmd_dev` / `cmd_deploy_to_qemu`（+ out-of-scope 的 `cmd_start_qemu`）各自内联一份「given 快路径 verify / empty 路径 guard+pick+verify + exit-3 remedy + rc 映射」machine 解析 ritual（代码自标「同 cmd_build/cmd_dev」4 处；verify-init 前置逐字重复 4 处；exit_on_user_cancel 半迁移——dev 已迁、build/start/deploy 未迁）。经 `/pick-one-arch-task` + `/grill-with-docs` 七项决策锁定：抽 leaf-pure module `lib/machine_resolve.sh`（入口 `resolve_command_machine`），按 **路 A**——seam own remedy、return `exit-code 契约` 0/1/2/3、`cmd_*` 字面 case 收口 exit——收口此 ritual。本 ADR 记录这条 load-bearing 决策及其 scope 边界。术语见 CONTEXT.md `command machine resolution`。
+`cmd_build` / `cmd_dev` / `cmd_deploy_to_qemu`（+ out-of-scope 的 `cmd_start_qemu`）各自内联一份「given 快路径 verify / empty 路径 guard+pick（dev/deploy 另带 post-pick verify）+ exit-3 remedy + rc 映射」machine 解析 ritual（三命令并非完全同形：build 的 empty 路径无 post-pick verify，dev/deploy 有；代码自标「同 cmd_build/cmd_dev」4 处；verify-init 前置逐字重复 4 处；exit_on_user_cancel 半迁移——dev 已迁、build/start/deploy 未迁）。经 `/pick-one-arch-task` + `/grill-with-docs` 七项决策锁定：抽 leaf-pure module `lib/machine_resolve.sh`（入口 `resolve_command_machine`），按 **路 A**——seam own remedy、return `exit-code 契约` 0/1/2/3、`cmd_*` 字面 case 收口 exit——收口此 ritual。本 ADR 记录这条 load-bearing 决策及其 scope 边界。术语见 CONTEXT.md `command machine resolution`。
 
 Status: accepted
 

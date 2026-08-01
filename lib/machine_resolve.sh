@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # lib/machine_resolve.sh — command machine resolution module(leaf-pure)。术语见 CONTEXT.md command machine resolution.
 #   resolve_command_machine: cmd_build/cmd_dev/cmd_deploy_to_qemu 的 machine 解析编排收口——
-#   given 快路径 verify / empty 路径 guard+pick+verify / exit-3 remedy / rc 映射, return 0/1/2/3, set $MACHINE。
+#   given 快路径 verify / empty 路径 guard+pick(源可信, 不重复 verify) / exit-3 remedy / rc 映射, return 0/1/2/3, set $MACHINE。
 #   设计见 ADR-0019(路 A: seam own remedy + return 契约, cmd_* 字面 case 收口)。
 # Exit: leaf-pure module（同 machine_selection_guard.sh/image_build.sh）;函数绝不 exit, return 契约值;
 #   exit 归 cmd_*(exit_contract Y 规则守, LEAF_EXIT_EXCEPTIONS_BY_BASENAME 中 machine_resolve.sh 例外集空)。
