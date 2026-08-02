@@ -1,0 +1,16 @@
+=== TOOLS GATE FILES (test-related) ===
+FOUND  tools/ob_check.sh
+FOUND  tools/exit_contract.py
+FOUND  tools/extract_funcs.py
+FOUND  tools/smoke_regression.sh
+FOUND  tools/smoke_diff.py
+FOUND  tools/coverage_radar.py
+FOUND  tools/trace_collect.sh
+FOUND  tools/knowhow_tldr_drift_check.py
+FOUND  tools/cache_hit_rate.py
+
+=== tests/run_all.sh ===
+-rwxr-xr-x 1 iasi iasi 3355 Jul 19 01:28 tests/run_all.sh
+
+=== tests/.shellcheck-baseline ===
+-rw-r--r-- 1 iasi iasi 1030 Jul 11 18:14 tests/.shellcheck-baseline

@@ -1,0 +1,16 @@
+=== grep tests/ for the 3 radar-uncovered functions ===
+--- download_and_replace_community_qemu ---
+NO TEST REFERENCE (grep -rln download_and_replace_community_qemu tests/ → empty)
+--- ensure_qemu_binary_custom ---
+tests/protocol/qemu_launch_profile_structure.sh:78:assert_function_not_match "ensure_qemu_binary_custom no old arch vars" "$QEMU_BINARY_SH" ensure_qemu_binary_custom 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
+--- prompt_for_available_port ---
+tests/unit/interact.sh:3:# 覆盖 confirm_action / prompt_for_absolute_path / prompt_for_available_port。
+tests/unit/interact.sh:27:# --- prompt_for_available_port: stub ss 空占用 → 端口空闲 return 0 ---
+tests/unit/interact.sh:29:assert_rc 0 "port free returns 0" with_stub "$DB" -- bash -c 'OB_NO_MAIN=1 source "$1"; MYPORT=2222; prompt_for_available_port MYPORT svc tcp </dev/null' _ "$OB"
+=== where are these functions DEFINED in lib/ ===
+--- download_and_replace_community_qemu defined at ---
+lib/qemu_binary.sh:211:download_and_replace_community_qemu() {
+--- ensure_qemu_binary_custom defined at ---
+lib/qemu_binary.sh:488:ensure_qemu_binary_custom() {
+--- prompt_for_available_port defined at ---
+lib/qemu.sh:268:prompt_for_available_port() {

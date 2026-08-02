@@ -1,0 +1,23 @@
+=== PRECISE: 'build empty workspace -> exit 3' asserted in BOTH files ===
+--- exit_codes.sh:84 ---
+84:assert_ob_rc 3 "build empty workspace" build
+--- smoke_ob.sh (build empty workspace) ---
+36:# --- dispatch + prerequisites (baseline: ob build in empty workspace -> exit 3) ---
+38:assert_rc 3 "ob build in empty workspace" \
+=== qemu_launch_profile_structure.sh: count 'no old arch vars' negative assertions ===
+5
+=== are these old vars (QB_SYSTEM_NAME/SOC_TYPE) ACTUALLY gone from lib/? (migration done?) ===
+Still present (negative assertions still live):
+lib/qemu_launch_profile.sh:39:            warn "Unknown QB_SYSTEM_NAME '$system_name' — will use QEMU launch profile fallback evidence."
+lib/qemu_launch_profile.sh:299:        qb_system_raw=$(qemu_launch_profile_extract_bitbake_var "$bitbake_output" QB_SYSTEM_NAME)
+lib/qemu_launch_profile.sh:326:            error "Define QB_SYSTEM_NAME or include an ast2600/ast2700 machine conf fragment, then retry."
+lib/qemu_launch_profile.sh:335:            error "Define QB_SYSTEM_NAME or include an ast2600/ast2700 machine conf fragment, then retry."
+=== full count of assert_function_not_match in that file ===
+51:assert_function_not_match() {
+72:assert_function_not_match "cmd_start_qemu no old launch calls" "$QEMU_COMMANDS_SH" cmd_start_qemu '^[[:space:]]*(resolve_qb_vars|detect_soc_type|derive_qemu_machine_name|find_ast2700_bootloaders)([[:space:]]|$)'
+74:assert_function_not_match "build_qemu_cmd no discovery/old vars" "$QEMU_SH" build_qemu_cmd 'find_ast2700_bootloaders|machine_conf_chain_contains|detect_soc_type|\bQB_MEM_SIZE_FLAG\b|\bSOC_TYPE\b'
+75:assert_function_not_match "derive_qemu_paths no old arch vars" "$QEMU_SH" derive_qemu_paths 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
+76:assert_function_not_match "check_jenkins_update no old arch vars" "$QEMU_BINARY_SH" check_jenkins_update 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
+77:assert_function_not_match "ensure_qemu_binary_community no old arch vars" "$QEMU_BINARY_SH" ensure_qemu_binary_community 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
+78:assert_function_not_match "ensure_qemu_binary_custom no old arch vars" "$QEMU_BINARY_SH" ensure_qemu_binary_custom 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
+79:assert_function_not_match "ensure_qemu_firmware no soc-derived gating" "$QEMU_BINARY_SH" ensure_qemu_firmware 'QB_SYSTEM_NAME|QEMU_LAUNCH_SOC_TYPE|\bSOC_TYPE\b'

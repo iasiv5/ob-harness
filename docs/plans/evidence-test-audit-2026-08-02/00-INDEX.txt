@@ -1,0 +1,30 @@
+Evidence Pack — Test Framework Audit 2026-08-02
+================================================
+Index of all artifacts. Any fresh agent can re-run the cited commands to reproduce.
+
+RAW CAPTURES (objective evidence, machine-generated):
+  01-enumeration-tests.txt         — first-pass tests/ file list (extension-filtered; superseded by 10)
+  02-enumeration-tools-gates.txt   — 9 tool gates + run_all.sh + .shellcheck-baseline existence check
+  03-coverage-radar.txt            — coverage_radar.py raw output (structure-only: 231 fn, 0 covered)
+  04-coverage-matrix.txt           — coverage_matrix.md head + bucket-summary grep
+  05-coverage-crosscheck.txt       — trace_collect.sh | coverage_radar.py - --cross-check (THE real coverage picture)
+  06-radar-uncovered-grep.txt      — grep tests/ for the 3 radar-uncovered functions
+  07-runall-timing.txt             — fast run_all.sh = 57.7s; per-layer breakdown (protocol 25.2s slowest)
+  08-slowest-tests.txt             — slowest protocol .sh: exit_codes.sh=19.54s, ob_check_smoke.sh=5.07s
+  09-overlap-exit-build.txt        — exit_codes.sh × smoke_ob.sh overlap + matrix stale-ref check
+  10-canon-enumeration.txt         — CANONICAL comprehensive enumeration (find tests -type f, no filter) = 117 files + 10 tools gates
+
+FINDINGS + REVIEWER PROMPTS:
+  FINDINGS.md                      — blocked by no-report-md guard; content inlined into reviewer prompts instead (see plan doc appendix + reviewer spawn transcripts)
+  (reviewer prompts are verbatim in the plan document's "Reviewer Prompts" appendix, identical for both reviewers)
+
+REVIEWER OUTPUTS:
+  11-reviewer-A-verdicts.txt       — reviewer A per-finding verdicts (written after consensus)
+  12-reviewer-B-verdicts.txt       — reviewer B per-finding verdicts (written after consensus)
+
+PLAN DOCUMENT (deliverable A):
+  ../2026-08-02-test-framework-optimization-plan.md  — the optimization plan (findings table + verdicts + scan methodology + evidence index)
+
+REPRODUCIBLE GREP (criterion 1 self-check, also in plan):
+  grep -cE '^\| (F[0-9]+)' plan.md  -> finding count
+  (full criterion-1 grep documented in plan §"可复现 grep")
