@@ -116,24 +116,31 @@ cmd_start_qemu() {
     echo "  Serial log: $QEMU_LAUNCH_SERIAL_LOG"
     echo ""
 
-    # ── Safety confirmation (same pattern as ob init / ob build) ──
-    local ca_rc=0
-    confirm_action "start QEMU for" "$MACHINE" || ca_rc=$?
-    case "$ca_rc" in
-        0) ;;
-        2) warn "QEMU start cancelled by user."; exit 2 ;;
-        *) exit 1 ;;
-    esac
-    echo ""
-    info "QEMU start confirmed for machine '$MACHINE'."
+    # ── Safety confirmation（仅交互 TTY）──
+    # 非 TTY(CI/agent) 跳过确认直接起, 对齐 CONTEXT confirmation banner「正常起 QEMU
+    # 一律跳过、无需 --force」—— 起新 QEMU 非路径风险; banner 只留给 kill 既有实例
+    # (上方 conflict 块, 非 TTY 需 --force)。使 `start-qemu → smoke → stop-qemu` 在 CI 非交互跑通。
+    if [[ -t 0 ]]; then
+        local ca_rc=0
+        confirm_action "start QEMU for" "$MACHINE" || ca_rc=$?
+        case "$ca_rc" in
+            0) ;;
+            2) warn "QEMU start cancelled by user."; exit 2 ;;
+            *) exit 1 ;;
+        esac
+        echo ""
+        info "QEMU start confirmed for machine '$MACHINE'."
 
-    # ── Emergency escape window ──
-    warn "Launching QEMU in 3 seconds..."
-    echo ""
-    for _i in 3 2 1; do
-        echo -e "  ${_i}..."
-        sleep 1
-    done
+        # ── Emergency escape window（仅交互） ──
+        warn "Launching QEMU in 3 seconds..."
+        echo ""
+        for _i in 3 2 1; do
+            echo -e "  ${_i}..."
+            sleep 1
+        done
+    else
+        info "Non-interactive start: launching QEMU for '$MACHINE' (no confirmation)."
+    fi
 
     verbose "Command: setsid ${QEMU_CMD[*]}"
 
