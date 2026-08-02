@@ -379,3 +379,265 @@ cmd_deploy_to_qemu() {
     qemu_execute_launch        # setsid + PID 写 + BMC-ready 等待(超时仅 warn 不中止) + hostkey + summary
     # 到此返回 0(QEMU 启动即成功, 约束 5); setsid 失败时 execute_launch 自己退出 1
 }
+
+# ════════════════════════════════════════════════════════════════════════════
+# ob verify — QEMU-backed BMC smoke 自动化(bring-up + 确定性断言 + 总清)。术语见 CONTEXT.md ob verify.
+# 形态对照 cmd_start_qemu: 同样做 image-ready machine 解析(guard + 选号, image-ready 集合)+
+#   init-done/image 前置; 区别在 bring-up 走子进程 `ob start-qemu --force --no-wait`(完整复用既有机器,
+#   不重发明 QEMU bring-up), 断言走 leaf-pure 判函数(lib/verify_assertions.sh), 总清走 EXIT trap。
+# ════════════════════════════════════════════════════════════════════════════
+
+# _verify_tcp_probe <port> — bash /dev/tcp 探 TCP 端口可连(sshpass-independent, timeout 3s)。
+# return 0=可连 / 非0=拒绝或超时。cmd_verify 私有(exit-seam 内, 有 I/O 副作用, 不 exit)。
+_verify_tcp_probe() {
+    local port="$1"
+    timeout 3 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" 2>/dev/null
+}
+
+# _verify_probe_redfish <port> — set _VF_REDFISH_CODE/_VF_REDFISH_BODY。curl 取 Redfish 根。
+# curl 整体失败(连接拒绝)→ code 留 "000", body 空。不 exit; set -e-safe(|| rc=$?)。
+_verify_probe_redfish() {
+    local port="$1"
+    _VF_REDFISH_CODE="000"; _VF_REDFISH_BODY=""
+    local out="" rc=0
+    out=$(curl -sk -u root:0penBmc -w $'\n__OB_HTTP__%{http_code}' \
+          "https://localhost:$port/redfish/v1" 2>/dev/null) || rc=$?
+    if [[ -n "$out" ]]; then
+        _VF_REDFISH_CODE="${out##*$'\n'}"        # 末行 = __OB_HTTP__<code>
+        _VF_REDFISH_CODE="${_VF_REDFISH_CODE#__OB_HTTP__}"
+        _VF_REDFISH_BODY="${out%$'\n'*}"          # 去末行 = body
+    fi
+    # curl 整体失败 → 维持 "000"(judge 据此判 fail)
+    return 0
+}
+
+# _verify_probe_ipmi <port> — set _VF_IPMI_RC/_VF_IPMI_OUT。一条 ipmitool mc info。
+_verify_probe_ipmi() {
+    local port="$1"
+    _VF_IPMI_RC=0; _VF_IPMI_OUT=""
+    _VF_IPMI_OUT=$(ipmitool -I lanplus -H localhost -p "$port" -U root -P 0penBmc mc info 2>&1) || _VF_IPMI_RC=$?
+    return 0
+}
+
+# _verify_probe_ssh_tcp <port> — set _VF_SSH_RC。TCP 探 SSH 转发端口。
+_verify_probe_ssh_tcp() {
+    local port="$1"
+    _VF_SSH_RC=0
+    _verify_tcp_probe "$port" || _VF_SSH_RC=$?
+    return 0
+}
+
+# _verify_wait_ssh_tcp <port> — BMC 启动就绪门(sshpass-independent)。有界轮询 TCP 端口可连。
+# 不中止 verify: 超时只 warn, 让断言自己判 deterministic pass/fail(端口未就绪 → system-ready 断言 fail)。
+_verify_wait_ssh_tcp() {
+    local port="$1"
+    local attempts=0
+    local max_attempts="${OB_VERIFY_READY_ATTEMPTS:-30}"
+    info "Waiting for BMC SSH port $port to accept connections (up to $((max_attempts*5))s)..."
+    while [[ $attempts -lt $max_attempts ]]; do
+        attempts=$((attempts + 1))
+        if _verify_tcp_probe "$port"; then
+            info "BMC SSH port $port connectable after attempt $attempts (~$((attempts*5))s)"
+            return 0
+        fi
+        printf "\r  Waiting... attempt %d/%d" "$attempts" "$max_attempts"
+        sleep 5
+    done
+    echo ""
+    warn "BMC SSH port $port not connectable within $((max_attempts*5))s; running assertions anyway."
+    return 1
+}
+
+# _verify_cleanup <machine> — EXIT trap 总清: best-effort stop-qemu --force, 恒不失败(掩码 exit code)。
+# 设计为 trap 回调: 即使 verify 中途 exit 1(断言失败/setsid 失败)也触发, 不留 QEMU。
+_verify_cleanup() {
+    local m="${1:-}"
+    [[ -n "$m" ]] || return 0
+    "$OB_ENTRY_DIR/ob" stop-qemu "$m" --force >/dev/null 2>&1 || true
+}
+
+cmd_verify() {
+    detect_harness_root
+
+    # ── Resolve machine(经 machine_selection_guard: image-ready 集合, 同 cmd_start_qemu) ──
+    if [[ -z "$MACHINE" ]]; then
+        local _msg=""
+        machine_selection_guard machine_state_firmware_image_ready_machines _msg
+        case "$_msg" in
+            empty)
+                # image-ready 空 → 再查 initialized 区分 remedy(同 cmd_start_qemu empty 分支)。
+                if [[ -n "$(machine_state_initialized_machines)" ]]; then
+                    error "No firmware-image-ready machines found."
+                    error "Run 'ob build <machine>' first."
+                else
+                    error "No initialized machines found."
+                    error "Run 'ob init <machine>' first."
+                fi
+                exit 3 ;;
+            nontty)
+                error "No interactive terminal. Specify machine: ob verify <machine>"
+                exit 3 ;;
+            ok) ;;
+        esac
+        echo ""
+        step_header "Select Machine"
+        local pm_rc=0
+        pick_machine machine_state_firmware_image_ready_machines "Verify" || pm_rc=$?
+        case "$pm_rc" in
+            0) ;;
+            2) warn "Verify cancelled by user."; exit 2 ;;
+            *) exit 1 ;;
+        esac
+    fi
+
+    # Re-derive paths after machine resolution
+    BUILD_DIR="$OPENBMC_DIR/build/$MACHINE"
+    SOURCE_MANIFEST_FILE="$CONFIGS_DIR/openbmc-source.manifest"
+
+    # ── Prerequisite 1: machine init-done ──
+    if ! machine_state_is_initialized "$MACHINE"; then
+        error "Machine '$MACHINE' has not been initialized."
+        error "Run 'ob init $MACHINE' first."
+        exit 3
+    fi
+
+    # ── Prerequisite 2: image file(同 cmd_start_qemu) ──
+    local image_file=""
+    local deploy_dir=""
+    deploy_dir="$(machine_state_deploy_dir "$MACHINE")"
+    image_file=$(machine_state_firmware_image_path "$MACHINE" 2>/dev/null || true)
+    if [[ -z "$image_file" ]]; then
+        error "No firmware image found for machine '$MACHINE' in $deploy_dir"
+        error "Run 'ob build $MACHINE' first."
+        exit 3
+    fi
+    verbose "Image file: $image_file"
+
+    # ── 总清 trap: 在启动 QEMU 之前装, 成功/失败两条路径都总清 verify 自己起的实例 ──
+    # 注: trap 在前置检查之后装 → 前置缺失(exit 3, 未起 QEMU)不触发无谓的 stop-qemu 子进程。
+    local _verify_machine="$MACHINE"
+    # shellcheck disable=SC2064  # 单引号延迟展开到 trap 触发时(_verify_machine 此时已定格)
+    trap '_verify_cleanup "$_verify_machine"' EXIT
+
+    # ── Step 1: bring up QEMU via 既有 bring-up 原语(qemu_prepare_launch + qemu_execute_launch) ──
+    # 形态对照 cmd_deploy_to_qemu: 直接调底层 module 复用既有 QEMU bring-up 机器, 不 shell out、不经
+    # cmd_start_qemu 的交互 confirm(verify 是显式 smoke 命令, 自身拥有 QEMU 生命周期, 不需二次 confirm)。
+    info "Bringing up QEMU for verify (will be torn down on exit)"
+    derive_qemu_paths
+
+    # 既有实例冲突(F1 invariant: 须在 qemu_prepare_launch 的 check_ports 之前)—— verify 拥有自身 QEMU
+    # 生命周期, 同 machine 既有实例须先让路。--force 静默杀; TTY 弹 banner; 非 TTY 非 --force → exit 1。
+    if qemu_instance_load "$MACHINE"; then
+        if qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
+            if [[ "$QEMU_FORCE" -eq 1 ]]; then
+                warn "Killing existing QEMU instance for '$MACHINE' (PID $PIDFILE_PID) — verify manages its own lifecycle."
+                qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
+            elif [[ -t 0 ]]; then
+                echo ""
+                warn "QEMU instance already running for '$MACHINE':"
+                qemu_instance_summarize_full
+                echo ""
+                print_confirm_banner "kill and restart QEMU for verify on" "$MACHINE"
+                local answer
+                if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Kill and restart? [y/N]: ")" answer; then
+                    exit 1
+                fi
+                [[ "$answer" == [yY] ]] || { info "Aborted."; exit 2; }
+                qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
+            else
+                error "QEMU instance already running for '$MACHINE' (PID $PIDFILE_PID)."
+                error "Use --force to let verify kill and restart it, or 'ob stop-qemu $MACHINE' first."
+                exit 1
+            fi
+        else
+            qemu_instance_clean_stale "$MACHINE"
+        fi
+    fi
+
+    # verify 自己做 sshpass-independent 就绪门(TCP 轮询 SSH 端口); 故 QEMU_NO_WAIT=1 跳过 execute_launch
+    # 的 BMC-ready 轮询(该轮询依赖 sshpass; 缺 sshpass 时只 warn, 非确定性)。端口 override 经
+    # QEMU_SSH_PORT/REDFISH_PORT/IPMI_PORT 全局 → qemu_prepare_launch 的 CLI>env>default 协商生效。
+    QEMU_NO_WAIT=1
+    qemu_prepare_launch "$MACHINE" "$image_file"
+
+    echo ""
+    step_header "Starting QEMU for verify ('$MACHINE')"
+    echo "  Machine   : $QEMU_LAUNCH_MACHINE_NAME"
+    echo "  SoC       : $QEMU_LAUNCH_SOC_TYPE"
+    echo "  Binary    : $QEMU_BIN_FILE"
+    echo "  Image     : $image_file"
+    echo "  Serial log: $QEMU_LAUNCH_SERIAL_LOG"
+    echo ""
+
+    qemu_execute_launch        # setsid + PID 写 + hostkey + summary(BMC-wait 因 QEMU_NO_WAIT=1 跳过)
+
+    # ── Step 2: 从实例 PID 文件读真实转发端口(不假设默认值, 命中真端口) ──
+    if ! qemu_instance_load "$MACHINE"; then
+        error "ob verify: no QEMU PID file for '$MACHINE' after bring-up (start incomplete)."
+        exit 1
+    fi
+    local v_ssh="$PIDFILE_SSH_PORT"
+    local v_redfish="$PIDFILE_REDFISH_PORT"
+    local v_ipmi="$PIDFILE_IPMI_PORT"
+    echo ""
+    info "Verifying against forwarded ports: SSH $v_ssh / Redfish $v_redfish / IPMI $v_ipmi (UDP)"
+
+    # ── Step 3: BMC 启动就绪门(sshpass-independent TCP 轮询 SSH 端口) ──
+    _verify_wait_ssh_tcp "$v_ssh" || true
+
+    # ── Step 4: 跑 3 类断言(probe → judge; judge 向 stdout 打 ✓/✗ 行 + return 0/1) ──
+    echo ""
+    step_header "Verify assertions for '$MACHINE'"
+    local -i total=0 passed=0
+    local -a failed_names=() failed_raws=()
+
+    # 4a — Redfish 根可达
+    total=$((total+1))
+    _verify_probe_redfish "$v_redfish"
+    local r1=0; verify_judge_redfish_root "$_VF_REDFISH_CODE" "$_VF_REDFISH_BODY" || r1=$?
+    if [[ $r1 -eq 0 ]]; then passed=$((passed+1)); else
+        failed_names+=("Redfish root reachable")
+        failed_raws+=("interface: Redfish @ https://localhost:$v_redfish/redfish/v1"$'\n'"HTTP code: $_VF_REDFISH_CODE"$'\n'"RAW body:"$'\n'"$_VF_REDFISH_BODY")
+    fi
+
+    # 4b — IPMI over LAN
+    total=$((total+1))
+    _verify_probe_ipmi "$v_ipmi"
+    local r2=0; verify_judge_ipmi_lan "$_VF_IPMI_RC" "$_VF_IPMI_OUT" || r2=$?
+    if [[ $r2 -eq 0 ]]; then passed=$((passed+1)); else
+        failed_names+=("IPMI over LAN works")
+        failed_raws+=("interface: IPMI @ localhost:$v_ipmi/UDP (ipmitool mc info)"$'\n'"ipmitool return code: $_VF_IPMI_RC"$'\n'"RAW output:"$'\n'"$_VF_IPMI_OUT")
+    fi
+
+    # 4c — System ready signal(SSH 端口 TCP 可连)
+    total=$((total+1))
+    _verify_probe_ssh_tcp "$v_ssh"
+    local r3=0; verify_judge_system_ready "$_VF_SSH_RC" || r3=$?
+    if [[ $r3 -eq 0 ]]; then passed=$((passed+1)); else
+        failed_names+=("System ready signal (SSH port TCP-connectable)")
+        failed_raws+=("interface: SSH TCP @ localhost:$v_ssh"$'\n'"tcp connect rc: $_VF_SSH_RC"$'\n'"(port not accepting connections — BMC sshd may still be booting)")
+    fi
+
+    # ── Step 5: 汇总 + 失败定位输出 ──
+    echo ""
+    if [[ $passed -eq $total ]]; then
+        echo -e "${GREEN}Verify summary: $passed/$total assertions passed${NC}"
+    else
+        echo -e "${RED}Verify summary: $passed/$total assertions passed${NC}"
+        echo ""
+        error "Failed assertions (${#failed_names[@]}):"
+        local i
+        for (( i=0; i<${#failed_names[@]}; i++ )); do
+            echo -e "  ${RED}✗ ${failed_names[$i]}${NC}"
+            echo    "----- RAW response (for localization) -----"
+            echo    "${failed_raws[$i]}"
+            echo    "-------------------------------------------"
+        done
+        echo ""
+        error "ob verify: smoke assertions failed for '$MACHINE' (see RAW responses above)."
+        exit 1                       # 触发 EXIT trap 总清
+    fi
+
+    info "ob verify: all smoke assertions passed for '$MACHINE'."
+    # 正常 return 0 → main return → 脚本 exit 0 → EXIT trap 总清
+}
