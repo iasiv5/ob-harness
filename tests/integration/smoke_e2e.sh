@@ -42,6 +42,37 @@ if [[ "$start_rc" -ne 0 ]]; then
 fi
 rm -f "$start_out"
 
+# ── Step 1b: bounded Redfish root readiness gate (F6 fix — test-layer only) ──
+# ob smoke 只在探针前轮询 SSH 就绪(lib/qemu_commands.sh _smoke_wait_ssh_tcp, SSH-only),
+# 从不轮询 Redfish 就绪; 高负载下 SSH 端口已通但 bmcweb 仍在初始化窗口 → Redfish root
+# HTTP 500 → smoke rc=1 → 本 e2e 误判 FAIL(3/3 全量失败, 单跑 rc=0 的根因)。在此插入有界
+# Redfish root 轮询闭合该 race。风格对齐 OB_SMOKE_READY_ATTEMPTS(30×5s=150s)。
+# 超时未 200 → 明确 FAIL + 总清: 不掩盖真实 Redfish 故障(bmcweb 起不来是真问题, 要浮出)。
+REDFISH_PORT="$(grep '^redfish_port=' "workspace/qemu-bin/.pids/${MACHINE}.pid" 2>/dev/null | cut -d= -f2)"
+REDFISH_PORT="${REDFISH_PORT:-2443}"
+_rb_attempts=0
+_rb_max="${OB_INTEG_REDFISH_ATTEMPTS:-30}"
+_rb_ready=0
+_rb_code="000"
+echo "[integration] waiting for Redfish root HTTP 200 (https://localhost:${REDFISH_PORT}/redfish/v1, up to $((_rb_max*5))s)..."
+while [[ $_rb_attempts -lt $_rb_max ]]; do
+    _rb_attempts=$((_rb_attempts + 1))
+    _rb_code="$(curl -ks -o /dev/null -w '%{http_code}' --max-time 5 "https://localhost:${REDFISH_PORT}/redfish/v1" 2>/dev/null || echo 000)"
+    if [[ "$_rb_code" == "200" ]]; then
+        echo "[integration] Redfish root HTTP 200 after attempt $_rb_attempts (~$((_rb_attempts*5))s)"
+        _rb_ready=1
+        break
+    fi
+    printf "\r  Redfish not ready... attempt %d/%d (HTTP %s)   " "$_rb_attempts" "$_rb_max" "$_rb_code"
+    sleep 5
+done
+echo ""
+if [[ "$_rb_ready" -ne 1 ]]; then
+    echo "FAIL: Redfish root never returned HTTP 200 within $((_rb_max*5))s (last code=$_rb_code) — real Redfish outage, not a race"
+    ./ob stop-qemu "$MACHINE" --force >/dev/null 2>&1 || true
+    exit 1
+fi
+
 # ── Step 2: ob smoke(probe-only — 不 bring-up/不 teardown) ──
 smoke_out="$(mktemp "${TMPDIR:-/tmp}/ob-smoke-integ-XXXXXX")"
 smoke_rc=0
