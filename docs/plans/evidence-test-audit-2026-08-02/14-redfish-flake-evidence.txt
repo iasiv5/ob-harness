@@ -1,0 +1,47 @@
+# F6 evidence — smoke_e2e Redfish readiness race (audit miss found by master independent re-check)
+
+## Root cause (verified in source)
+- `lib/qemu_commands.sh` cmd_smoke gates probe timing on SSH-only readiness:
+  `_smoke_wait_ssh_tcp "$s_ssh"` (lib/qemu_commands.sh, the smoke readiness gate, body
+  confirmed SSH-only: polls `_smoke_tcp_probe <port>` on the SSH port, NO Redfish wait).
+- Immediately after, cmd_smoke probes Redfish root via `_smoke_probe_redfish` — there is
+  NO Redfish readiness wait between SSH-up and the Redfish probe.
+- Under load, bmcweb is still initializing right after the SSH port accepts connections →
+  the Redfish root probe hits HTTP 500 → smoke_judge_redfish_root fails → ob smoke rc=1 →
+  smoke_e2e.sh (which requires Redfish ✓ on the rc=1 α-truth path) misjudges FAIL.
+
+## Reproducible source citations
+- `sed -n '/^_smoke_wait_ssh_tcp()/,/^}/p' lib/qemu_commands.sh` → body polls SSH only;
+  `grep -iE 'redfish|curl|443|2443'` over that body → empty (SSH-only).
+- `sed -n '/^cmd_smoke()/,/^}$/p' lib/qemu_commands.sh` → line "_smoke_wait_ssh_tcp ... || true"
+  immediately followed by "_smoke_probe_redfish ..." — no Redfish readiness gate between them.
+- `tests/integration/smoke_e2e.sh` Step 1 (start-qemu, ~line 36) → Step 2 (ob smoke, ~line 48):
+  no wait between bring-up and smoke; smoke inherits the SSH-only gate.
+
+## Master independent re-check facts (3/3 failure pattern)
+- Full `bash tests/run_all.sh --full --integration` failed 3/3 with identical mode:
+  smoke_e2e Redfish root/Managers/SoftwareVersion HTTP 500, SSH ready ✓, IPMI ✗ (gb200nvl
+  known RMCP+ gap), residual qemu after: 0.
+- `bash tests/integration/smoke_e2e.sh` ALONE = rc=0 (Redfish 200 ✓×3, α-truth accepted).
+- Diagnosis: clean `ob start-qemu gb200nvl-obmc --force` then curl Redfish root every 15s →
+  HTTP 200 from t=15s onward (first=200, last=200). I.e. when given time to settle, Redfish
+  is reliably 200; the 500s only occur in the narrow post-SSH bmcweb-init window under load.
+
+## Why F1 landing is unrelated
+- F1 changed only `tests/orchestration/qemu_binary_replace.sh` (wrapper-branch unit cases).
+  The flake is in `tests/integration/smoke_e2e.sh` + `lib/qemu_commands.sh` cmd_smoke.
+  Git: `git diff feat/ob-verif..feat/test-audit-land-f1-wrapper-cov -- tests/integration/` = empty.
+
+## Reproducible verification commands (for fresh agents)
+- Confirm SSH-only gate:   `sed -n '/^_smoke_wait_ssh_tcp()/,/^}/p' lib/qemu_commands.sh | grep -iE 'redfish|curl' || echo SSH-ONLY`
+- Confirm no Redfish gate:  `sed -n '/^cmd_smoke()/,/^}$/p' lib/qemu_commands.sh | grep -nE '_smoke_wait_ssh_tcp|_smoke_probe_redfish'`
+- Repro the race (under load, full run): `bash tests/run_all.sh --full --integration` (pre-fix: intermittent HTTP 500 in smoke_e2e)
+- Diagnosis (clean): `ob start-qemu <machine> --force; for i in $(seq 1 10); do curl -ks -o /dev/null -w "%{http_code}\n" https://localhost:2443/redfish/v1; sleep 15; done; ob stop-qemu <machine> --force`
+
+## Proposed fix (TEST-LAYER ONLY, mandated by user option 1)
+- Insert a bounded Redfish root readiness poll in `tests/integration/smoke_e2e.sh` between
+  start-qemu (Step 1) and ob smoke (Step 2): curl https://localhost:<redfish_port>/redfish/v1
+  until HTTP 200, bounded 30×5s=150s (style aligned with OB_SMOKE_READY_ATTEMPTS). Timeout →
+  explicit FAIL (does NOT mask a real Redfish outage — surfaces it as a hard failure).
+- Does NOT change lib/qemu_commands.sh or ob (production behavior untouched). The fix makes
+  smoke_e2e robust to the bmcweb-init window that ob smoke's SSH-only gate does not cover.

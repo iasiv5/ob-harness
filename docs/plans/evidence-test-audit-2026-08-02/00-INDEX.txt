@@ -1,30 +1,35 @@
-Evidence Pack — Test Framework Audit 2026-08-02
-================================================
+Evidence Pack — Test Framework Audit 2026-08-02 (F6 appended 2026-08-03)
+=========================================================================
 Index of all artifacts. Any fresh agent can re-run the cited commands to reproduce.
 
 RAW CAPTURES (objective evidence, machine-generated):
-  01-enumeration-tests.txt         — first-pass tests/ file list (extension-filtered; superseded by 10)
-  02-enumeration-tools-gates.txt   — 9 tool gates + run_all.sh + .shellcheck-baseline existence check
-  03-coverage-radar.txt            — coverage_radar.py raw output (structure-only: 231 fn, 0 covered)
-  04-coverage-matrix.txt           — coverage_matrix.md head + bucket-summary grep
-  05-coverage-crosscheck.txt       — trace_collect.sh | coverage_radar.py - --cross-check (THE real coverage picture)
+  01-enumeration-tests.txt         — first-pass tests/ file list (superseded by 10)
+  02-enumeration-tools-gates.txt   — 9 tool gates + run_all.sh + .shellcheck-baseline existence
+  03-coverage-radar.txt            — coverage_radar.py raw (structure-only: 231 fn / 0 covered)
+  04-coverage-matrix.txt           — coverage_matrix.md head + bucket grep
+  05-coverage-crosscheck.txt       — THE real coverage picture (trace_collect.sh | coverage_radar.py - --cross-check)
   06-radar-uncovered-grep.txt      — grep tests/ for the 3 radar-uncovered functions
-  07-runall-timing.txt             — fast run_all.sh = 57.7s; per-layer breakdown (protocol 25.2s slowest)
+  07-runall-timing.txt             — fast run_all = 57.7s; per-layer breakdown
   08-slowest-tests.txt             — slowest protocol .sh: exit_codes.sh=19.54s, ob_check_smoke.sh=5.07s
-  09-overlap-exit-build.txt        — exit_codes.sh × smoke_ob.sh overlap + matrix stale-ref check
-  10-canon-enumeration.txt         — CANONICAL comprehensive enumeration (find tests -type f, no filter) = 117 files + 10 tools gates
+  09-overlap-exit-build.txt        — exit_codes.sh x smoke_ob.sh overlap + matrix stale-ref check
+  10-canon-enumeration.txt         — CANONICAL find tests -type f = 117 + 10 tools gates
 
-FINDINGS + REVIEWER PROMPTS:
-  FINDINGS.md                      — blocked by no-report-md guard; content inlined into reviewer prompts instead (see plan doc appendix + reviewer spawn transcripts)
-  (reviewer prompts are verbatim in the plan document's "Reviewer Prompts" appendix, identical for both reviewers)
+REVIEWER PROMPTS + VERDICTS:
+  reviewer-prompt-verbatim.txt     — F1-F5 reviewer prompt (identical for both)
+  11-reviewer-A-verdicts.txt       — F1-F5 Reviewer A verdicts (verbatim)
+  12-reviewer-B-verdicts.txt       — F1-F5 Reviewer B verdicts (verbatim)
+  16-reviewer-F6-A-verdict.txt     — F6 Reviewer A (fresh, zero-context) verdict: KEEP
+  17-reviewer-F6-B-verdict.txt     — F6 Reviewer B (fresh, zero-context) verdict: DROP
 
-REVIEWER OUTPUTS:
-  11-reviewer-A-verdicts.txt       — reviewer A per-finding verdicts (written after consensus)
-  12-reviewer-B-verdicts.txt       — reviewer B per-finding verdicts (written after consensus)
+F6 EVIDENCE (appended after master re-check found the audit miss):
+  14-redfish-flake-evidence.txt    — F6 root cause + reproducible commands + master's 3/3 failure facts
+
+INTEGRATION RUN LOGS:
+  13-runall-full-integration.log            — pre-F6 run (ALL GREEN; rc mis-captured as 127 by reaped-nohup wait)
+  15-runall-full-integration-postF6.log     — POST-F6 run (ALL GREEN; true INTEG_RC=0 via marker file; F6 gate fired line 2263-2264)
 
 PLAN DOCUMENT (deliverable A):
-  ../2026-08-02-test-framework-optimization-plan.md  — the optimization plan (findings table + verdicts + scan methodology + evidence index)
+  ../2026-08-02-test-framework-optimization-plan.md  — findings table F1-F6 + verdicts + scan methodology + evidence index
 
-REPRODUCIBLE GREP (criterion 1 self-check, also in plan):
-  grep -cE '^\| (F[0-9]+)' plan.md  -> finding count
-  (full criterion-1 grep documented in plan §"可复现 grep")
+REPRODUCIBLE GREP (criterion 1 self-check, in plan §"Reproducible grep"):
+  awk -F'|' '/^\| F[0-9]+ \| (cov-gap|over-eng) \|/{n++;for(i=2;i<NF;i++){gsub(/^[ \t]+|[ \t]+$/,"",$i);if($i=="")empty++}} END{exit !(n>=2&&empty==0)}' plan.md

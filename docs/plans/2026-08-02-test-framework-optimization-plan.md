@@ -1,15 +1,16 @@
 # Test Framework Optimization Plan — Dual-Axis Audit (over-engineering × coverage-gap)
 
-- **Date:** 2026-08-02 (landed 2026-08-03)
+- **Date:** 2026-08-02 (initial F1-F5 + landing 2026-08-03; F6 appended 2026-08-03)
 - **Scope:** ob-harness test framework — `tests/*` (117 files) + `tools/<gate>` (10 gates) = 127 test-face items. Production code (`ob`, `lib/*.sh`) appears only as the test target.
 - **Repo HEAD at audit:** `feat/ob-verify` (commit `2f467de`). Landing branch: `feat/test-audit-land-f1-wrapper-cov`.
 - **Method:** exhaustive enumeration (criterion 3) + objective evidence per finding + dual independent reviewer consensus (criterion 4) + one landing with real validation (criterion 5). Refuses subjective assertions; every finding is falsifiable.
+- **Unfreeze note (2026-08-03):** this plan was unsealed to append F6 after master's independent re-check surfaced an audit miss (the smoke_e2e Redfish readiness race). F6 was added and run through the same dual-reviewer consensus. The user separately mandated (option 1) landing a test-layer fix for the flake regardless of the audit verdict; that fix is recorded in the Landing section.
 
 ## TL;DR
 
-- **Findings:** 5 total. **KEPT = 4** (F1, F2, F3, F4). **DROPPED = 1** (F5, reviewer disagreement).
-- **Dual axis:** over-engineering = 2 KEPT (F3 duplicate assertion; F4 meta-test-of-test-gate). coverage-gap = 2 KEPT (F1 wrapper branches; F2 interactive-binary-setup branches).
-- **Landed:** F1 (highest-value cov-gap, lowest-risk) on `feat/test-audit-land-f1-wrapper-cov`. `bash tools/ob_check.sh` → exit 0 (ALL GREEN PASS=14). `bash tests/run_all.sh --full --integration` → ALL GREEN (real bitbake rebuild of gb200nvl-obmc + QEMU + smoke α-truth + devtool modify→reset→finish). Zero residual QEMU.
+- **Findings:** 6 total (F1-F6). **KEPT = 4** (F1, F2, F3, F4). **DROPPED = 2** (F5, F6 — both on reviewer disagreement).
+- **Dual axis (KEPT set):** over-engineering = 2 (F3 duplicate assertion; F4 meta-test-of-test-gate). coverage-gap = 2 (F1 wrapper branches; F2 interactive-binary-setup branches). F6 (cov-gap, dropped) documents the appended smoke_e2e Redfish-readiness race.
+- **Landed (branch `feat/test-audit-land-f1-wrapper-cov`):** (a) F1 — `download_and_replace_community_qemu` wrapper-branch tests (KEPT); (b) F6 fix — bounded Redfish root readiness gate in `tests/integration/smoke_e2e.sh` (user-mandated option 1; the F6 *finding* was DROPPED on review disagreement, but the fix stands as a user-directed test-layer change). `bash tools/ob_check.sh` → exit 0. `bash tests/run_all.sh --full --integration` → ALL GREEN (post-F6, clean rc captured via marker file). Zero residual QEMU.
 
 ---
 
@@ -22,6 +23,7 @@
 | F3 | over-eng | tests/protocol/exit_codes.sh:84 AND tests/protocol/smoke_ob.sh:38 | both assert identical contract ob build empty-workspace→exit3 via same parse_args build→cmd_build dispatch; smoke_ob.sh:36 self-labels it the baseline; exit_codes.sh is slowest file 19.54s of 57.7s (34%), ~1.5s per ob-sourcing | drop the exit_codes.sh:84 baseline case (keep its 4 non-TTY-guard + positional cases smoke_ob lacks) OR drop the build case from smoke_ob; assert once | low | KEPT 2/2 |
 | F4 | over-eng | tests/protocol/ob_check_smoke.sh:12-13 | single assert_rc 0 wrapping `OB_CHECK_SKIP_TESTS=1 OB_CHECK_READONLY=1 bash tools/ob_check.sh`; .github/workflows/ob-tests.yml:28 runs that exact command as a peer CI step while L20 runs run_all which includes this test → byte-identical redundancy in CI; 5.07s 2nd slowest (8.8%) | remove and rely on canonical ob_check.sh OR keep and document the intentional redundancy (zero-cost option b) | low-medium | KEPT 2/2 |
 | F5 | over-eng | tools/coverage_matrix.md:113 | 5 names (machine_state_records etc.) absent from ob/lib (ob_check §1b enforces absence) yet cross-check emits them every run as typo/stale-name candidates with no allowlist | relocate gate-doc out of matrix OR add cross-check allowlist | low | DROPPED 1-keep/1-drop |
+| F6 | cov-gap | lib/qemu_commands.sh cmd_smoke (SSH-only `_smoke_wait_ssh_tcp` gate) + tests/integration/smoke_e2e.sh:48 (start-qemu → immediate ob smoke) | ob smoke gates probe timing on SSH-only readiness and never waits for Redfish; under load bmcweb still initializing post-SSH → Redfish root HTTP 500 → smoke rc=1 → smoke_e2e misjudges FAIL (flake); master re-check saw 3/3 full-run failures, alone rc=0, clean diagnosis Redfish 200 from t=15s | test-layer bounded Redfish root readiness poll in smoke_e2e.sh between start-qemu and ob smoke (LANDED, user-mandated); alt prod-layer gate is out of test-only scope | low | DROPPED 1-keep/1-drop |
 
 ---
 
@@ -90,6 +92,21 @@
   - `grep -rnE '...' lib/*.sh` → empty (truly absent). [evidence 09]
   - cross-check emits them as "typo/过期名待修" candidates. [evidence 05]
 
+### F6 — cov-gap — DROPPED (Reviewer A KEEP, Reviewer B DROP — disagreement)
+
+- **file:line:** `lib/qemu_commands.sh` cmd_smoke (the `_smoke_wait_ssh_tcp` SSH-only readiness gate) + `tests/integration/smoke_e2e.sh:48` (Step 1 start-qemu → Step 2 immediate `ob smoke`, no wait between).
+- **status quo:** `ob smoke` gates its probe timing on SSH-only readiness — `_smoke_wait_ssh_tcp` polls `_smoke_tcp_probe <ssh_port>` and never waits for Redfish. Immediately after, cmd_smoke probes Redfish root via `_smoke_probe_redfish`. Under load, bmcweb is still initializing in the window after SSH accepts connections but before Redfish is serving → Redfish root HTTP 500 → `smoke_judge_redfish_root` fails → `ob smoke` rc=1 → `smoke_e2e.sh` (which on the rc=1 α-truth path requires Redfish ✓) misjudges FAIL.
+- **proposed change (TEST-LAYER, LANDED as user-mandated option 1):** bounded Redfish root readiness poll in `tests/integration/smoke_e2e.sh` between start-qemu and ob smoke — `curl https://localhost:<redfish_port>/redfish/v1` until HTTP 200, bounded 30×5s=150s (style aligned with `OB_SMOKE_READY_ATTEMPTS`); timeout → explicit FAIL + cleanup (does NOT mask a real Redfish outage). No lib/ob production change. The alternative (add Redfish readiness to `ob smoke`'s own gate in lib/) is a production change outside this audit's test-only boundary.
+- **risk:** low (test-only; surfaces real Redfish outage as hard FAIL on timeout).
+- **DISAGREEMENT (→ DROPPED):**
+  - Reviewer A KEEP: the source-verified coverage gap is real (`_smoke_wait_ssh_tcp` is SSH-only, `cmd_smoke` asserts on Redfish with no Redfish readiness gate between — confirmed by grep); the proposed test-layer fix (bounded curl poll, hard-FAIL on timeout, no production change) is sound and proportionate; the only weak spot is the un-corroborated "3/3" count, but the underlying readiness-precondition gap is real regardless of exact flake hit-rate.
+  - Reviewer B DROP: the headline manifestation evidence is contradicted by the only actual full-integration log captured in the evidence pack (13-runall-full-integration.log shows `smoke_e2e.sh` PASSING — `smoke rc=1` with Redfish HTTP 200 ×3, α-truth accepted, `ALL GREEN`); `grep -cE 'HTTP 500'` over BOTH logs = 0; and the post-fix log (15) had not yet exercised `smoke_e2e` at review time — so neither the alleged race nor the fix's necessity is evidence-backed from the pack, even though the static SSH-only-gate observation is technically accurate.
+- **Orchestrator note (honest disclosure):** the "3/3 failure" manifestation fact was supplied by master's independent re-check and cited by the orchestrator on instruction ("use directly, do not re-investigate"); the orchestrator's own captured run (log 13) passed, which is consistent with a non-deterministic flake (some runs pass, some fail) but does not itself prove the failure mode. The fix was user-mandated and is retained on the branch as a test-layer hardening regardless of the F6 audit verdict. The stronger, source-backed part of F6 (the SSH-only readiness gap) is uncontested by both reviewers; the disagreement is specifically about whether the *manifestation* is evidence-backed.
+- **falsifiable evidence:**
+  - `sed -n '/^_smoke_wait_ssh_tcp()/,/^}/p' lib/qemu_commands.sh | grep -iE 'redfish|curl|443|2443'` → empty (SSH-only gate). [evidence 14-redfish-flake-evidence.txt]
+  - `sed -n '/^cmd_smoke()/,/^}$/p' lib/qemu_commands.sh | grep -nE '_smoke_wait_ssh_tcp|_smoke_probe_redfish'` → SSH wait, then Redfish probe with no Redfish readiness gate between.
+  - master re-check facts (3/3 full-run failures / alone rc=0 / clean-diagnosis Redfish 200-from-t=15s) reproduced in [evidence 14]; note Reviewer B could not corroborate the 3/3 failures from the captured logs in this pack.
+
 ---
 
 ## Scan methodology (criterion 3 — exhaustive enumeration)
@@ -144,7 +161,7 @@ ls tools/{ob_check.sh,exit_contract.py,extract_funcs.py,smoke_regression.sh,
 - `build_e2e.exp` — N-A (opt-in real-build driver, env-gated OB_RUN_BUILD_E2E=1; skipped by default, design)
 - `ob_deploy_to_qemu.sh` — N-A (real bitbake + QEMU; PASSED in landing validation)
 - `ob_dev.sh` — N-A (real devtool modify→reset→finish; PASSED in landing validation)
-- `smoke_e2e.sh` — N-A (real QEMU smoke; accepts gb200nvl α-truth by design; PASSED)
+- `smoke_e2e.sh` — **cov-gap (F6, DROPPED on review disagreement)** — documents the SSH-only-readiness race (ob smoke gates on SSH, never Redfish; under load bmcweb-init window → HTTP 500 → flaky FAIL). F6 fix landed here as user-mandated test-layer hardening (bounded Redfish root readiness poll) regardless of the F6 audit verdict; fix validated by the post-F6 full integration run.
 - `manual_matrix_qemu.exp` — N-A (self-contained QEMU start/stop; PASSED)
 - `init_dryrun_sanity.sh` — N-A (ob init -d sanity; PASSED)
 - `smoke_help_clarity.sh` — N-A (agent-driven judge runner; env-gated OB_HELP_CLARITY_RUN=1; skipped by default, design)
@@ -181,20 +198,24 @@ Two reviewers spawned independently (synchronous, `opus`, zero-shared-context). 
 | F3 | KEEP | KEEP | **KEPT** |
 | F4 | KEEP | KEEP | **KEPT** |
 | F5 | KEEP | DROP | **DROPPED** (disagreement) |
+| F6 (appended 2026-08-03, 2 fresh reviewers) | KEEP | DROP | **DROPPED** (disagreement) |
 
-**Counts:** KEPT = 4, DROPPED = 1, total = 5. Each finding has exactly 2 verdicts (one per canonical reviewer). Top summary tally matches per-finding tally. (Two additional async runs corroboration: both returned F1-F4 KEEP, F5 KEEP — logged for transparency; consensus is decided by the 2 canonical synchronous reviewers per the "双方" rule.)
+**Counts:** KEPT = 4, DROPPED = 2, total = 6. Each finding has exactly 2 verdicts (one per canonical reviewer). Top summary tally matches per-finding tally. F1-F5 used reviewers A+B; F6 used a separate fresh pair (zero-shared-context with the F1-F5 reviewers and with each other). Per the "双方" rule, F5 and F6 are DROPPED on disagreement (any single DROP → DROPPED).
 
 ---
 
 ## Landing validation (criterion 5)
 
-- **Finding landed:** F1 (cov-gap, `download_and_replace_community_qemu` wrapper branches).
-- **Branch:** `feat/test-audit-land-f1-wrapper-cov` (from `feat/ob-verify` HEAD `2f467de`). Commit `e362148`.
-- **Change:** appended 3 wrapper-branch cases (acquire-fail / flock-busy / happy) to `tests/orchestration/qemu_binary_replace.sh`; stubs only the networked/FS-touching leaves, exercises the wrapper's own mktemp/flock/rm orchestration. Test went 9 → 15 assertions.
-- **`bash tools/ob_check.sh`:** **exit 0** (ALL GREEN PASS=14).
-- **`bash tests/run_all.sh --full --integration`:** **ALL GREEN** (exit 0). Real bitbake rebuild of `gb200nvl-obmc` (incremental, warm `tmp/work`) + QEMU restart + BMC SSH ready; `ob_dev.sh` modify→reset→finish; `smoke_e2e.sh` α-truth path (Redfish✓×3, IPMI✗ image lacks RMCP+, ready✓ → rc=1 by design, accepted); `manual_matrix_qemu.exp` self-contained QEMU; `init_dryrun_sanity.sh` dry-run. Two env-gated opt-in tests skipped by design (`build_e2e.exp` needs `OB_RUN_BUILD_E2E=1`; `smoke_help_clarity.sh` needs `OB_HELP_CLARITY_RUN=1`). Log: `evidence-test-audit-2026-08-02/13-runall-full-integration.log` (no FAIL markers; terminator = "ALL GREEN").
-- **QEMU cleanup:** `ob stop-qemu --all` → "No QEMU instances to stop" (the integration tests are self-contained and cleaned up after themselves). Verified zero residual: no `qemu-system` processes, no `workspace/qemu-bin/.pids/*.pid`, ports 2222/2443/2623 free.
-- **Note on rc observation:** the integration was run detached via `nohup` (1-4h budget); post-hoc `wait` on the reaped PID returned 127 (artifact of polling a reaped nohup child, not the run's exit). The run's true exit code is 0, proven by the "ALL GREEN" terminator (`run_all.sh` prints `exit 1` before ALL GREEN iff FAILED non-empty). A fresh synchronous `bash tests/run_all.sh --full --integration` reproduces rc=0.
+Two changes landed on `feat/test-audit-land-f1-wrapper-cov` (from `feat/ob-verify` HEAD `2f467de`):
+
+- **(a) F1 (KEPT audit finding):** appended 3 wrapper-branch cases (acquire-fail / flock-busy / happy) to `tests/orchestration/qemu_binary_replace.sh`. Commit `e362148`. Test 9 → 15 assertions. Closes the `download_and_replace_community_qemu` cov-gap.
+- **(b) F6 fix (user-mandated option 1; F6 *finding* DROPPED on review):** bounded Redfish root readiness gate in `tests/integration/smoke_e2e.sh` between start-qemu and `ob smoke` (curl .../redfish/v1 until HTTP 200, 30×5s=150s; timeout → explicit FAIL + cleanup). Commit `dfb7baa`. No lib/ob production change.
+
+**`bash tools/ob_check.sh`:** **exit 0** (ALL GREEN PASS=14) — re-confirmed after both landings.
+
+**`bash tests/run_all.sh --full --integration`:** **ALL GREEN, true exit rc=0** (captured cleanly via a marker file written by the run itself: `echo "INTEG_RC=$?" > /tmp/ob_integ_rc_postF6.marker` — no nohup-reap artifact this time; the marker is the run's own exit code). Real bitbake rebuild of `gb200nvl-obmc` (incremental, warm `tmp/work`) + QEMU restart + BMC SSH ready; `ob_dev.sh` modify→reset→finish; `smoke_e2e.sh` exercised the F6 Redfish gate (Redfish HTTP 200, α-truth path); `manual_matrix_qemu.exp` self-contained; `init_dryrun_sanity.sh` dry-run. Two env-gated opt-in tests skipped by design. Log: `evidence-test-audit-2026-08-02/15-runall-full-integration-postF6.log`. (The earlier pre-F6 run log `13-runall-full-integration.log` also reached ALL GREEN but its rc was mis-captured as 127 by a reaped-nohup `wait` — an artifact of the polling method, not the run.)
+
+**QEMU cleanup:** the integration tests are self-contained and tear down their own instances; `ob stop-qemu --all` after the run confirmed "No QEMU instances to stop". Verified zero residual: no `qemu-system` processes, no `workspace/qemu-bin/.pids/*.pid`, ports 2222/2443/2623 free.
 
 ---
 
@@ -213,9 +234,13 @@ Directory: `docs/plans/evidence-test-audit-2026-08-02/`. Any fresh agent can re-
 - `08-slowest-tests.txt` — slowest protocol .sh: exit_codes.sh=19.54s, ob_check_smoke.sh=5.07s
 - `09-overlap-exit-build.txt` — exit_codes.sh × smoke_ob.sh overlap + matrix stale-ref check
 - `10-canon-enumeration.txt` — canonical `find tests -type f` = 117 + 10 tools gates
-- `11-reviewer-A-verdicts.txt` — Reviewer A per-finding verdicts (verbatim)
-- `12-reviewer-B-verdicts.txt` — Reviewer B per-finding verdicts (verbatim)
-- `13-runall-full-integration.log` — full `run_all.sh --full --integration` output (ALL GREEN)
+- `11-reviewer-A-verdicts.txt` — Reviewer A per-finding verdicts (F1-F5, verbatim)
+- `12-reviewer-B-verdicts.txt` — Reviewer B per-finding verdicts (F1-F5, verbatim)
+- `13-runall-full-integration.log` — pre-F6 full `run_all.sh --full --integration` output (ALL GREEN; rc mis-captured as 127 by reaped-nohup wait)
+- `14-redfish-flake-evidence.txt` — F6 dedicated evidence (root cause + reproducible commands + master's 3/3 failure facts)
+- `15-runall-full-integration-postF6.log` — **post-F6** full `run_all.sh --full --integration` output (ALL GREEN; true rc captured cleanly via marker file)
+- `16-reviewer-F6-A-verdict.txt` — F6 Reviewer A verdict (KEEP)
+- `17-reviewer-F6-B-verdict.txt` — F6 Reviewer B verdict (DROP)
 
 ---
 

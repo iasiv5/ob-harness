@@ -1,0 +1,4 @@
+# Reviewer F6-A (synchronous, opus, zero-shared-context — fresh, did not see F1-F5 reviewers) — F6 verdict
+# Re-ran cited greps + read evidence pack before deciding.
+F6: KEEP — source-verified coverage gap (_smoke_wait_ssh_tcp is SSH-only while cmd_smoke asserts on Redfish with no Redfish readiness gate between, confirmed by my own grep), and the proposed test-layer fix (bounded curl poll, hard-FAIL on timeout, no production change) is sound and proportionate; the only weak spot is the un-corroborated "3/3" count (pre-F6 log 13 actually shows smoke_e2e passing), but that does not undermine the real, source-backed readiness-precondition gap.
+SUMMARY (F6 only): kept=1 dropped=0
