@@ -564,9 +564,18 @@ cmd_smoke() {
     total=$((total+1))
     _smoke_probe_ipmi "$s_ipmi" p_ipmi_rc p_ipmi_out
     local r2=0; smoke_judge_ipmi_lan "$p_ipmi_rc" "$p_ipmi_out" || r2=$?
-    if [[ $r2 -eq 0 ]]; then passed=$((passed+1)); else
+    if [[ $r2 -eq 0 ]]; then
+        passed=$((passed+1))
+    else
         failed_names+=("IPMI over LAN works")
-        failed_raws+=("interface: IPMI @ localhost:$s_ipmi/UDP (ipmitool mc info)"$'\n'"ipmitool return code: $p_ipmi_rc"$'\n'"RAW output:"$'\n'"$p_ipmi_out")
+        local _ipmi_raw="interface: IPMI @ localhost:$s_ipmi/UDP (ipmitool mc info)"$'\n'"ipmitool return code: $p_ipmi_rc"$'\n'"RAW output:"$'\n'"$p_ipmi_out"
+        # Generic (non per-machine) diagnostic: a non-zero ipmitool rc on a reachable
+        # Redfish BMC most often means the image itself lacks an RMCP+/LAN responder.
+        # Phrased as generic Redfish/IPMI protocol knowledge (not naming any machine).
+        if [[ "$p_ipmi_rc" != "0" ]]; then
+            _ipmi_raw+=$'\n'"possible cause: image may lack an RMCP+/LAN responder (phosphor-ipmi-netbridged not installed/enabled) — image-side, not a smoke defect; Redfish remains the canonical probe."
+        fi
+        failed_raws+=("$_ipmi_raw")
     fi
 
     # System ready signal(SSH 端口 TCP 可连)
@@ -597,6 +606,10 @@ cmd_smoke() {
         echo    "-------------------------------------------"
     done
     echo ""
-    error "ob smoke: smoke assertions failed for '$MACHINE' (see RAW responses above)."
+    error "ob smoke: smoke assertions failed for '$MACHINE' (see ✗ rows + RAW responses above)."
+    # α 重申(deliverable B): 在 exit 1 当下向 stderr 喂一行 α 语义, 防 caller 据全局
+    # "1 = broken" 误判 smoke 坏了。warn 默认走 stdout, 显式 >&2 落 stderr(stderr 不污染
+    # smoke 的 stdout 真相报告)。不动 exit 值(仍 1, ∈{0,1,2,3})、不加 trap、不改 judge。
+    warn "exit 1 here is the α truth-reporter contract: the ✗ rows above report the BMC interface's ACTUAL state, NOT a smoke command failure — read the ✗ rows to see which interface and why (debug the BMC interface, not smoke)." >&2
     exit 1                       # smoke 不拥有 QEMU → 无 EXIT trap, 直接 exit 1
 }
