@@ -129,7 +129,7 @@ parse_args() {
                 shift
             fi
             ;;
-        verify)
+        smoke)
             if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
                 MACHINE="$1"
                 shift
@@ -199,7 +199,7 @@ Commands:
   start-qemu   [<machine>]    Launch QEMU with built BMC image
   stop-qemu    [<machine>]    Stop a running QEMU instance
   deploy-to-qemu [<machine>]  Rebuild image and restart QEMU for clean verification
-  verify       [<machine>]    End-to-end smoke test a QEMU-backed BMC (bring-up + assertions + teardown)
+  smoke        [<machine>]    Probe a running QEMU-backed BMC (OOB smoke; no bring-up/teardown)
   dev          [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
 
 Global Options:
@@ -222,16 +222,14 @@ stop-qemu Options:
   --force                 Stop without confirmation
   --all                   Stop all running QEMU instances
 
-verify Options:
-  --ssh-port <port>       SSH port to probe        (default: 2222, forwarded by start-qemu)
-  --redfish-port <port>   Redfish port to probe    (default: 2443)
-  --ipmi-port <port>      IPMI port to probe       (default: 2623, UDP)
-  --force                 If a QEMU is already running for <machine>, kill and
-                          restart it without prompting (verify owns the lifecycle)
-  Note: verify brings up its OWN QEMU (via the same bring-up machinery as
-        start-qemu) and always tears it down (ob stop-qemu --force) on completion
-        (success or failure). Pointing a port override at a CLOSED port forces a
-        deterministic assertion failure.
+smoke Options:
+  <machine>               Whose running QEMU instance to probe (required positional)
+  Note: smoke probes a RUNNING QEMU instance (started via 'ob start-qemu') and
+        exits 3 if none is running. It does NOT boot or tear down QEMU, and has
+        no EXIT trap. Forwarded ports are read from the instance's PID file
+        (no port overrides — smoke reflects the actual running instance).
+  Environment:
+    OB_SMOKE_READY_ATTEMPTS  Poll attempts for BMC SSH-port readiness (default 30, 5s each)
 
 Exit Codes:
   0   Success (or benign no-op)
@@ -262,8 +260,7 @@ Examples:
   ob stop-qemu romulus             # Stop romulus QEMU instance
   ob stop-qemu --all               # Stop all running instances
   ob deploy-to-qemu romulus        # Rebuild romulus image + restart QEMU (port-reuse if running)
-  ob verify romulus                # Bring up QEMU, run Redfish/IPMI/ready smoke assertions, tear down
-  ob verify romulus --redfish-port 1   # Force a deterministic assertion failure (closed port)
+  ob smoke romulus                 # Probe a running romulus QEMU (Redfish/IPMI/ready assertions; no bring-up/teardown)
   ob dev --machine romulus list ipmi    # Search recipes matching 'ipmi'
   ob dev --machine romulus modify phosphor-ipmi-host   # devtool modify, outputs srctree
   ob dev --machine romulus build phosphor-ipmi-host  # devtool build single recipe (do_build); exit-code carries result
@@ -318,8 +315,8 @@ main() {
         return $?
     fi
 
-    if [[ "$COMMAND" == "verify" ]]; then
-        cmd_verify
+    if [[ "$COMMAND" == "smoke" ]]; then
+        cmd_smoke
         return $?
     fi
 

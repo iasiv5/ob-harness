@@ -75,7 +75,7 @@ LEAF_EXIT_EXCEPTIONS_BY_BASENAME = {
     'init_intake.sh': set(),
     'image_build.sh': set(),
     'status_render.sh': set(),
-    'verify_assertions.sh': set(),
+    'smoke_assertions.sh': set(),
 }
 
 # Z 的「向前看 vs 回溯诊断」软告警启发（尽力而为、非权威，供人工审核）。
