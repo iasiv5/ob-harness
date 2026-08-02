@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # tests/unit/smoke_diff.sh — smoke_diff.py 逻辑自测(unit 层)。
-# 用 here-doc fixture 钉死回归闸门口径: 仅 ✓→✗ = 回归(exit 1); 其余(版本变更/✗→✓/
-#   新出现/消失)不算回归(exit 0)。fixture 镜像真实 `ob smoke` 输出形态
-#   (mark + 断言名 + 括号细节; 含 breakdown 段重打 ✗ 的去重场景)。
+# 用 here-doc fixture 钉死回归闸门口径: ✓→✗(同名退化) 与 baseline 无此名+current ✗(新出现的
+#   失败断言) = 回归(exit 1); 其余(版本变更/✗→✓/新出现的 ✓/消失)不算回归(exit 0)。
+#   fixture 镜像真实 `ob smoke` 输出形态(mark + 断言名 + 括号细节; 含 breakdown 段重打 ✗ 的去重场景)。
 source "$(dirname "$0")/../lib/assert.sh"
 assert_reset
 
@@ -80,12 +80,50 @@ assert_contains "breakdown-dup 仍检出 IPMI 退化" "$out" "IPMI over LAN work
 # current 断言计数应 = 5(judge 行去重, breakdown 重打不重复计)
 assert_contains "breakdown-dup current 计 5 条(去重)" "$out" "current 断言: 5 条"
 
-# --- 5. 错误路径: 文件不存在 → exit 2 ---
+# baseline 子集(无 IPMI 行)— 用于 5/6 测试 "新出现断言" 语义
+cat > "$TMP/base_noipmi.txt" <<'EOF'
+  ✓ Redfish root reachable (HTTP 200, ...)
+  ✓ Redfish Managers reachable (HTTP 200, ...)
+  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.15.0)
+  ✓ System ready signal (SSH port TCP-connectable)
+EOF
+
+# --- 5. 语义严格化: baseline 无此名 + current ✗(新出现的失败断言) → exit 1 ---
+cat > "$TMP/cur_new_fail.txt" <<'EOF'
+  ✓ Redfish root reachable (HTTP 200, ...)
+  ✓ Redfish Managers reachable (HTTP 200, ...)
+  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.15.0)
+  ✗ IPMI over LAN works (ipmitool exit 1 — new failing assertion)
+  ✓ System ready signal (SSH port TCP-connectable)
+EOF
+out="$(python3 "$TOOL" "$TMP/base_noipmi.txt" "$TMP/cur_new_fail.txt" 2>&1)"; rc=$?
+assert_eq "new-✗ regression rc 1" "$rc" "1"
+assert_contains "new-✗ prints REGRESSION" "$out" "REGRESSION"
+assert_contains "new-✗ mentions IPMI" "$out" "IPMI over LAN works"
+assert_contains "new-✗ prints absent baseline 标注" "$out" "absent — new assertion"
+assert_contains "new-✗ prints 闸门拦截" "$out" "闸门拦截"
+
+# --- 6. 新出现的 ✓ 不算回归: baseline 无此名 + current ✓ → exit 0(改善 by addition) ---
+cat > "$TMP/cur_new_pass.txt" <<'EOF'
+  ✓ Redfish root reachable (HTTP 200, ...)
+  ✓ Redfish Managers reachable (HTTP 200, ...)
+  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.15.0)
+  ✓ IPMI over LAN works (ipmitool mc info exit 0)
+  ✓ System ready signal (SSH port TCP-connectable)
+EOF
+out="$(python3 "$TOOL" "$TMP/base_noipmi.txt" "$TMP/cur_new_pass.txt" 2>&1)"; rc=$?
+assert_eq "new-✓ no-regression rc 0" "$rc" "0"
+assert_contains "new-✓ prints 新出现的 ✓ info" "$out" "新出现的 ✓"
+assert_contains "new-✓ info mentions IPMI" "$out" "IPMI over LAN works"
+assert_false "new-✓ 不含 REGRESSION" grep -q 'REGRESSION' <<<"$out"
+
+# --- 7. 错误路径: 文件不存在 → exit 2 ---
 assert_rc 2 "nonexistent file rc 2" python3 "$TOOL" "$TMP/base.txt" "$TMP/nope.txt"
 
-# --- 6. --help → exit 0 + 打印 doc ---
+# --- 8. --help → exit 0 + 打印 doc ---
 out="$(python3 "$TOOL" --help 2>&1)"; rc=$?
 assert_eq "--help rc 0" "$rc" "0"
 assert_contains "--help prints 用法" "$out" "smoke baseline-diff"
+assert_contains "--help doc 反映新语义(新出现的 ✗)" "$out" "新出现的失败断言"
 
 assert_summary

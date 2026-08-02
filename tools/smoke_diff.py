@@ -2,9 +2,9 @@
 """ob smoke baseline-diff —— 两次 smoke 输出的回归闸门(只读)。
 
 给定 baseline 与 current 两次 `ob smoke` 的输出文件, 解析其中的断言行
-(`  ✓ <name> (...)` / `  ✗ <name> (...)`), 按断言名配对, 仅把
-**✓→✗** 判为回归(退化); ✗→✓ 改善、✓→✓/✗→✗ 不变、新出现/消失的断言名只作
-info 打印, 不据此 fail。
+(`  ✓ <name> (...)` / `  ✗ <name> (...)`), 按断言名配对, 把两类判为回归(退化):
+**✓→✗**(同名退化) 与 **baseline 无此名 + current ✗**(新出现的失败断言)。
+✗→✓ 改善仍作 info; ✓→✓/✗→✗ 不变; 新出现的 ✓ 与消失的断言名只作 info 打印, 不据此 fail。
 
 【设计: 为何按"断言名"而非整行配对】
   smoke 每条断言行 = `mark + 断言名 + (细节)`, 细节含 HTTP code / ipmitool rc /
@@ -13,8 +13,10 @@ info 打印, 不据此 fail。
   故配对 key 取断言名(行首 mark 后、首个 ` (` 前的稳定头部), 如
   "Redfish root reachable"、"IPMI over LAN works"、"System ready signal"。
 
-【什么算回归】  仅 baseline=✓ 且 current=✗(同名) → 回归。
-  其余(✗→✓ 改善、✓→✓/✗→✗ 不变、新出现、消失)不算回归, 作 info 打印。
+【什么算回归】  两类 → exit 1:
+    (1) baseline=✓ 且 current=✗(同名 ✓→✗ 退化);
+    (2) baseline 无此名 + current=✗(新出现的失败断言 — 一个全新的 ✗ 理应拦截)。
+  不算回归(作 info): ✗→✓ 改善、✓→✓/✗→✗ 不变、新出现的 ✓、消失的断言名。
 
 【什么时候用】
   - CI 把 `ob smoke` 当回归闸门: 改前 smoke → baseline, 改后 smoke → current,
@@ -25,7 +27,7 @@ info 打印, 不据此 fail。
 【怎么用】
   $ python3 tools/smoke_diff.py <baseline> <current>
   $ python3 tools/smoke_diff.py --help
-  退出码: 0 = 无回归; 1 = 检出 ✓→✗ 回归; 2 = 参数/文件错误。
+  退出码: 0 = 无回归; 1 = 检出回归(✓→✗ 退化 或 新出现的 ✗); 2 = 参数/文件错误。
 
 【边界】只读, 不修改输入文件。重复断言行(如 smoke fail 时 breakdown 段重打
   `✗ <name>`)按首次出现保留(judge 行先打, 带 detail; breakdown 重打后打, 无 detail)。
@@ -96,6 +98,10 @@ def main(argv):
                 regressions.append((name, bline, cline))
             elif bmark == '✗' and cmark == '✓':
                 improvements.append((name, bline, cline))
+        elif cmark == '✗':
+            # 新出现的 ✗(baseline 无此名)也算回归: 一个全新的失败断言理应拦截。
+            # bline 置 None, 渲染时打 (absent — new assertion)。
+            regressions.append((name, None, cline))
         else:
             added.append((name, cline))
 
@@ -109,10 +115,13 @@ def main(argv):
 
     if regressions:
         print("")
-        print(f"REGRESSION — 检出 {len(regressions)} 条 ✓→✗ 退化:")
+        print(f"REGRESSION — 检出 {len(regressions)} 条退化(✓→✗ 或 baseline 无此名的新 ✗):")
         for name, bline, cline in regressions:
             print(f"  ✗ {name}")
-            print(f"      baseline : {bline}")
+            if bline is None:
+                print(f"      baseline : (absent — new assertion, not present in baseline)")
+            else:
+                print(f"      baseline : {bline}")
             print(f"      current  : {cline}")
 
     if improvements:
@@ -123,7 +132,7 @@ def main(argv):
 
     if added:
         print("")
-        print(f"info — {len(added)} 条新出现断言(不算回归):")
+        print(f"info — {len(added)} 条新出现的 ✓ 断言(不算回归):")
         for name, cline in added:
             print(f"  + {name}")
 
@@ -135,9 +144,9 @@ def main(argv):
 
     print("")
     if regressions:
-        print(f"FAIL: {len(regressions)} 条 ✓→✗ 回归 — 闸门拦截")
+        print(f"FAIL: {len(regressions)} 条回归(✓→✗ 或 新 ✗) — 闸门拦截")
         return 1
-    print("OK: 无 ✓→✗ 回归 — 闸门放行")
+    print("OK: 无回归(✓→✗ 或 新 ✗) — 闸门放行")
     return 0
 
 
