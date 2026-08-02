@@ -64,12 +64,77 @@ run_judge smoke_judge_system_ready "1"
 assert_eq   "ssh-notready returns 1"        "$JR" "1"
 assert_contains "ssh-notready prints ✗"     "$JO" "✗"
 
-# === 三类各一行 ✓/✗ 的契约: 每个判函数恰好向 stdout 打一行(无多行噪声) ===
+# === Redfish Managers 判函数: pass ⟺ code==200 AND body 含 Manager 资源结构标记 ===
+run_judge smoke_judge_redfish_managers "200" '{"@odata.type":"#Manager.v1_5_0.Manager","ManagerType":"BMC","UUID":"00000000-0000-0000-0000-000000000000"}'
+assert_eq   "managers pass(full) returns 0"     "$JR" "0"
+assert_contains "managers pass prints ✓"        "$JO" "✓"
+assert_contains "managers pass mentions Managers" "$JO" "Managers"
+assert_false   "managers pass not ✗"           grep -q "✗" <<<"$JO"
+
+# 单标记也 pass(ManagerType only — bmcweb 必发)
+run_judge smoke_judge_redfish_managers "200" '{"ManagerType":"BMC"}'
+assert_eq   "managers pass(ManagerType only) returns 0" "$JR" "0"
+
+# 单标记也 pass(UUID only)
+run_judge smoke_judge_redfish_managers "200" '{"UUID":"00000000-0000-0000-0000-000000000000"}'
+assert_eq   "managers pass(UUID only) returns 0" "$JR" "0"
+
+# 单标记也 pass(@odata.type + Manager)
+run_judge smoke_judge_redfish_managers "200" '{"@odata.type":"#Manager.v1_5_0.Manager"}'
+assert_eq   "managers pass(@odata.type Manager) returns 0" "$JR" "0"
+
+run_judge smoke_judge_redfish_managers "200" '{"Name":"bmc"}'   # 缺 Manager 结构标记
+assert_eq   "managers no-marker returns 1"   "$JR" "1"
+assert_contains "managers no-marker prints ✗" "$JO" "✗"
+assert_contains "managers no-marker mentions marker" "$JO" "no Manager resource marker"
+
+run_judge smoke_judge_redfish_managers "404" '{"error":"not found"}'
+assert_eq   "managers 404 returns 1"         "$JR" "1"
+assert_contains "managers 404 prints HTTP code" "$JO" "404"
+
+run_judge smoke_judge_redfish_managers "000" ""   # curl 整体失败
+assert_eq   "managers conn-fail(code 000) returns 1" "$JR" "1"
+assert_contains "managers conn-fail prints ✗" "$JO" "✗"
+
+# === Redfish SoftwareVersion 判函数: pass ⟺ body 含非空 SoftwareVersion 或 FirmwareVersion ===
+run_judge smoke_judge_redfish_swversion '{"FirmwareVersion":"v2.15.0","ManagerType":"BMC"}'
+assert_eq   "swversion pass(FirmwareVersion) returns 0" "$JR" "0"
+assert_contains "swversion pass prints ✓"               "$JO" "✓"
+assert_contains "swversion pass mentions SoftwareVersion" "$JO" "SoftwareVersion"
+assert_false   "swversion pass not ✗"                   grep -q "✗" <<<"$JO"
+
+# SoftwareVersion 别名也 pass
+run_judge smoke_judge_redfish_swversion '{"SoftwareVersion":"2.16.0-dev"}'
+assert_eq   "swversion pass(SoftwareVersion alias) returns 0" "$JR" "0"
+
+# 美化 JSON(冒号后空格, bmcweb 默认吐的形态)也 pass — 真 gb200nvl 实跑抓到的关键边界
+run_judge smoke_judge_redfish_swversion '{ "FirmwareVersion": "3.1.0-dev-580", "ManagerType": "BMC" }'
+assert_eq   "swversion pass(prettified JSON, space after colon) returns 0" "$JR" "0"
+assert_contains "swversion prettified captures version" "$JO" "3.1.0-dev-580"
+
+# 空串 FirmwareVersion 不 pass(防 "":"" 误判)
+run_judge smoke_judge_redfish_swversion '{"FirmwareVersion":"","ManagerType":"BMC"}'
+assert_eq   "swversion empty-value returns 1"  "$JR" "1"
+assert_contains "swversion empty prints ✗"     "$JO" "✗"
+
+# 缺版本属性不 pass
+run_judge smoke_judge_redfish_swversion '{"ManagerType":"BMC","UUID":"x"}'
+assert_eq   "swversion missing returns 1"      "$JR" "1"
+
+# body 空(curl 整体失败遗留)不 pass
+run_judge smoke_judge_redfish_swversion ""
+assert_eq   "swversion empty-body returns 1"   "$JR" "1"
+
+# === 各判函数恰好向 stdout 打一行 ✓/✗(无多行噪声) ===
 JO=$(smoke_judge_redfish_root "0" "x" 2>/dev/null)
 assert_eq "redfish judge prints exactly 1 line" "$(printf '%s\n' "$JO" | wc -l | tr -d ' ')" "1"
 JO=$(smoke_judge_ipmi_lan "0" 2>/dev/null)
 assert_eq "ipmi judge prints exactly 1 line" "$(printf '%s\n' "$JO" | wc -l | tr -d ' ')" "1"
 JO=$(smoke_judge_system_ready "0" 2>/dev/null)
 assert_eq "ssh judge prints exactly 1 line" "$(printf '%s\n' "$JO" | wc -l | tr -d ' ')" "1"
+JO=$(smoke_judge_redfish_managers "0" "x" 2>/dev/null)
+assert_eq "managers judge prints exactly 1 line" "$(printf '%s\n' "$JO" | wc -l | tr -d ' ')" "1"
+JO=$(smoke_judge_redfish_swversion "x" 2>/dev/null)
+assert_eq "swversion judge prints exactly 1 line" "$(printf '%s\n' "$JO" | wc -l | tr -d ' ')" "1"
 
 assert_summary

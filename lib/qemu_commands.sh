@@ -392,7 +392,7 @@ cmd_deploy_to_qemu() {
 # 形态对照 cmd_start_qemu/cmd_deploy_to_qemu: smoke 不拥有 QEMU 生命周期——不 bring-up
 #   (不调 qemu_prepare_launch/qemu_execute_launch)、不 teardown、无 EXIT trap。它探针一个 RUNNING
 #   instance(由 ob start-qemu 起好), 读 PID 文件的真实转发端口(更深接口, 反映实际跑的实例),
-#   跑 Redfish/IPMI/system-ready 三类断言(α: 纯 truth-reporter, 零 per-machine 期望画像/baseline)。
+#   跑 Redfish(root/Managers/SoftwareVersion)/IPMI/system-ready 五条断言(α: 纯 truth-reporter, 零 per-machine 期望画像/baseline)。
 # 断言判函数 leaf-pure(lib/smoke_assertions.sh); probe 采集经 nameref outvars(非 module 全局,
 #   对照 resolve_command_machine 的 nameref 范式, 使 probe 可被 protocol 层直接单测)。
 # ════════════════════════════════════════════════════════════════════════════
@@ -441,6 +441,27 @@ _smoke_probe_redfish() {
         _spr_code="${out##*$'\n'}"        # 末行 = __OB_HTTP__<code>
         _spr_code="${_spr_code#__OB_HTTP__}"
         _spr_body="${out%$'\n'*}"          # 去末行 = body
+    fi
+    # curl 整体失败 → 维持 "000"(judge 据此判 fail)
+    return 0
+}
+
+# _smoke_probe_redfish_managers <port> <code_ref> <body_ref> — curl 取 Redfish Managers/bmc
+# (OpenBMC 标准 manager id, 全 image 通用, 非 per-machine 知识), 经 nameref 回填 code/body。
+# 形态对照 _smoke_probe_redfish; 一次 probe 喂 managers + swversion 两个 judge(深一层接口)。
+# curl 整体失败(连接拒绝)→ code "000", body 空。不 exit; set -e-safe(|| rc=$?)。
+_smoke_probe_redfish_managers() {
+    local port="$1"
+    local -n _sprm_code="$2"
+    local -n _sprm_body="$3"
+    _sprm_code="000"; _sprm_body=""
+    local out="" rc=0
+    out=$(curl -sk -u root:0penBmc -w $'\n__OB_HTTP__%{http_code}' \
+          "https://localhost:$port/redfish/v1/Managers/bmc" 2>/dev/null) || rc=$?
+    if [[ -n "$out" ]]; then
+        _sprm_code="${out##*$'\n'}"        # 末行 = __OB_HTTP__<code>
+        _sprm_code="${_sprm_code#__OB_HTTP__}"
+        _sprm_body="${out%$'\n'*}"          # 去末行 = body
     fi
     # curl 整体失败 → 维持 "000"(judge 据此判 fail)
     return 0
@@ -501,13 +522,15 @@ cmd_smoke() {
     # ── BMC 就绪门(sshpass-independent TCP 轮询 SSH 端口; smoke own, 不依赖 start-qemu 的 sshpass 门) ──
     _smoke_wait_ssh_tcp "$s_ssh" || true
 
-    # ── 跑 3 类断言(probe → judge; judge 向 stdout 打 ✓/✗ 行 + return 0/1) ──
+    # ── 跑 5 条断言(probe → judge; judge 向 stdout 打 ✓/✗ 行 + return 0/1) ──
+    # Redfish(root + Managers + SoftwareVersion)/ IPMI / system-ready; Managers probe 喂后两条 Redfish judge。
     echo ""
     step_header "Smoke assertions for '$MACHINE'"
     local -i total=0 passed=0
     local -a failed_names=() failed_raws=()
     # probe outvars(经 nameref 回填; 名字与 probe 内 nameref local 不撞, 防 bash 循环引用告警)
     local p_redfish_code="" p_redfish_body=""
+    local p_mgr_code="" p_mgr_body=""
     local p_ipmi_rc="" p_ipmi_out=""
     local p_ssh_rc=""
 
@@ -518,6 +541,23 @@ cmd_smoke() {
     if [[ $r1 -eq 0 ]]; then passed=$((passed+1)); else
         failed_names+=("Redfish root reachable")
         failed_raws+=("interface: Redfish @ https://localhost:$s_redfish/redfish/v1"$'\n'"HTTP code: $p_redfish_code"$'\n'"RAW body:"$'\n'"$p_redfish_body")
+    fi
+
+    # Redfish Managers 可达(深一层接口: Managers/bmc 资源; 一次 probe 喂 managers + swversion 两 judge)
+    total=$((total+1))
+    _smoke_probe_redfish_managers "$s_redfish" p_mgr_code p_mgr_body
+    local r4=0; smoke_judge_redfish_managers "$p_mgr_code" "$p_mgr_body" || r4=$?
+    if [[ $r4 -eq 0 ]]; then passed=$((passed+1)); else
+        failed_names+=("Redfish Managers reachable")
+        failed_raws+=("interface: Redfish @ https://localhost:$s_redfish/redfish/v1/Managers/bmc"$'\n'"HTTP code: $p_mgr_code"$'\n'"RAW body:"$'\n'"$p_mgr_body")
+    fi
+
+    # Redfish SoftwareVersion(BMC 上报固件版本 — 功能态断言; 复用 managers probe body)
+    total=$((total+1))
+    local r5=0; smoke_judge_redfish_swversion "$p_mgr_body" || r5=$?
+    if [[ $r5 -eq 0 ]]; then passed=$((passed+1)); else
+        failed_names+=("Redfish SoftwareVersion reported")
+        failed_raws+=("interface: Redfish Managers body @ https://localhost:$s_redfish/redfish/v1/Managers/bmc"$'\n'"RAW body:"$'\n'"$p_mgr_body")
     fi
 
     # IPMI over LAN

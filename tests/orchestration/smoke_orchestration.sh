@@ -53,6 +53,53 @@ PATH="$DB:$PATH" _smoke_probe_redfish 2443 _rcode _rbody
 assert_eq "redfish probe conn-fail → nameref code 000" "$_rcode" "000"
 assert_eq "redfish probe conn-fail → nameref body 空" "$_rbody" ""
 
+# === (1b) _smoke_probe_redfish_managers: fake curl 按 URL 答 Managers body → nameref outvars ===
+# 一次 probe 喂 managers + swversion 两个 judge(深一层接口)。fake curl 按 $* 中的 URL 分支答。
+rm -f "$DB/.curl.rc"   # 清除上方 conn-fail 段的 exit 7, 让 .curl.sh 重新生效
+cat > "$DB/.curl.sh" <<'CURL_SH'
+# 按请求 URL 答: Managers/bmc 给 Manager 资源 body(含 FirmwareVersion), 其它给 root body
+case "$*" in
+  *Managers/bmc*)
+    printf '%s\n' '{"@odata.type":"#Manager.v1_5_0.Manager","ManagerType":"BMC","UUID":"abc","FirmwareVersion":"v2.15.0"}'
+    printf '__OB_HTTP__200\n' ;;
+  *)
+    printf '%s\n' '{"@Redfish.Copyright":"x","RedfishVersion":"1.17.0"}'
+    printf '__OB_HTTP__200\n' ;;
+esac
+CURL_SH
+_mcode=""; _mbody=""
+PATH="$DB:$PATH" _smoke_probe_redfish_managers 2443 _mcode _mbody
+assert_eq "managers probe nameref code 200" "$_mcode" "200"
+assert_contains "managers probe nameref body has ManagerType" "$_mbody" "ManagerType"
+assert_contains "managers probe nameref body has FirmwareVersion" "$_mbody" "FirmwareVersion"
+# probe→judge 链(managers pass)
+r=0; out=$(smoke_judge_redfish_managers "$_mcode" "$_mbody") || r=$?
+assert_eq "managers probe→judge pass returns 0" "$r" "0"
+assert_contains "managers probe→judge prints ✓" "$out" "✓"
+# probe→judge 链(swversion pass, 复用同一 managers body)
+r=0; out=$(smoke_judge_redfish_swversion "$_mbody") || r=$?
+assert_eq "swversion probe→judge pass returns 0" "$r" "0"
+assert_contains "swversion probe→judge prints ✓" "$out" "✓"
+assert_contains "swversion probe→judge prints version" "$out" "v2.15.0"
+
+# fail 信号: fake curl 对 Managers/bmc 答 500 + 无 Manager 标记 → managers ✗; swversion ✗(无版本)
+cat > "$DB/.curl.sh" <<'CURL_SH'
+case "$*" in
+  *Managers/bmc*) printf '%s\n' '{"error":"internal"}'; printf '__OB_HTTP__500\n' ;;
+  *)             printf '%s\n' '{"RedfishVersion":"1.17.0"}'; printf '__OB_HTTP__200\n' ;;
+esac
+CURL_SH
+_mcode=""; _mbody=""
+PATH="$DB:$PATH" _smoke_probe_redfish_managers 2443 _mcode _mbody
+assert_eq "managers probe nameref code 500" "$_mcode" "500"
+r=0; out=$(smoke_judge_redfish_managers "$_mcode" "$_mbody") || r=$?
+assert_eq "managers probe→judge fail returns 1" "$r" "1"
+assert_contains "managers probe→judge fail prints ✗" "$out" "✗"
+# swversion 复用 fail body(无 SoftwareVersion/FirmwareVersion) → fail
+r=0; out=$(smoke_judge_redfish_swversion "$_mbody") || r=$?
+assert_eq "swversion probe→judge fail(missing) returns 1" "$r" "1"
+assert_contains "swversion probe→judge fail prints ✗" "$out" "✗"
+
 # === (2) _smoke_probe_ipmi: fake ipmitool rc 0 / rc 1 → nameref outvars ===
 rm -f "$DB/.ipmitool.rc"
 mkfake_bin "$DB" ipmitool

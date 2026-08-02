@@ -63,3 +63,43 @@ smoke_judge_system_ready() {
     echo "  ✗ System ready signal (SSH port not TCP-connectable, rc=${rc:-<none>})"
     return 1
 }
+
+# smoke_judge_redfish_managers <http_code> <response_body>
+#   pass ⟺ HTTP 200 AND body 含 Manager 资源的结构标记之一(对照 root judge 的结构标记判定哲学,
+#   防 placeholder/错误页误判 pass)。探针的端点 Managers/bmc 是 OpenBMC 标准 manager id
+#   (全 image 通用, 非 per-machine 知识)。接受的等价标记(任一即可):
+#     ManagerType   — Manager 资源标准 DMTF 属性(OpenBMC bmcweb 必发, 值 "BMC")
+#     "UUID"        — Manager 资源标准 DMTF 属性(BMC 上报的唯一标识)
+#     #Manager      — Manager 资源的 @odata.type 片段(#Manager.v...; 根资源无此片段)
+smoke_judge_redfish_managers() {
+    local code="$1" body="$2"
+    if [[ "$code" == "200" && ( "$body" == *"ManagerType"* || "$body" == *'"UUID"'* || "$body" == *'#Manager'* ) ]]; then
+        echo "  ✓ Redfish Managers reachable (HTTP 200, Manager resource present)"
+        return 0
+    fi
+    echo "  ✗ Redfish Managers reachable (HTTP ${code:-<none>}, no Manager resource marker)"
+    return 1
+}
+
+# smoke_judge_redfish_swversion <response_body>
+#   功能态断言(非纯可达性): pass ⟺ Managers body 含非空固件版本属性。
+#   BMC 经 Redfish Managers 资源上报其固件版本——这是行为/功能态信号(服务在跑且能答出
+#   "我是谁/什么版本"), 比 root/Managers 的"结构可达"更深一层。
+#
+#   接受的版本属性(任一非空即可):
+#     FirmwareVersion  — DMTF Manager 资源标准属性(OpenBMC bmcweb 必发, 规范正名)
+#     SoftwareVersion  — 部分 image/overlay 在 Manager 资源上额外发的别名
+#   两者都属"BMC 上报固件版本"语义, 接受任一是 Redfish 协议规范知识(非 per-machine 期望画像,
+#   不违 α: 不预判某 image 发哪个键)。非空值判定(regex [^"]+ ≥1 字符): 防 "":"" 空串误判 pass。
+smoke_judge_redfish_swversion() {
+    local body="$1"
+    # 正则容忍 JSON 冒号两侧可选空白: bmcweb 默认吐美化 JSON("key": "val", 冒号后空格),
+    # 紧凑形态("key":"val") 也要兼容。[^"]+ ≥1 字符防 "":"" 空串误判。
+    local fv_re='(SoftwareVersion|FirmwareVersion)"[[:space:]]*:[[:space:]]*"([^"]+)"'
+    if [[ "$body" =~ $fv_re ]] && [[ -n "${BASH_REMATCH[2]}" ]]; then
+        echo "  ✓ Redfish SoftwareVersion reported (BMC reports firmware version ${BASH_REMATCH[2]})"
+        return 0
+    fi
+    echo "  ✗ Redfish SoftwareVersion reported (no non-empty SoftwareVersion/FirmwareVersion in Managers body)"
+    return 1
+}
