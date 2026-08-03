@@ -48,22 +48,33 @@ rm -f "$start_out"
 # HTTP 500 → smoke rc=1 → 本 e2e 误判 FAIL(3/3 全量失败, 单跑 rc=0 的根因)。在此插入有界
 # Redfish root 轮询闭合该 race。风格对齐 OB_SMOKE_READY_ATTEMPTS(30×5s=150s)。
 # 超时未 200 → 明确 FAIL + 总清: 不掩盖真实 Redfish 故障(bmcweb 起不来是真问题, 要浮出)。
+# Debounce（F6 后续强化）：bmcweb 在 boot 窗口会瞬时报 200 后又 flap 回 500（高负载下的窄窗），
+# 单次 200 不足以证明稳定。故要求 N 次连续 200（默认 2，间隔 5s）才认为 Redfish 真正就绪。
+# 真 Redfish 故障（bmcweb 起不来）永远凑不齐连续 200 → 超时 FAIL，不掩盖。
 REDFISH_PORT="$(grep '^redfish_port=' "workspace/qemu-bin/.pids/${MACHINE}.pid" 2>/dev/null | cut -d= -f2)"
 REDFISH_PORT="${REDFISH_PORT:-2443}"
 _rb_attempts=0
 _rb_max="${OB_INTEG_REDFISH_ATTEMPTS:-30}"
+_rb_needed="${OB_INTEG_REDFISH_DEBOUNCE:-2}"   # consecutive 200s required to confirm stability
+_rb_consec=0
 _rb_ready=0
 _rb_code="000"
-echo "[integration] waiting for Redfish root HTTP 200 (https://localhost:${REDFISH_PORT}/redfish/v1, up to $((_rb_max*5))s)..."
+echo "[integration] waiting for Redfish root HTTP 200 ×${_rb_needed} consecutive (https://localhost:${REDFISH_PORT}/redfish/v1, up to $((_rb_max*5))s)..."
 while [[ $_rb_attempts -lt $_rb_max ]]; do
     _rb_attempts=$((_rb_attempts + 1))
     _rb_code="$(curl -ks -o /dev/null -w '%{http_code}' --max-time 5 "https://localhost:${REDFISH_PORT}/redfish/v1" 2>/dev/null || echo 000)"
     if [[ "$_rb_code" == "200" ]]; then
-        echo "[integration] Redfish root HTTP 200 after attempt $_rb_attempts (~$((_rb_attempts*5))s)"
-        _rb_ready=1
-        break
+        _rb_consec=$((_rb_consec + 1))
+        if [[ $_rb_consec -ge $_rb_needed ]]; then
+            echo "[integration] Redfish root HTTP 200 stable (attempt $_rb_attempts, ~$((_rb_attempts*5))s, ${_rb_consec} consecutive 200s)"
+            _rb_ready=1
+            break
+        fi
+        printf "\r  Redfish 200... confirming stability %d/%d (attempt %d)   " "$_rb_consec" "$_rb_needed" "$_rb_attempts"
+    else
+        _rb_consec=0
+        printf "\r  Redfish not ready... attempt %d/%d (HTTP %s)   " "$_rb_attempts" "$_rb_max" "$_rb_code"
     fi
-    printf "\r  Redfish not ready... attempt %d/%d (HTTP %s)   " "$_rb_attempts" "$_rb_max" "$_rb_code"
     sleep 5
 done
 echo ""
