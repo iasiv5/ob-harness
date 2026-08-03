@@ -1,0 +1,6 @@
+$ python3 tools/exit_contract.py
+(captured 2026-08-03T12:23:55Z)
+X: PASS
+Y: PASS
+Z: PASS
+===RC=0===

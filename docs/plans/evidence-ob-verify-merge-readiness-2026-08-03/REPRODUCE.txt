@@ -1,0 +1,73 @@
+# REPRODUCE.txt — ob-verify merge-readiness evidence pack (2026-08-03)
+#
+# A fresh agent can re-run these commands from cwd=/bmc/iasi/ob-harness-community
+# on branch feat/ob-verify to reproduce the whole pack. Each command's expected
+# rc/artifact is noted. Static gates are deterministic; integration needs the
+# gb200nvl-obmc image built + free host ports (see env note below).
+
+## Environment prerequisites
+# - branch: feat/ob-verify (15 ahead / 0 behind main, clean, fast-forwardable)
+# - gb200nvl-obmc image built (workspace/openbmc/build/.../images/gb200nvl-obmc/*.static.mtd)
+# - curl + ipmitool installed (smoke_e2e SKIPs without them)
+# - HOST PORT NOTE: the integration layer starts QEMU on 127.0.0.1 with forwarded
+#   ports. Defaults are SSH 2222 / Redfish 2443 / IPMI-UDP 2623. On a shared host
+#   where another user holds UDP 2623 (e.g. `ss -lun | grep 2623`), override via
+#   OB_QEMU_*_PORT env vars when invoking run_all (see criterion-2 command below).
+
+## Criterion 1 — static read-only gate (expected rc=0, ALL GREEN PASS=12)
+OB_CHECK_READONLY=1 OB_CHECK_SKIP_TESTS=1 bash tools/ob_check.sh
+# artifact: 01-static-gate.txt
+
+## Criterion 3 — exit-contract (expected rc=0, X/Y/Z green)
+python3 tools/exit_contract.py
+# artifact: 03-exit-contract.txt
+
+## Criterion 2 — full tests incl. integration (expected ALL GREEN, marker rc=0,
+##               workspace/qemu-bin/.pids/ empty after teardown)
+# Marker-file rc capture (evidence-13 lesson: do NOT echo $? across a reap boundary;
+# capture rc inside the same shell that runs run_all, persist to a file).
+# If host UDP 2623 / TCP 2222 / TCP 2445 are free, omit the OB_QEMU_*_PORT overrides.
+rm -f /tmp/ob_verify_integ_marker.txt
+OB_QEMU_SSH_PORT=32223 OB_QEMU_REDFISH_PORT=32443 OB_QEMU_IPMI_PORT=32623 \
+  bash -c 'bash tests/run_all.sh --full --integration
+           rc=$?
+           {
+             echo "INTEGRATION_RC=$rc"
+             echo "PIDS_AFTER=$(ls workspace/qemu-bin/.pids/ 2>/dev/null | wc -l)"
+           } > /tmp/ob_verify_integ_marker.txt'
+cat /tmp/ob_verify_integ_marker.txt   # authoritative rc source (NOT echo $?)
+ls workspace/qemu-bin/.pids/          # must be empty
+# artifact: 02-runall-full-integration.log (+ marker)
+
+## Criterion 4 — blind reviewer consensus (2-3 independent reviewers)
+# Each reviewer is a FRESH zero-context subagent given ONLY:
+#   - the 4 prod diffs (diff-A-ob.txt, diff-B-qemu_commands.txt,
+#     diff-C-smoke_assertions.txt, diff-D-exit_contract.txt in this dir)
+#   - the 4 prod files (ob, lib/qemu_commands.sh, lib/smoke_assertions.sh, tools/exit_contract.py)
+#   - ADR-0020 + rules/knowhow/bestpractice_06-ob_first.md (global exit-code contract)
+#   - ob --help smoke Options section
+# PRIMARY FOCUS: does smoke exit-1 = α-truth vs the global "1 = failure" contract
+# constitute a 🔴 blocking tension? Verdict per item + cross-cutting focus.
+# PASS = >=2/2 reviewers find NO 🔴 blocking issue (1-keep/1-drop → 3rd arbiter).
+# artifacts: 06-reviewer-A-verdict.txt, 07-reviewer-B-verdict.txt (+ 08 arbiter if split)
+
+## Criterion 5 — dual-axis audit (over-eng × cov-gap)
+# Enumerate original test framework + new smoke tests; re-run the over-eng × cov-gap
+# enumeration. Each finding: type | file:line | status quo | proposed change | risk |
+# cited evidence + reproducible grep. PASS = no unprocessed KEEP, or all KEEP landed
+# a fix + ob_check green.
+# Reproducible enumeration:
+find tests -type f \( -name '*.sh' -o -name '*.exp' \) | wc -l          # test file count
+ls tools/*.py tools/*.sh                                                # gate inventory
+git diff main...HEAD --stat -- 'tests/*smoke*' 'tools/smoke*'           # new smoke LOC
+python3 tools/coverage_radar.py 2>/dev/null | grep -iE 'smoke|_smoke_'  # radar (structure-only)
+# artifact: 05-dual-axis-audit-findings.md (findings table F1-F4)
+
+## Criterion 5 fix re-verification (F1 KEEP landed) — ob_check after adding
+## tests/protocol/start_qemu_noninteractive.sh (expected ALL GREEN incl. new test)
+bash tools/ob_check.sh
+# artifact: 09-ob_check-after-f1-fix.txt
+
+## Criterion 6 — this archive
+# dir: docs/plans/evidence-ob-verify-merge-readiness-2026-08-03/
+# files: 00-INDEX.txt, REPRODUCE.txt (this), MANIFEST.txt (per-criterion pass evidence)

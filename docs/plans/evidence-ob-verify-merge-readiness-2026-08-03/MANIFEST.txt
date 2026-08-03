@@ -1,0 +1,83 @@
+# MANIFEST.txt — ob-verify merge-readiness per-criterion pass evidence
+# Date: 2026-08-03  Branch: feat/ob-verify  cwd: /bmc/iasi/ob-harness-community
+# Final state: 17 ahead / 0 behind main (15 original + 2 test-layer commits ecd8551 + <evidence>),
+# clean, fast-forwardable. All 6 criteria PASS (each objectively re-verified by the driver agent).
+
+## C1 — Static read-only gate   ✅ PASS
+  command : OB_CHECK_READONLY=1 OB_CHECK_SKIP_TESTS=1 bash tools/ob_check.sh
+  rc      : 0
+  result  : ALL GREEN (PASS=12)
+  artifact: 01-static-gate.txt
+  pointer : final lines "ALL GREEN (PASS=12) / ===RC=0==="
+
+## C2 — Full tests incl. integration   ✅ PASS
+  command : bash tests/run_all.sh --full --integration
+             (with OB_QEMU_SSH_PORT=32223 OB_QEMU_REDFISH_PORT=32443 OB_QEMU_IPMI_PORT=32623,
+              non-conflicting host ports — env UDP-2623 held by another user's QEMU on this
+              shared host; documented in 02a. Env-only mitigation, no prod change.)
+  rc      : 0  (marker-file capture: INTEGRATION_RC=0 in 02-marker-rc.txt — NOT echo $?,
+                per evidence-13 reaped-nohup lesson; rc written inside the run, then cat'd)
+  result  : "ALL GREEN" — init_dryrun_sanity / ob_deploy_to_qemu / ob_dev / smoke_e2e /
+             manual_matrix_qemu all ok; smoke_help_clarity + build_e2e SKIP (opt-in).
+             smoke_e2e accepted the α breakdown: Redfish ✓(×3) IPMI ✗(RMCP+ gap) ready ✓
+             → ob smoke rc=1 by design → smoke_e2e exit 0 (the verification GOAL).
+  teardown: PIDS_AFTER=0 — workspace/qemu-bin/.pids/ empty (zero residual QEMU).
+  artifact: 02-runall-full-integration.log + 02-marker-rc.txt (+ 02a-env-port-conflict-first-run.txt
+             documents the non-defect env port collision + mitigation)
+
+## C3 — exit-contract   ✅ PASS
+  command : python3 tools/exit_contract.py
+  rc      : 0
+  result  : X: PASS / Y: PASS / Z: PASS
+  artifact: 03-exit-contract.txt
+
+## C4 — Blind reviewer consensus   ✅ PASS
+  method  : 2 fresh, zero-context, independent reviewer subagents (model=opus), spawned
+             separately with NO transcript sharing / NO cross-reference. Each given ONLY
+             the 4 prod diffs + 4 prod files + ADR-0020 + bestpractice_06 (global exit-code
+             contract) + ob --help. PRIMARY FOCUS: does smoke exit-1 = α-truth vs the global
+             "1 = failure" contract constitute a 🔴 blocking tension?
+  verdict : Reviewer A — blockers=0 / non-blockers=5  (06-reviewer-A-verdict.txt, verbatim)
+            Reviewer B — blockers=0 / non-blockers=5  (07-reviewer-B-verdict.txt, verbatim)
+            Consensus (≥2/2 find NO 🔴 blocking finding). No 3rd arbiter needed (no split).
+  key     : both independently concluded the α-tension is real but documented + mitigated
+             (3 layers: override banner above global section + in-band stderr at exit time +
+             ADR-0020), and the bundled cmd_start_qemu non-TTY change is sound (non-destructive
+             path only made more permissive; destructive kill-existing still gated to --force).
+  inputs  : diff-A-ob.txt, diff-B-qemu_commands.txt, diff-C-smoke_assertions.txt, diff-D-exit_contract.txt
+  artifact: 06-reviewer-A-verdict.txt, 07-reviewer-B-verdict.txt
+
+## C5 — Dual-axis audit (over-eng × cov-gap)   ✅ PASS
+  scope   : original test framework (tests/* + tools/<gate>) + new smoke tests (15 files, 1745 LOC)
+  findings: 05-dual-axis-audit-findings.md
+            F1 (cov-gap, KEEP) — bundled cmd_start_qemu non-TTY confirmation-skip lacked an
+               isolated fast test → FIX LANDED: tests/protocol/start_qemu_noninteractive.sh
+               (structural + runtime lock, PASS=10). ob_check re-green: 09-ob_check-after-f1-fix.txt.
+            F2-F4 (over-eng candidates, DROP) — distinct contract facets / opt-in / layered coverage.
+            F6-debounce — integration-revealed test-layer robustness fix (smoke_e2e Redfish gate
+               debounce); LANDED during C2 verification (see 05-audit-findings addendum).
+            Deferred 🟡 (NOT landed, recorded honestly): both reviewers independently flagged that
+               a back-reference from the global Exit Codes section to the smoke exception would help
+               grep-only agents. Deferred (option c, master-endorsed) — touches prod help-text, and
+               landing post-review would make final-diff ≠ reviewed-diff, weakening C4. Clean follow-up.
+  PASS    : no unprocessed KEEP-level finding (F1 fix landed + ob_check re-green; F6-debounce landed).
+
+## C6 — Evidence archive   ✅ PASS
+  dir     : docs/plans/evidence-ob-verify-merge-readiness-2026-08-03/
+  files   : 00-INDEX.txt, REPRODUCE.txt, MANIFEST.txt (this), 01..09 + diff-A..D + 02a
+  reproduce: REPRODUCE.txt lists every command for a fresh agent to re-run the whole pack.
+
+## Final git state
+  branch  : feat/ob-verify (17 ahead / 0 behind main, clean, fast-forwardable)
+  commits : 15 original branch commits + 2 test-layer commits this cycle:
+              - ecd8551 test(smoke): F1 start-qemu non-TTY cov-gap lock + smoke_e2e F6 debounce gate
+              - <this commit> docs(plans): ob-verify merge-readiness evidence pack (6 criteria)
+  prod    : ob / lib/*.sh / tools/exit_contract.py UNCHANGED this cycle → reviewed-prod-diff ==
+            committed-prod-diff (criterion-4 integrity preserved). All test-layer/docs only.
+
+## Conclusion
+feat/ob-verify is merge-ready: all 6 objective criteria PASS with complete reproducible evidence.
+The branch introduces ob smoke (probe-only OOB smoke, ADR-0020) with multi-layer tests; the
+dual-axis audit + 2-blind-reviewer consensus surface no blocking issue; the only KEEP (F1) and
+the integration-revealed F6-debounce are landed as test-layer fixes; one deferred 🟡 (help-text
+back-reference) is recorded as a clean follow-up.

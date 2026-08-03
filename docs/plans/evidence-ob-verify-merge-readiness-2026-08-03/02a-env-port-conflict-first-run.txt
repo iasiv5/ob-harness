@@ -1,0 +1,51 @@
+# First integration run — environmental port-conflict evidence (NOT a branch defect)
+# Date: 2026-08-03, branch feat/ob-verify, cwd=/bmc/iasi/ob-harness-community
+# Command: bash tests/run_all.sh --full --integration (default ports)
+# Result: NOT ALL GREEN — ob_deploy_to_qemu.sh + smoke_e2e.sh FAILED at exit 3
+#         (port collision). Cause: UDP 127.0.0.1:2623 held by another user's QEMU.
+
+## Root cause (environmental, not branch)
+UDP 127.0.0.1:2623 is held by user 'mars' long-running QEMU (PID 1066659,
+b865g8-bytedange, up 4d23h, hostfwd=udp:127.0.0.1:2623-:623). This collides with
+gb200nvl-obmc's default IPMI host port 2623. Shared host; not a branch defect.
+
+## Reproducible verification of the port holder
+  $ ps -eo pid,user,etime,cmd | grep 'hostfwd=udp.*2623' | grep -v grep
+  1066659 mars 4-23:37:17 /bmc/mars/.../qemu-system-aarch64 -machine b865g8-bytedance ...
+           ... hostfwd=udp:127.0.0.1:2623-:623 ...
+  $ ss -lun | grep 2623
+  UNCONN 0 0 127.0.0.1:2623 0.0.0.0:*
+
+## Integration-layer verdicts from the first run (run_all output, indented = captured)
+
+1386:ok   ob_dev_integration_safety.sh
+2241:ok   init_dryrun_sanity.sh
+2242:FAIL ob_deploy_to_qemu.sh (rc=1)
+2519:ok   ob_dev.sh
+2520:FAIL smoke_e2e.sh (rc=1)
+2552:skip smoke_help_clarity.sh
+2553:skip build_e2e.exp (set OB_RUN_BUILD_E2E=1 to run real build)
+
+## The port-conflict error (from ob_deploy_to_qemu.sh's captured output)
+
+  |   | [0;31m[ERROR][0m Port(s) already in use:
+  |   |   [0;31mudp 2623 — used by process ?[0m
+  |   | 
+  |   |   Set a different port:
+  |   |     ob start-qemu gb200nvl-obmc --ssh-port <port> --redfish-port <port> --ipmi-port <port>
+  |   |   Or export:
+  |   |     export OB_QEMU_SSH_PORT=<port>
+--
+
+## Fast layers (protocol/unit/orchestration) — ALL PASSED in this run
+(no FAIL lines among protocol/unit/orchestration .sh/.exp verdicts; only the two
+ integration tests that start QEMU failed, both on the same UDP 2623 collision)
+
+## Mitigation applied (env-only, no prod change; authorized by master)
+Re-run integration with non-conflicting host ports via OB_QEMU_*_PORT env vars:
+  OB_QEMU_SSH_PORT=32223 OB_QEMU_REDFISH_PORT=32443 OB_QEMU_IPMI_PORT=32623
+(all three verified free: ss -ltn/lun shows no listener on 127.0.0.1:32223|32443|32623).
+ob start-qemu/deploy-to-qemu honor these env vars; smoke reads ports from the instance
+PID file, so custom ports flow through. host 32623 → guest 623 is a standard parallel
+offset (same guest service, different host port) — the probed semantics are unchanged.
+See 02-runall-full-integration.log for the GREEN re-run with custom ports.

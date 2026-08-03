@@ -1,0 +1,54 @@
+# Blind Reviewer A — verbatim verdict (independent, zero-context, model=opus)
+# Spawned: general-purpose subagent, fresh, given ONLY the 4 diffs + 4 prod files +
+# ADR-0020 + bestpractice_06 (global exit-code contract) + ob --help. No driver
+# conclusions, no cross-reference with Reviewer B. PRIMARY FOCUS: whether smoke's
+# exit-1 = α-truth vs the global exit-code contract constitutes a 🔴 blocking tension.
+# Verdict rubric: BLOCKER (🔴, should block merge) | NO-BLOCKER.
+
+I now have all the evidence I need. Let me consolidate my independent assessment.
+
+I personally read all 4 diff files, the 4 current full files, ADR-0020, bestpractice_06, and `ob --help`, and ran `exit_contract.py`, `shellcheck -x`, and traced the routing of `confirm_action` and `warn`/`error` flows. Here is my verdict.
+
+---
+
+**(A) `ob` (dispatch + help/OVERRIDE banner) — NO-BLOCKER**
+
+The `smoke)` case in `parse_args` mirrors the `init`/`build`/`start-qemu` cases exactly (positional machine arg, `[[ "$1" != -* ]]` guard). The `main()` dispatch of `smoke → cmd_smoke` is identical to peers. The `usage()` addition has the command line, a well-formatted `smoke Options` section, the OVERRIDE banner ("they OVERRIDE the global '1 = broken' line below"), and a one-line example. I verified the OVERRIDE banner's position is **above** the global `Exit Codes:` section, and that its wording explicitly cross-references "the global '1 = broken' line below" — so an agent reading help top-down encounters smoke's override BEFORE the global rule. A minor UX wart: global options like `--ssh-port`/`--dry-run` are silently accepted by `parse_args`'s global `while` loop but ignored by `cmd_smoke` (which reads ports from `$PIDFILE_*`, never checks `$DRY_RUN`). This is **documented behavior** ("honors NO port overrides ... nor --dry-run"), not a contract violation. Does not break build/boot/interface.
+
+---
+
+**(B) `lib/qemu_commands.sh` (cmd_smoke + 5 probes + the bundled start-qemu non-TTY change) — NO-BLOCKER**
+
+`cmd_smoke` is robust: preconditions 1 (machine arg) and 2 (running instance via `qemu_instance_is_alive` + stale-PID cleanup) both exit 3 with a remedy consistent with the global exit-3 contract (`error "Run 'ob start-qemu $MACHINE' first."`); ports are read from the PID file; the readiness gate is `_smoke_wait_ssh_tcp ... || true` (warn-only, no abort — correct α semantics: port-not-ready → system-ready assertion fails deterministically, no false signal); the 5 assertions run probe→judge; the α verdict returns 0 on all-pass, exit 1 on any fail. I verified the in-band α line is correctly routed to stderr: `warn()` defaults to stdout (`lib/util.sh:10`), so `warn "..." >&2` (line 613) correctly places the α message on stderr, collocated with the error elaboration. The 5 `_smoke_probe_*` primitives correctly use nameref outvars (testable), are `set -e`-safe (`|| rc=$?`), and never exit (correct exit-seam primitive form).
+
+The bundled `cmd_start_qemu` non-TTY change is **sound on its own merits**: previously, non-TTY `ob start-qemu <machine>` would call `confirm_action`, whose `read -r -p` fails on EOF (lib/util.sh:432) → returns 1 → `cmd_start_qemu` exits 1, blocking all CI/agent use. After, `if [[ -t 0 ]]` skips the confirmation + 3s countdown for fresh launches in non-TTY (logs an `info` only). The DESTRUCTIVE case — killing an existing instance — remains gated: the conflict block's non-TTY branch (lines 97-100) STILL exits 1 with "Use --force to kill and restart". So the change only makes the NON-destructive path more permissive. Bundling it into the smoke branch is justifiable: smoke's CI chain (`start-qemu → smoke → stop-qemu`) depends on it directly (commit 8df2dfb's message documents `smoke_e2e integration` was `integ_rc=1`, now `integ_rc=0`). This is a scope-hygiene nit (ideally its own PR), not a correctness/regression defect. Non-blocking. The unused `rc` in `_smoke_probe_redfish[_managers]` (SC2034) is the intentional `set -e`-safe idiom, consistent with the codebase.
+
+---
+
+**(C) `lib/smoke_assertions.sh` (new leaf-pure judge module) — NO-BLOCKER**
+
+All 5 `smoke_judge_*` functions are leaf-pure (never `exit`, only `return 0/1`), as designed. The judgments use **structural markers** (`@Redfish.Copyright`/`RedfishVersion`/`ServiceRoot.v1` for root; `ManagerType`/`"UUID"`/`#Manager` for Managers), not pure HTTP 200 — robust defensive design against placeholder/error-page false-passes. The `smoke_judge_redfish_swversion` regex `([^"]+)` requires a non-empty capture, preventing `"":""` empty-string false-passes. I ran `python3 tools/exit_contract.py` → X/Y/Z all PASS, confirming `smoke_assertions.sh` is genuinely leaf-pure and its registration (empty exception set) is justified. No correctness defect.
+
+---
+
+**(D) `tools/exit_contract.py` (1-line registration) — NO-BLOCKER**
+
+Single-line addition: `'smoke_assertions.sh': set()` to `LEAF_EXIT_EXCEPTIONS_BY_BASENAME`. I verified the Y-check passes because the module has NO exits (empty exception set == no leaf function exits). Consistent with surrounding entries' pattern. No impact on the contract scanner's behavior.
+
+---
+
+**(CROSS) PRIMARY FOCUS — α exit-1 vs global exit-code contract — NO-BLOCKER**
+
+The tension is **real** — the global contract (`bestpractice_06` table + global `Exit Codes` section in `ob --help`) literally says `1 = Failure — broken`, while smoke exit 1 is neither "broken" nor "usage error". But it is **documented + mitigated + sound under constraint**:
+
+1. **The OVERRIDE banner** (`ob --help` smoke Options) explicitly declares it overrides the global line, and defines the α semantics precisely ("reports the BMC interface's ACTUAL state ... NOT 'smoke is broken'"). Positioned ABOVE the global section.
+2. **The in-band α stderr line** printed at exit-1 time (`qemu_commands.sh:613`, correctly redirected `>&2` since `warn` defaults to stdout) — the most robust mitigation, present at the moment an agent acts, regardless of `--help` reference. An agent following `bestpractice_06` step 4 ("先读 ob 自己的报错" — read ob's own error output) sees it.
+3. **ADR-0020** documents the trade-off and its acceptance explicitly ("verdict α 的代价（已接受）").
+
+The realistic misuse scope is bounded: (a) for the **CI/gate primary use case**, smoke is invoked via `tools/smoke_diff.py` / `smoke_regression.sh` (per ADR-0020 consequences), which compare baseline-vs-current — α is handled by the diff engine, not raw `$?`, so no misuse here. (b) For **interactive/agent use**, the in-band α line + ✗ rows + RAW responses make diagnosis unambiguous. (c) The only misuse path is an agent that captures ONLY `$?` and discards all stdout/stderr — a degenerate agent `bestpractice_06` doesn't target (it explicitly instructs agents to read ob's output).
+
+The design is also **constrained**: the contract's alphabet is `{0,1,2,3}`; exit 2 (user cancel), exit 3 (precondition missing — there IS an instance running), exit 0 (success — there ARE ✗ rows) are all wrong for "the BMC reported a ✗". Exit 1 is the only code that expresses "something is wrong". The α semantics are a reasonable reinterpretation of that code within smoke's scope. I would consider adding a back-reference footnote in the global `Exit Codes` section (an agent that grep-only jumps to that section would miss the smoke caveat), but this is a non-blocking improvement. "I would design it differently" is not within the blocker bar.
+
+---
+
+SUMMARY: blockers=0 non-blockers=5

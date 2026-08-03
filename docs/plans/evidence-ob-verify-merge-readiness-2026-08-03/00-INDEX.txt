@@ -1,0 +1,44 @@
+# 00-INDEX.txt — ob-verify merge-readiness evidence pack (2026-08-03)
+#
+# Directory: docs/plans/evidence-ob-verify-merge-readiness-2026-08-03/
+# Branch  : feat/ob-verify (15 ahead / 0 behind main, clean, fast-forwardable)
+# Produced: 2026-08-03 by the ob-verify merge-readiness driver agent.
+# Reproduce: see REPRODUCE.txt (every command listed for a fresh agent to re-run).
+
+## File map (per criterion)
+
+### Criterion 1 — static read-only gate
+  01-static-gate.txt            OB_CHECK_READONLY=1 OB_CHECK_SKIP_TESTS=1 tools/ob_check.sh → rc=0, ALL GREEN PASS=12
+
+### Criterion 2 — full tests incl. integration
+  02a-env-port-conflict-first-run.txt   first run (default ports) — FAILED on env UDP-2623 collision (mars's QEMU); documents the non-defect env issue + mitigation
+  02-runall-full-integration.log        GREEN re-run with non-conflicting ports (32223/32443/32623) + marker rc=0 + .pids/ empty
+
+### Criterion 3 — exit-contract
+  03-exit-contract.txt          python3 tools/exit_contract.py → rc=0, X/Y/Z PASS
+
+### Criterion 4 — blind reviewer consensus (2 independent, opus, zero-context)
+  diff-A-ob.txt                 git diff main...HEAD -- ob (reviewer input)
+  diff-B-qemu_commands.txt      git diff main...HEAD -- lib/qemu_commands.sh (reviewer input)
+  diff-C-smoke_assertions.txt   git diff main...HEAD -- lib/smoke_assertions.sh (reviewer input)
+  diff-D-exit_contract.txt      git diff main...HEAD -- tools/exit_contract.py (reviewer input)
+  06-reviewer-A-verdict.txt     Reviewer A — verbatim verdict (blockers=0 non-blockers=5)
+  07-reviewer-B-verdict.txt     Reviewer B — verbatim verdict (blockers=0 non-blockers=5)
+  (no 08 arbiter — consensus reached, no split)
+
+### Criterion 5 — dual-axis audit (over-eng × cov-gap)
+  05-dual-axis-audit-findings.md   findings table F1-F4 (F1 KEEP fix-landed; F2-F4 DROP) + coverage matrix
+  09-ob_check-after-f1-fix.txt     ob_check re-green after landing the F1 fix (tests/protocol/start_qemu_noninteractive.sh)
+
+### Criterion 6 — this archive
+  00-INDEX.txt                  (this file)
+  REPRODUCE.txt                 every command, for a fresh agent to reproduce the whole pack
+  MANIFEST.txt                  per-criterion pass evidence summary (final deliverable)
+
+## Criterion verdict summary (see MANIFEST.txt for full per-criterion evidence)
+  C1 static gate       : PASS (rc=0, PASS=12)
+  C2 full integration  : PASS (re-run with non-conflicting ports: ALL GREEN, marker rc=0, .pids/ empty)
+  C3 exit-contract     : PASS (rc=0, X/Y/Z green)
+  C4 blind reviewers   : PASS (2/2 reviewers, 0 🔴 blockers each; consensus)
+  C5 dual-axis audit   : PASS (1 KEEP F1 fix landed + ob_check re-green; F2-F4 DROP)
+  C6 archive           : this directory + MANIFEST.txt
