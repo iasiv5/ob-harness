@@ -113,13 +113,27 @@ http_port=none
 "
 }
 
-# === (1) no machine arg → exit 3 ===
+# === (1) no machine arg, no running instance → exit 3 + start-qemu nudge ===
 rc=0; out="$(_run_smoke "" "" "" 2>&1)" || rc=$?
 assert_eq "(1) no machine arg → exit 3" "$rc" "3"
+assert_contains "(1) no-instance path nudges to ob start-qemu" "$out" "start-qemu"
 
 # === (2) machine given, no PID file → exit 3 ===
 rc=0; out="$(_run_smoke "romulus" "" "" 2>&1)" || rc=$?
 assert_eq "(2) machine + no PID file → exit 3" "$rc" "3"
+
+# === (1b) no machine arg BUT a running instance exists → exit 3 AND smoke lists it ===
+# _run_smoke ties the .pid filename to its machine arg; for the empty-MACHINE case we
+# seed the stub workspace with the alive instance's PID file by hand, then run MACHINE="".
+_setup_alive_instance "romulus" 0
+printf '%s' "$PID_CONTENT" > "$TMP/workspace/qemu-bin/.pids/romulus.pid"
+rc=0; out="$(_run_smoke "" "" "$DB" 2>&1)" || rc=$?
+assert_eq "(1b) no machine arg + running instance → exit 3" "$rc" "3"
+assert_contains "(1b) smoke lists the running instance as a smokable target" "$out" "romulus"
+kill "$FAKE_PID" 2>/dev/null || true
+kill "$LISTENER_PID" 2>/dev/null || true
+rm -f "$TMP/workspace/qemu-bin/.pids/romulus.pid"
+FAKE_PID=""; LISTENER_PID=""
 
 # === (3) running instance + all 5 pass → exit 0 ===
 _setup_alive_instance "romulus" 0
