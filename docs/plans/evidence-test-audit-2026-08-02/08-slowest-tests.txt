@@ -1,0 +1,9 @@
+=== slowest protocol .sh tests ===
+19.54 tests/protocol/exit_codes.sh
+ 5.07 tests/protocol/ob_check_smoke.sh
+ 0.54 tests/protocol/smoke_exit_contract.sh
+ 0.52 tests/protocol/premirrors_injection.sh
+ 0.35 tests/protocol/test_runner_contract.sh
+ 0.27 tests/protocol/qemu_launch_profile_remedy.sh
+ 0.24 tests/protocol/status_machine_state.sh
+ 0.23 tests/protocol/bitbake_env_entry_contract.sh

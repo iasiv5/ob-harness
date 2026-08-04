@@ -1,0 +1,8 @@
+# Reviewer A (synchronous, opus, zero-shared-context) — independent verdicts
+# Re-ran all cited greps/reads before deciding.
+F1: KEEP — grep tests/ for the wrapper is empty and the orchestration test calls only the two leaf functions, so the wrapper's flock-busy (L230-234) and acquire-fail→rm-tmp (L222-225) branches are genuinely untested while matrix L81 lists the wrapper as covered.
+F2: KEEP — The sole tests/ reference is a negative structural assertion, no .exp exercises the function (matrix L82's "非 TTY exit 3 仍靠 .exp" is disproven by grep), so the non-TTY-exit-3 / prompt-cancel-exit-1 / resolve-error-loop branches are real untested production contracts.
+F3: KEEP — Both files assert the identical "build empty workspace → exit 3" contract through the same parse_args build → cmd_build dispatch (smoke_ob.sh:36 even labels it the "baseline"), the four non-TTY-guard cases in exit_codes.sh are conceded as distinct and retained, and the per-case cost (~1.5s sourcing) is measurable.
+F4: KEEP — CI runs run_all.sh (L20) and the exact OB_CHECK_SKIP_TESTS=1 OB_CHECK_READONLY=1 bash tools/ob_check.sh command (L28) as peer steps, so ob_check_smoke.sh's single assertion is byte-identical to CI step L28 and adds no catching power there; the 5.07s/8.8% cost is measurable and option (b) keep-and-document is zero-risk.
+F5: KEEP — coverage_radar.py L86-89 has no allowlist and prints every matrix-declared/radar-absent name as a "typo/过期名待修" candidate, so the 5 surface-gate names (verified absent from lib/ob, enforced by ob_check.sh §1b) generate recurring false-positive noise on every cross-check run.
+SUMMARY: kept=5 dropped=0

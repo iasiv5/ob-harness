@@ -1,0 +1,291 @@
+diff --git a/lib/qemu_commands.sh b/lib/qemu_commands.sh
+index 57ca187..4168880 100644
+--- a/lib/qemu_commands.sh
++++ b/lib/qemu_commands.sh
+@@ -1,5 +1,5 @@
+ #!/usr/bin/env bash
+-# lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu.
++# lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu/cmd_smoke). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu / QEMU instance.
+ # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
+ # 形态对照: L1 exit-seam 命令族(顶层命令直接 exit, 无 dispatcher 收口), 区别于 lib/devtool_subcmd.sh 的 L3 leaf-pure handler(return exit-code, 由 cmd_dev 收口 exit)。
+ 
+@@ -116,24 +116,31 @@ cmd_start_qemu() {
+     echo "  Serial log: $QEMU_LAUNCH_SERIAL_LOG"
+     echo ""
+ 
+-    # ── Safety confirmation (same pattern as ob init / ob build) ──
+-    local ca_rc=0
+-    confirm_action "start QEMU for" "$MACHINE" || ca_rc=$?
+-    case "$ca_rc" in
+-        0) ;;
+-        2) warn "QEMU start cancelled by user."; exit 2 ;;
+-        *) exit 1 ;;
+-    esac
+-    echo ""
+-    info "QEMU start confirmed for machine '$MACHINE'."
++    # ── Safety confirmation（仅交互 TTY）──
++    # 非 TTY(CI/agent) 跳过确认直接起, 对齐 CONTEXT confirmation banner「正常起 QEMU
++    # 一律跳过、无需 --force」—— 起新 QEMU 非路径风险; banner 只留给 kill 既有实例
++    # (上方 conflict 块, 非 TTY 需 --force)。使 `start-qemu → smoke → stop-qemu` 在 CI 非交互跑通。
++    if [[ -t 0 ]]; then
++        local ca_rc=0
++        confirm_action "start QEMU for" "$MACHINE" || ca_rc=$?
++        case "$ca_rc" in
++            0) ;;
++            2) warn "QEMU start cancelled by user."; exit 2 ;;
++            *) exit 1 ;;
++        esac
++        echo ""
++        info "QEMU start confirmed for machine '$MACHINE'."
+ 
+-    # ── Emergency escape window ──
+-    warn "Launching QEMU in 3 seconds..."
+-    echo ""
+-    for _i in 3 2 1; do
+-        echo -e "  ${_i}..."
+-        sleep 1
+-    done
++        # ── Emergency escape window（仅交互） ──
++        warn "Launching QEMU in 3 seconds..."
++        echo ""
++        for _i in 3 2 1; do
++            echo -e "  ${_i}..."
++            sleep 1
++        done
++    else
++        info "Non-interactive start: launching QEMU for '$MACHINE' (no confirmation)."
++    fi
+ 
+     verbose "Command: setsid ${QEMU_CMD[*]}"
+ 
+@@ -379,3 +386,230 @@ cmd_deploy_to_qemu() {
+     qemu_execute_launch        # setsid + PID 写 + BMC-ready 等待(超时仅 warn 不中止) + hostkey + summary
+     # 到此返回 0(QEMU 启动即成功, 约束 5); setsid 失败时 execute_launch 自己退出 1
+ }
++
++# ════════════════════════════════════════════════════════════════════════════
++# ob smoke — probe-only smoke prober (OOB smoke)。术语见 CONTEXT.md QEMU instance / exit-code 契约.
++# 形态对照 cmd_start_qemu/cmd_deploy_to_qemu: smoke 不拥有 QEMU 生命周期——不 bring-up
++#   (不调 qemu_prepare_launch/qemu_execute_launch)、不 teardown、无 EXIT trap。它探针一个 RUNNING
++#   instance(由 ob start-qemu 起好), 读 PID 文件的真实转发端口(更深接口, 反映实际跑的实例),
++#   跑 Redfish(root/Managers/SoftwareVersion)/IPMI/system-ready 五条断言(α: 纯 truth-reporter, 零 per-machine 期望画像/baseline)。
++# 断言判函数 leaf-pure(lib/smoke_assertions.sh); probe 采集经 nameref outvars(非 module 全局,
++#   对照 resolve_command_machine 的 nameref 范式, 使 probe 可被 protocol 层直接单测)。
++# ════════════════════════════════════════════════════════════════════════════
++
++# _smoke_tcp_probe <port> — bash /dev/tcp 探 TCP 端口可连(sshpass-independent, timeout 3s)。
++# return 0=可连 / 非0=拒绝或超时。cmd_smoke 私有(exit-seam 内, 有 I/O 副作用, 不 exit)。
++_smoke_tcp_probe() {
++    local port="$1"
++    timeout 3 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" 2>/dev/null
++}
++
++# _smoke_wait_ssh_tcp <port> — BMC 就绪门(sshpass-independent, smoke 自有)。有界轮询 TCP 端口可连。
++# 不中止 smoke: 超时只 warn, 让断言自己判 deterministic pass/fail(端口未就绪 → system-ready 断言 fail)。
++# 理由: start-qemu 的 BMC-ready 等待是 sshpass-dependent 且 warn-only, smoke 必须自己 gate 探针时机。
++_smoke_wait_ssh_tcp() {
++    local port="$1"
++    local attempts=0
++    local max_attempts="${OB_SMOKE_READY_ATTEMPTS:-30}"
++    info "Waiting for BMC SSH port $port to accept connections (up to $((max_attempts*5))s)..."
++    while [[ $attempts -lt $max_attempts ]]; do
++        attempts=$((attempts + 1))
++        if _smoke_tcp_probe "$port"; then
++            info "BMC SSH port $port connectable after attempt $attempts (~$((attempts*5))s)"
++            return 0
++        fi
++        printf "\r  Waiting... attempt %d/%d" "$attempts" "$max_attempts"
++        sleep 5
++    done
++    echo ""
++    warn "BMC SSH port $port not connectable within $((max_attempts*5))s; running assertions anyway."
++    return 1
++}
++
++# _smoke_probe_redfish <port> <code_ref> <body_ref> — curl 取 Redfish 根, 经 nameref 回填 code/body。
++# nameref 回填(非 _VF_* 全局), protocol 可测(对照 resolve_command_machine nameref 范式)。
++# curl 整体失败(连接拒绝)→ code 留 "000", body 空。不 exit; set -e-safe(|| rc=$?)。
++_smoke_probe_redfish() {
++    local port="$1"
++    local -n _spr_code="$2"
++    local -n _spr_body="$3"
++    _spr_code="000"; _spr_body=""
++    local out="" rc=0
++    out=$(curl -sk -u root:0penBmc -w $'\n__OB_HTTP__%{http_code}' \
++          "https://localhost:$port/redfish/v1" 2>/dev/null) || rc=$?
++    if [[ -n "$out" ]]; then
++        _spr_code="${out##*$'\n'}"        # 末行 = __OB_HTTP__<code>
++        _spr_code="${_spr_code#__OB_HTTP__}"
++        _spr_body="${out%$'\n'*}"          # 去末行 = body
++    fi
++    # curl 整体失败 → 维持 "000"(judge 据此判 fail)
++    return 0
++}
++
++# _smoke_probe_redfish_managers <port> <code_ref> <body_ref> — curl 取 Redfish Managers/bmc
++# (OpenBMC 标准 manager id, 全 image 通用, 非 per-machine 知识), 经 nameref 回填 code/body。
++# 形态对照 _smoke_probe_redfish; 一次 probe 喂 managers + swversion 两个 judge(深一层接口)。
++# curl 整体失败(连接拒绝)→ code "000", body 空。不 exit; set -e-safe(|| rc=$?)。
++_smoke_probe_redfish_managers() {
++    local port="$1"
++    local -n _sprm_code="$2"
++    local -n _sprm_body="$3"
++    _sprm_code="000"; _sprm_body=""
++    local out="" rc=0
++    out=$(curl -sk -u root:0penBmc -w $'\n__OB_HTTP__%{http_code}' \
++          "https://localhost:$port/redfish/v1/Managers/bmc" 2>/dev/null) || rc=$?
++    if [[ -n "$out" ]]; then
++        _sprm_code="${out##*$'\n'}"        # 末行 = __OB_HTTP__<code>
++        _sprm_code="${_sprm_code#__OB_HTTP__}"
++        _sprm_body="${out%$'\n'*}"          # 去末行 = body
++    fi
++    # curl 整体失败 → 维持 "000"(judge 据此判 fail)
++    return 0
++}
++
++# _smoke_probe_ipmi <port> <rc_ref> <out_ref> — 一条 ipmitool mc info, 经 nameref 回填 rc/out。
++_smoke_probe_ipmi() {
++    local port="$1"
++    local -n _spi_rc="$2"
++    local -n _spi_out="$3"
++    _spi_rc=0; _spi_out=""
++    _spi_out=$(ipmitool -I lanplus -H localhost -p "$port" -U root -P 0penBmc mc info 2>&1) || _spi_rc=$?
++    return 0
++}
++
++# _smoke_probe_ssh_tcp <port> <rc_ref> — TCP 探 SSH 转发端口, 经 nameref 回填 rc。
++_smoke_probe_ssh_tcp() {
++    local port="$1"
++    local -n _sps_rc="$2"
++    _sps_rc=0
++    _smoke_tcp_probe "$port" || _sps_rc=$?
++    return 0
++}
++
++cmd_smoke() {
++    detect_harness_root
++
++    # ── 前置 1: machine arg 必填(MVP: 无交互选号——probe-only 命令, 选号不在 scope; 给了 remedy 即可) ──
++    if [[ -z "$MACHINE" ]]; then
++        error "No machine specified."
++        error "Specify a machine: ob smoke <machine>"
++        exit 3
++    fi
++
++    # ── 前置 2: RUNNING QEMU instance(smoke 不 bring-up, 只探活实例——绝不探死端口, 防假"BMC 坏") ──
++    derive_qemu_paths
++    if ! qemu_instance_load "$MACHINE"; then
++        error "No QEMU instance running for '$MACHINE' (no PID file)."
++        error "Run 'ob start-qemu $MACHINE' first."
++        exit 3
++    fi
++    # if 包裹 is_alive: 0=running/1=exited/2=recycled 多态返回在 set -euo 下裸调会 abort(同 cmd_start_qemu 注)。
++    # NOT alive → clean stale PID + exit 3 + 同 remedy(stale 也是"没在跑", 让 caller 先 start-qemu)。
++    if ! qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
++        qemu_instance_clean_stale "$MACHINE"
++        error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
++        error "Run 'ob start-qemu $MACHINE' first."
++        exit 3
++    fi
++
++    # ── 从实例 PID 文件读真实转发端口(不假设默认值, 命中真端口; smoke 不接受 port override) ──
++    local s_ssh="$PIDFILE_SSH_PORT"
++    local s_redfish="$PIDFILE_REDFISH_PORT"
++    local s_ipmi="$PIDFILE_IPMI_PORT"
++    echo ""
++    info "Smoke-probing forwarded ports: SSH $s_ssh / Redfish $s_redfish / IPMI $s_ipmi (UDP)"
++
++    # ── BMC 就绪门(sshpass-independent TCP 轮询 SSH 端口; smoke own, 不依赖 start-qemu 的 sshpass 门) ──
++    _smoke_wait_ssh_tcp "$s_ssh" || true
++
++    # ── 跑 5 条断言(probe → judge; judge 向 stdout 打 ✓/✗ 行 + return 0/1) ──
++    # Redfish(root + Managers + SoftwareVersion)/ IPMI / system-ready; Managers probe 喂后两条 Redfish judge。
++    echo ""
++    step_header "Smoke assertions for '$MACHINE'"
++    local -i total=0 passed=0
++    local -a failed_names=() failed_raws=()
++    # probe outvars(经 nameref 回填; 名字与 probe 内 nameref local 不撞, 防 bash 循环引用告警)
++    local p_redfish_code="" p_redfish_body=""
++    local p_mgr_code="" p_mgr_body=""
++    local p_ipmi_rc="" p_ipmi_out=""
++    local p_ssh_rc=""
++
++    # Redfish 根可达
++    total=$((total+1))
++    _smoke_probe_redfish "$s_redfish" p_redfish_code p_redfish_body
++    local r1=0; smoke_judge_redfish_root "$p_redfish_code" "$p_redfish_body" || r1=$?
++    if [[ $r1 -eq 0 ]]; then passed=$((passed+1)); else
++        failed_names+=("Redfish root reachable")
++        failed_raws+=("interface: Redfish @ https://localhost:$s_redfish/redfish/v1"$'\n'"HTTP code: $p_redfish_code"$'\n'"RAW body:"$'\n'"$p_redfish_body")
++    fi
++
++    # Redfish Managers 可达(深一层接口: Managers/bmc 资源; 一次 probe 喂 managers + swversion 两 judge)
++    total=$((total+1))
++    _smoke_probe_redfish_managers "$s_redfish" p_mgr_code p_mgr_body
++    local r4=0; smoke_judge_redfish_managers "$p_mgr_code" "$p_mgr_body" || r4=$?
++    if [[ $r4 -eq 0 ]]; then passed=$((passed+1)); else
++        failed_names+=("Redfish Managers reachable")
++        failed_raws+=("interface: Redfish @ https://localhost:$s_redfish/redfish/v1/Managers/bmc"$'\n'"HTTP code: $p_mgr_code"$'\n'"RAW body:"$'\n'"$p_mgr_body")
++    fi
++
++    # Redfish SoftwareVersion(BMC 上报固件版本 — 功能态断言; 复用 managers probe body)
++    total=$((total+1))
++    local r5=0; smoke_judge_redfish_swversion "$p_mgr_body" || r5=$?
++    if [[ $r5 -eq 0 ]]; then passed=$((passed+1)); else
++        failed_names+=("Redfish SoftwareVersion reported")
++        failed_raws+=("interface: Redfish Managers body @ https://localhost:$s_redfish/redfish/v1/Managers/bmc"$'\n'"RAW body:"$'\n'"$p_mgr_body")
++    fi
++
++    # IPMI over LAN
++    total=$((total+1))
++    _smoke_probe_ipmi "$s_ipmi" p_ipmi_rc p_ipmi_out
++    local r2=0; smoke_judge_ipmi_lan "$p_ipmi_rc" "$p_ipmi_out" || r2=$?
++    if [[ $r2 -eq 0 ]]; then
++        passed=$((passed+1))
++    else
++        failed_names+=("IPMI over LAN works")
++        local _ipmi_raw="interface: IPMI @ localhost:$s_ipmi/UDP (ipmitool mc info)"$'\n'"ipmitool return code: $p_ipmi_rc"$'\n'"RAW output:"$'\n'"$p_ipmi_out"
++        # Generic (non per-machine) diagnostic: a non-zero ipmitool rc on a reachable
++        # Redfish BMC most often means the image itself lacks an RMCP+/LAN responder.
++        # Phrased as generic Redfish/IPMI protocol knowledge (not naming any machine).
++        if [[ "$p_ipmi_rc" != "0" ]]; then
++            _ipmi_raw+=$'\n'"possible cause: image may lack an RMCP+/LAN responder (phosphor-ipmi-netbridged not installed/enabled) — image-side, not a smoke defect; Redfish remains the canonical probe."
++        fi
++        failed_raws+=("$_ipmi_raw")
++    fi
++
++    # System ready signal(SSH 端口 TCP 可连)
++    total=$((total+1))
++    _smoke_probe_ssh_tcp "$s_ssh" p_ssh_rc
++    local r3=0; smoke_judge_system_ready "$p_ssh_rc" || r3=$?
++    if [[ $r3 -eq 0 ]]; then passed=$((passed+1)); else
++        failed_names+=("System ready signal (SSH port TCP-connectable)")
++        failed_raws+=("interface: SSH TCP @ localhost:$s_ssh"$'\n'"tcp connect rc: $p_ssh_rc"$'\n'"(port not accepting connections — BMC sshd may still be booting)")
++    fi
++
++    # ── α verdict: 纯 truth-reporter。ALL pass → return 0; ANY fail → 打 breakdown + RAW, exit 1 ──
++    # 无 --allow-fail / 无 per-machine expected-profile / 无 baseline: 回归检测是 caller 的事(零 per-machine 知识)。
++    echo ""
++    if [[ $passed -eq $total ]]; then
++        echo -e "${GREEN}Smoke summary: $passed/$total assertions passed${NC}"
++        info "ob smoke: all smoke assertions passed for '$MACHINE'."
++        return 0                # smoke 不拥有 QEMU → 不 teardown, 直接 return
++    fi
++    echo -e "${RED}Smoke summary: $passed/$total assertions passed${NC}"
++    echo ""
++    error "Failed assertions (${#failed_names[@]}):"
++    local i
++    for (( i=0; i<${#failed_names[@]}; i++ )); do
++        echo -e "  ${RED}✗ ${failed_names[$i]}${NC}"
++        echo    "----- RAW response (for localization) -----"
++        echo    "${failed_raws[$i]}"
++        echo    "-------------------------------------------"
++    done
++    echo ""
++    error "ob smoke: smoke assertions failed for '$MACHINE' (see ✗ rows + RAW responses above)."
++    # α 重申(deliverable B): 在 exit 1 当下向 stderr 喂一行 α 语义, 防 caller 据全局
++    # "1 = broken" 误判 smoke 坏了。warn 默认走 stdout, 显式 >&2 落 stderr(stderr 不污染
++    # smoke 的 stdout 真相报告)。不动 exit 值(仍 1, ∈{0,1,2,3})、不加 trap、不改 judge。
++    warn "exit 1 here is the α truth-reporter contract: the ✗ rows above report the BMC interface's ACTUAL state, NOT a smoke command failure — read the ✗ rows to see which interface and why (debug the BMC interface, not smoke)." >&2
++    exit 1                       # smoke 不拥有 QEMU → 无 EXIT trap, 直接 exit 1
++}

@@ -1,0 +1,20 @@
+$ bash tools/ob_check.sh (FULL, after F1+F6-debounce fixes)
+(captured 2026-08-03T13:11:46Z)
+✓ extract_funcs ob GAPS=0
+✓ extract_funcs lib 三段全清(32 个 lib 文件)
+✓ machine-state public records surface removed
+✓ machine selection legacy surface removed
+✓ detect_runtime_git_host 生产调用全 direct call
+✓ bare mirror state owned by module
+✓ qemu_binary leaf-pure 原语无 exit
+✓ obmc-phosphor-image 直调全经 build_obmc_image
+✓ 交互 prompt 文案契约一致
+✓ know-how 长文件 TL;DR 门禁通过
+✓ shellcheck baseline 一致
+✓ exit-contract ok (X/Y/Z green; Y: PASS)
+✓ run_all ALL GREEN
+  注: 本次跑 run_all 快速子集(.sh);未跑 .exp/integration;改了交互/退出码请 tests/run_all.sh --full
+✓ know-how TL;DR 无漂移信号
+
+ALL GREEN (PASS=14)
+===RC=0===

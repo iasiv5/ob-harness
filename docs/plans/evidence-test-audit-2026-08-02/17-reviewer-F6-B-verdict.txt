@@ -1,0 +1,4 @@
+# Reviewer F6-B (synchronous, opus, zero-shared-context — fresh, did not see F1-F5 reviewers) — F6 verdict
+# Re-ran cited greps + read both integration logs (13, 15) before deciding.
+F6: DROP — the headline manifestation evidence ("3/3 HTTP 500 failures") is contradicted by the only actual full-integration log (13-runall-full-integration.log: ALL GREEN, smoke rc=1 with Redfish HTTP 200 x3, α-truth accepted; grep -cE 'HTTP 500' over both logs = 0), and the post-fix log (15) did not exercise smoke_e2e at review time, so neither the alleged race nor the fix's necessity is evidence-backed from the pack (though the underlying SSH-only-gate static observation is technically accurate).
+SUMMARY (F6 only): kept=0 dropped=1

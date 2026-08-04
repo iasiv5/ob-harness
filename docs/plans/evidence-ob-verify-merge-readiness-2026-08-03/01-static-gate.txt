@@ -1,0 +1,19 @@
+$ OB_CHECK_READONLY=1 OB_CHECK_SKIP_TESTS=1 bash tools/ob_check.sh
+(captured 2026-08-03T12:23:49Z)
+✓ extract_funcs ob GAPS=0
+✓ extract_funcs lib 三段全清(32 个 lib 文件)
+✓ machine-state public records surface removed
+✓ machine selection legacy surface removed
+✓ detect_runtime_git_host 生产调用全 direct call
+✓ bare mirror state owned by module
+✓ qemu_binary leaf-pure 原语无 exit
+✓ obmc-phosphor-image 直调全经 build_obmc_image
+✓ 交互 prompt 文案契约一致
+✓ know-how 长文件 TL;DR 门禁通过
+✓ shellcheck baseline 一致
+✓ exit-contract ok (X/Y/Z green; Y: PASS)
+• skip run_all (OB_CHECK_SKIP_TESTS=1)
+• skip know-how TL;DR 一致性预警 (advisory)
+
+ALL GREEN (PASS=12)
+===RC=0===

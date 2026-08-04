@@ -1,0 +1,2318 @@
+=== protocol ===
+ok   init dry-run rc
+ok   init dry-run does not source setup
+ok   dep graph dry-run rc
+ok   dep graph dry-run does not source setup
+ok   dep graph dry-run does not call bitbake
+ok   build dry-run rc
+ok   build dry-run does not source setup
+ok   build dry-run does not call bitbake
+ok   init setup tolerates unset vars and restores nounset
+ok   init missing local.conf exits 1 (rc=1)
+ok   qemu fallback rc
+ok   qemu fallback calls bitbake once
+ok   qemu fallback suppresses setup stderr
+ok   qemu fallback suppresses bitbake stderr
+ok   qemu empty bitbake output exits 1
+ok   list machines rc
+ok   list machines parses stderr romulus
+ok   list machines parses stderr ast2600
+
+PASS=18 FAIL=0
+ok   bitbake_env_entry_contract.sh
+ok   bitbake_env module exists
+ok   bitbake_env registered leaf-pure
+ok   bitbake_env has no exit command
+ok   repo machine list uses bitbake_env helper
+ok   qemu profile uses bitbake_env query
+ok   init_bitbake_env keeps current-shell setup
+ok   generate_dep_graph keeps current-shell setup
+ok   cmd_build keeps current-shell setup
+
+PASS=8 FAIL=0
+ok   bitbake_env_structure.sh
+ok   cmd_build no inline source setup
+ok   init_bitbake_env no inline source setup
+ok   generate_dep_graph no inline source setup
+ok   build_env_enter must call source setup
+ok   extract_shell_function missing target fails
+
+PASS=5 FAIL=0
+ok   build_env_enter_structure.sh
+ok   build <machine> without init-done rc
+ok   build <machine> without init-done remedy
+ok   build <machine> remedy is single-command
+ok   build <machine> snapshot-only rc
+ok   build <machine> snapshot-only remedy
+ok   build <machine> legacy lock only rc
+ok   build <machine> legacy lock only remedy
+ok   build <machine> dry-run rc
+ok   build without machine non-TTY rc
+ok   build without machine non-TTY remedy
+
+PASS=10 FAIL=0
+ok   build_noninteractive.sh
+ok   deploy empty rc=3
+ok   deploy empty diagnosis
+ok   deploy empty remedy
+ok   deploy nontty rc=3
+ok   deploy nontty diagnosis
+ok   deploy nontty remedy
+
+PASS=6 FAIL=0
+ok   deploy_to_qemu_machine_selection.sh
+ok   intake forbids devtool_modify_run
+ok   intake forbids devtool_reset_run
+ok   intake forbids devtool_finish_run
+ok   intake forbids devtool_build_run
+ok   intake forbids devtool_search_refresh
+ok   intake forbids devtool_search_read
+ok   intake forbids dev_dispatch_subcmd
+ok   intake forbids machine_state_
+
+PASS=8 FAIL=0
+ok   devtool_intake_surface.sh
+ok   init dry-run non-TTY without repo (rc=3)
+ok   build empty workspace (rc=3)
+ok   build <machine> positional accepted (empty ws) (rc=3)
+ok   parse_args assigns MACHINE for build <machine>
+ok   status empty workspace (rc=0)
+ok   start-qemu missing init-done (rc=3)
+ok   stop-qemu no instances (rc=0)
+ok   start-qemu empty workspace (rc=3)
+ok   build candidates but non-TTY (rc=3)
+ok   start-qemu candidates but non-TTY (rc=3)
+ok   stop-qemu candidates but non-TTY (rc=3)
+ok   init candidates but non-TTY (rc=3)
+ok   menu non-TTY exits 3 (rc=3)
+
+PASS=13 FAIL=0
+ok   exit_codes.sh
+ok   cmd_init 清理 recipes cache(调 devtool_recipes_clear_cache)
+
+PASS=1 FAIL=0
+ok   init_clears_recipes_cache.sh
+ok   intake forbids exit_on_user_cancel
+ok   intake forbids generate_dep_graph
+ok   intake forbids clone_sub_repos
+ok   intake forbids generate_machine_snapshot
+ok   intake forbids generate_build_config
+ok   intake forbids print_report
+ok   intake forbids machine_state_clear_init_progress
+ok   intake forbids devtool_recipes_clear_cache
+ok   intake forbids machine_state_mark_init_done
+ok   intake forbids machine_selection_guard
+
+PASS=10 FAIL=0
+ok   init_intake_surface.sh
+ok   init clear failure rc
+ok   init clear failure message
+ok   init mark failure rc
+ok   init mark failure message
+ok   init recipe cache clear failure rc
+ok   init recipe cache clear failure message
+
+PASS=6 FAIL=0
+ok   init_machine_state_errors.sh
+ok   extracted cmd_build body
+ok   extracted cmd_dev body
+ok   extracted cmd_deploy_to_qemu body
+ok   cmd_build resolve_command_machine calls
+ok   cmd_dev resolve_command_machine calls
+ok   cmd_deploy_to_qemu resolve_command_machine calls
+ok   cmd_build drops inline machine_selection_guard
+ok   cmd_dev drops inline machine_selection_guard
+ok   cmd_deploy_to_qemu drops inline machine_selection_guard
+ok   cmd_build drops inline pick_machine
+ok   cmd_dev drops inline pick_machine
+ok   cmd_deploy_to_qemu drops inline pick_machine
+ok   cmd_build drops inline machine_state_is_initialized
+ok   cmd_dev drops inline machine_state_is_initialized
+ok   cmd_deploy_to_qemu drops inline machine_state_is_initialized
+
+PASS=15 FAIL=0
+ok   machine_resolve_surface.sh
+ok   guard forbids pick_machine
+ok   guard forbids read_machine_choice
+ok   guard forbids read_list_choice
+ok   guard forbids devtool_modify_run
+ok   guard forbids devtool_build_run
+ok   guard forbids devtool_reset_run
+ok   guard forbids devtool_finish_run
+ok   guard forbids devtool_search_refresh
+ok   guard forbids dev_dispatch_subcmd
+ok   guard forbids machine_state_write
+ok   guard forbids machine_state_mark
+ok   guard forbids machine_state_clear
+ok   guard forbids tput 
+
+PASS=13 FAIL=0
+ok   machine_selection_guard_surface.sh
+ok   ob_check clean ob (read-only) (rc=0)
+
+PASS=1 FAIL=0
+ok   ob_check_smoke.sh
+ok   s1 PREMIRRORS injected
+ok   s1 DL_DIR default
+ok   s2 自定义时跳过
+ok   s3 空值=禁用
+ok   s4 existing inc + empty DL_DIR → exit 3
+ok   s4 empty DL_DIR → remedy line
+ok   s4 existing inc preserved
+ok   s4 no backup created on failure
+ok   s5 empty SSTATE_DIR → exit 3
+ok   s5 empty SSTATE_DIR → remedy line
+ok   s5 existing inc preserved
+ok   s5 no backup created on failure
+
+PASS=12 FAIL=0
+ok   premirrors_injection.sh
+ok   cmd_start_qemu calls machine_selection_guard
+ok   cmd_deploy_to_qemu calls resolve_command_machine
+ok   cmd_start_qemu drops handwritten empty check
+ok   cmd_deploy_to_qemu drops handwritten empty check
+
+PASS=4 FAIL=0
+ok   qemu_commands_guard_surface.sh
+ok   missing build dir rc
+ok   missing build dir diagnosis
+ok   missing build dir remedy
+ok   missing build dir remedy count
+ok   no soc evidence rc
+ok   no soc evidence diagnosis
+ok   no soc evidence remedy
+ok   no soc evidence remedy count
+ok   missing bootloader rc
+ok   missing bootloader diagnosis
+ok   missing bootloader remedy
+ok   missing bootloader remedy count
+ok   machine fallback failure rc
+ok   machine fallback failure diagnosis
+ok   machine fallback failure remedy
+ok   machine fallback failure remedy count
+ok   conflict rc
+ok   conflict diagnosis
+ok   conflict no init remedy
+ok   conflict no build remedy
+
+PASS=20 FAIL=0
+ok   qemu_launch_profile_remedy.sh
+ok   cmd_start_qemu calls qemu_prepare_launch
+ok   cmd_start_qemu calls qemu_execute_launch
+ok   qemu_prepare_launch resolves profile
+ok   cmd_start_qemu no old launch calls
+ok   build_qemu_cmd no discovery/old vars
+ok   derive_qemu_paths no old arch vars
+ok   check_jenkins_update no old arch vars
+ok   ensure_qemu_binary_community no old arch vars
+ok   ensure_qemu_binary_custom no old arch vars
+ok   ensure_qemu_firmware no soc-derived gating
+ok   ensure_qemu_firmware uses pcbios flag
+ok   machine conf lookup stops after first hit
+ok   include lookup stops after first hit
+ok   extract_shell_function missing target fails
+ok   profile qemuboot fast path skips bitbake
+ok   profile fallback calls bitbake once
+
+PASS=16 FAIL=0
+ok   qemu_launch_profile_structure.sh
+ok   redfish pass(legacy marker) returns 0
+ok   redfish pass prints ✓
+ok   redfish pass not ✗
+ok   redfish pass(modern marker) returns 0
+ok   redfish modern-marker prints ✓
+ok   redfish no-marker returns 1
+ok   redfish no-marker prints ✗
+ok   redfish no-marker mentions marker
+ok   redfish 404 returns 1
+ok   redfish 404 prints HTTP code
+ok   redfish conn-fail(code 000) returns 1
+ok   redfish conn-fail prints ✗
+ok   ipmi pass returns 0
+ok   ipmi pass prints ✓
+ok   ipmi pass mentions mc info
+ok   ipmi fail returns 1
+ok   ipmi fail prints ✗
+ok   ipmi fail prints rc
+ok   ipmi fail excerpt present
+ok   ssh-ready pass returns 0
+ok   ssh-ready pass prints ✓
+ok   ssh-ready mentions TCP
+ok   ssh-notready returns 1
+ok   ssh-notready prints ✗
+ok   managers pass(full) returns 0
+ok   managers pass prints ✓
+ok   managers pass mentions Managers
+ok   managers pass not ✗
+ok   managers pass(ManagerType only) returns 0
+ok   managers pass(UUID only) returns 0
+ok   managers pass(@odata.type Manager) returns 0
+ok   managers no-marker returns 1
+ok   managers no-marker prints ✗
+ok   managers no-marker mentions marker
+ok   managers 404 returns 1
+ok   managers 404 prints HTTP code
+ok   managers conn-fail(code 000) returns 1
+ok   managers conn-fail prints ✗
+ok   swversion pass(FirmwareVersion) returns 0
+ok   swversion pass prints ✓
+ok   swversion pass mentions SoftwareVersion
+ok   swversion pass not ✗
+ok   swversion pass(SoftwareVersion alias) returns 0
+ok   swversion pass(prettified JSON, space after colon) returns 0
+ok   swversion prettified captures version
+ok   swversion empty-value returns 1
+ok   swversion empty prints ✗
+ok   swversion missing returns 1
+ok   swversion empty-body returns 1
+ok   redfish judge prints exactly 1 line
+ok   ipmi judge prints exactly 1 line
+ok   ssh judge prints exactly 1 line
+ok   managers judge prints exactly 1 line
+ok   swversion judge prints exactly 1 line
+
+PASS=54 FAIL=0
+ok   smoke_assertions_judgment.sh
+ok   (1) no machine arg → exit 3
+ok   (2) machine + no PID file → exit 3
+ok   (3) running + all 5 pass → exit 0
+ok   (3) prints exactly 5 ✓ assertion lines
+ok   (3) all-pass path emits NO α truth-reporter line
+ok   (4) running + IPMI fail → exit 1
+ok   (4) prints ✗ IPMI row
+ok   (4) emits α truth-reporter clarification
+ok   (4) IPMI RAW shows generic RMCP+/LAN possible-cause hint
+
+PASS=9 FAIL=0
+ok   smoke_exit_contract.sh
+ok   parse_args --help (rc=0)
+ok   parse_args unknown opt (rc=1)
+ok   parse_args missing val (rc=1)
+ok   ob build in empty workspace (rc=3)
+
+PASS=4 FAIL=0
+ok   smoke_ob.sh
+ok   (1) cmd_smoke 生产调用方文件集 = {ob}
+ok   (2) ob 引用 cmd_smoke 恰好 1 次(dispatcher)
+ok   (3a) ob smoke 字面量文件集 = smoke 自有边界三件套
+ok   (3b) cmd_start_qemu body 不引向 ob smoke
+ok   (3b) cmd_stop_qemu body 不引向 ob smoke
+ok   (3b) cmd_deploy_to_qemu body 不引向 ob smoke
+ok   (裁决) substep isolation 单命令总检 exit=0 (verdict)
+
+PASS=7 FAIL=0
+ok   smoke_substep_isolation.sh
+ok   usage Commands 含 smoke
+ok   usage smoke 行说明 probe-only
+ok   usage 含 smoke Options 段
+ok   usage smoke 含 OB_SMOKE_READY_ATTEMPTS
+ok   usage 含 ob smoke 示例
+ok   usage 不再登记 verify 命令行
+ok   usage 不再有 verify Options 段
+ok   parse_args smoke 设 COMMAND
+ok   parse_args smoke 设 MACHINE
+ok   smoke 不带 machine → MACHINE 空
+ok   main smoke 调 cmd_smoke
+ok   cmd_smoke defined in qemu_commands.sh
+ok   cmd_verify 已从 qemu_commands.sh 退役
+ok   _verify_* 已从 qemu_commands.sh 退役
+ok   lib/smoke_assertions.sh 存在
+ok   lib/verify_assertions.sh 已退役
+ok   cmd_smoke probe-only: 不引用 qemu_prepare_launch
+ok   cmd_smoke probe-only: 不引用 qemu_execute_launch
+ok   cmd_smoke probe-only: 不装 EXIT trap
+ok   cmd_smoke 调 qemu_instance_is_alive(只探活实例)
+ok   cmd_smoke 调 qemu_instance_load(读 PID file)
+ok   cmd_smoke 读 PIDFILE_SSH_PORT(端口来自实例)
+ok   no machine arg → exit 3
+ok   no machine remedy 提示 ob smoke
+ok   no PID file → exit 3
+ok   no PID remedy 提示 start-qemu
+ok   stale PID → exit 3
+ok   stale PID remedy 提示 start-qemu
+ok   stale PID file 被 clean_stale 删除
+
+PASS=29 FAIL=0
+ok   smoke_surface.sh
+ok   start-qemu without init-done rc
+ok   start-qemu without init-done remedy
+ok   start-qemu without init-done remedy is single-command
+ok   start-qemu legacy lock only rc
+ok   start-qemu legacy lock only remedy
+ok   start-qemu orphan artifact explicit rc
+ok   start-qemu orphan artifact explicit remedy
+ok   start-qemu init-done without build rc
+ok   start-qemu init-done without build diagnosis
+ok   start-qemu init-done without build remedy
+ok   start-qemu init-done without build avoids built wording
+ok   start-qemu build dir without image rc
+ok   start-qemu build dir without image diagnosis
+ok   start-qemu build dir without image remedy
+ok   start-qemu nontty rc=3
+ok   start-qemu nontty diagnosis
+ok   start-qemu nontty remedy
+
+PASS=17 FAIL=0
+ok   start_qemu_remedy.sh
+ok   status_golden.sh
+ok   status machine-state rc
+ok   status does not call machine records
+ok   legacy lock machine hidden
+ok   legacy ignored not shown
+ok   snapshot-only machine listed
+ok   snapshot-only partial listed
+ok   firmware image column listed
+ok   marker-only machine listed
+ok   marker-only row shows initialized state
+ok   failed build machine listed
+ok   missing firmware image state listed
+ok   ready firmware image listed
+ok   init-done without firmware image shows build tip
+ok   diagnostics section listed
+ok   orphan diagnostics title listed
+ok   orphan artifact listed
+ok   orphan next step listed
+ok   orphan not in main machine table
+ok   status avoids invalid image wording
+ok   status avoids stale firmware wording
+ok   status shows exited instance stale
+ok   status shows recycled instance stale
+ok   status keeps exited stale pid file
+ok   status keeps recycled stale pid file
+ok   status built+partial rc
+ok   status does not call machine records after state change
+ok   partial machine does not trigger build tip
+
+PASS=27 FAIL=0
+ok   status_machine_state.sh
+ok   render forbids OPENBMC_DIR
+ok   render forbids SOURCE_MANIFEST_FILE
+ok   render forbids machine_state_
+ok   render forbids qemu_instance_
+ok   render forbids read_manifest_field
+ok   render forbids read_kv_field
+ok   render forbids git -C
+ok   render forbids git fetch
+ok   render forbids git remote
+ok   render forbids git rev-
+ok   render forbids git log
+ok   render forbids timeout 
+
+PASS=12 FAIL=0
+ok   status_render_surface.sh
+ok   stop-qemu --all -d stale rc
+ok   stale pid file remains during dry-run
+ok   stop-qemu romulus -d running rc
+ok   running process survives dry-run
+ok   running pid file remains during dry-run
+
+PASS=5 FAIL=0
+ok   stop_qemu_dryrun.sh
+ok   integration harness passes ShellCheck
+ok   runner accepts explicit skip exit code
+ok   ordinary diagnostic output is retained
+ok   ordinary diagnostic remains a pass
+ok   explicit skip marker is shown
+ok   explicit skip is classified separately
+ok   explicit skip is not reported as pass
+ok   exit 77 without marker fails runner
+ok   missing skip marker diagnosis
+ok   --full --integration enables both layers
+ok   --full runs expect tests
+ok   --integration runs integration shell tests
+ok   unknown runner argument exits 1
+ok   unknown runner argument shows usage
+
+PASS=14 FAIL=0
+ok   test_runner_contract.sh
+ok   usage() Commands == dispatch 子命令集合 (build deploy-to-qemu dev init smoke start-qemu status stop-qemu )
+ok   DEV_ARGS build 后为空(build 不设)
+ok   DEV_ARGS[0]=--machine
+ok   DEV_ARGS[1]=m
+ok   DEV_ARGS[2]=list
+ok   DEV_ARGS 恰好 3 元素(不含 dev)
+ok   main dev 调 cmd_dev(含 --machine)
+ok   main dev 调 cmd_dev(含 list)
+ok   main dev 不把 dev 字面传给 cmd_dev
+ok   ob dev 跳过 show_logo(porcelain)
+ok   usage dev 行含 reset
+ok   usage 不含 --remove-work(本轮未实现)
+ok   DEV_ARGS reset [2]=reset
+ok   DEV_ARGS reset [3]=myrecipe
+ok   main dev reset 调 cmd_dev(reset)
+ok   main dev reset 调 cmd_dev(recipe)
+ok   usage dev 行枚举含 status|finish
+ok   DEV_ARGS status [2]=status
+ok   DEV_ARGS status 恰好 3 元素
+ok   main dev status 调 cmd_dev(status)
+ok   main dev status 不把 dev 字面传给 cmd_dev
+ok   DEV_ARGS finish [2]=finish
+ok   DEV_ARGS finish [3]=myrecipe
+ok   main dev finish 调 cmd_dev(finish)
+ok   main dev finish 调 cmd_dev(recipe)
+ok   usage dev 行含 build
+ok   usage dev 行枚举含 modify|build
+ok   DEV_ARGS build [2]=build
+ok   DEV_ARGS build [3]=myrecipe
+ok   main dev build 调 cmd_dev(build)
+ok   main dev build 调 cmd_dev(recipe)
+ok   usage 含 deploy-to-qemu
+ok   parse_args deploy-to-qemu 设 COMMAND
+ok   parse_args deploy-to-qemu 设 MACHINE
+ok   main deploy-to-qemu 调 cmd_deploy_to_qemu(MACHINE 传递)
+
+PASS=35 FAIL=0
+ok   usage_dispatch_sync.sh
+ok   dev_interactive.exp
+ok   manual_matrix.exp
+=== unit ===
+ok   provision rc=0
+ok   base after provision
+ok   status counts
+Traceback (most recent call last):
+  File "<stdin>", line 6, in <module>
+  File "/usr/lib/python3.12/json/__init__.py", line 293, in load
+    return loads(fp.read(),
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/__init__.py", line 346, in loads
+    return _default_decoder.decode(s)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 337, in decode
+    obj, end = self.raw_decode(s, idx=_w(s, 0).end())
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/json/decoder.py", line 353, in raw_decode
+    obj, end = self.scan_once(s, idx)
+               ^^^^^^^^^^^^^^^^^^^^^^
+json.decoder.JSONDecodeError: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+[0;31m[ERROR][0m Failed to plan bare mirrors from /tmp/tmp.tHuBHgvk9B/openbmc/build/romulus/deps.json.
+ok   bad provision rc=1
+ok   base empty after failure
+ok   status empty after failure
+ok   protocol trunc rc=1
+ok   protocol trunc no git call
+ok   protocol extra_full rc=1
+ok   protocol extra_full no git call
+ok   protocol extra_frag rc=1
+ok   protocol extra_frag no git call
+ok   unlink-fatal rc=1
+ok   unlink-fatal error
+ok   unlink-fatal base empty
+ok   unlink-fatal no status
+ok   unlink-fatal plan leaked
+
+PASS=17 FAIL=0
+ok   bare_mirror.sh
+ok   main path rc 0
+ok   long session 命中率 99.0%
+ok   short session 命中率 20.0%
+ok   合计命中率 98.6%
+ok   摘要含 总输入
+ok   摘要含 缓存命中
+ok   摘要含 总输出 (输入/输出区分)
+ok   含单位 Tokens
+ok   含中文单位 亿或万
+ok   cold bucket
+ok   hot bucket
+ok   飞轮证据 section
+ok   明细表含输出列 (long 输出 505)
+ok   摘要缓存写入行说明 GLM 口径(并入)
+ok   nonexistent dir rc 1 (rc=1)
+ok   --recent 1 rc 0
+ok   --recent 1 保留 short
+ok   --recent 1 排除 long (99.0% 不出现)
+
+PASS=18 FAIL=0
+ok   cache_hit_rate.sh
+ok   read DL_DIR
+ok   read SSTATE_DIR
+ok   read MACHINE
+ok   read strip comment
+ok   missing var rc
+ok   missing file rc
+ok   empty-value assignment → rc 0
+ok   dl_dir default
+ok   sstate_dir default
+ok   dl_dir set non-empty → user value
+ok   dl_dir set empty → rc 1
+ok   dl_dir set empty → empty stdout
+ok   dl_dir set empty → silent (no warn)
+ok   dl_dir unwritable → rc 1 (no fallback)
+ok   dl_dir unwritable → empty stdout
+ok   dl_dir unwritable → silent
+ok   dl_dir user value with existing fixed-name file
+ok   user fixed-name probe file preserved
+ok   sstate_dir set non-empty → user value
+ok   sstate_dir set empty → rc 1
+ok   sstate_dir set empty → empty stdout
+ok   sstate_dir set empty → silent
+ok   sstate_dir unwritable → rc 1 (no fallback)
+ok   sstate_dir unwritable → empty stdout
+ok   sstate_dir unwritable → silent
+ok   sstate_dir user value with existing fixed-name file
+ok   sstate fixed-name probe file preserved
+
+PASS=27 FAIL=0
+ok   conf_read.sh
+ok   ① 未 modified: rc=0
+ok   ① 未 modified: not_modified=1
+ok   ① 未 modified: stage=command
+ok   ① 未 modified: build 未被调
+ok   ① 未 modified: stderr_file 存在(交 caller cat+rm)
+ok   ② 已 modified: rc=0
+ok   ② 已 modified: not_modified 空
+ok   ② 已 modified: stage=command
+ok   ② 已 modified: build 调一次
+ok   ② 已 modified: build 收到 recipe
+ok   ③ status 失败: rc≠0
+ok   ③ status 失败: not_modified 空(非 1, 🔴2 回归锁)
+ok   ③ status 失败: stage=command(非空, 回传给 relay)
+ok   ③ status 失败: build 未被调(不 fall-through)
+ok   ④ build 失败: rc=1
+ok   ④ build 失败: not_modified 空
+ok   ④ build 失败: stage=command
+ok   ④ build 失败: build 调一次
+
+PASS=18 FAIL=0
+ok   devtool_build.sh
+ok   stage=setup: rc=1
+ok   stage=setup message
+ok   stage=cd message
+ok   stage=postcondition message
+ok   reset phase=metadata: rc=1
+ok   reset phase=metadata message(token 句中)
+ok   finish phase=metadata message
+ok   finish phase=finish message
+ok   finish phase=landing message
+ok   reset phase=postcondition message
+ok   finish phase=postcondition message
+ok   reset phase=status message
+ok   reset phase=reset message
+ok   finish phase=status message
+ok   兜底 phase=unknown message
+ok   modify rc=2: rc=1
+ok   modify rc 表(default: devtool failed rc,stage)
+ok   status rc 表(无 stage, 多 status)
+ok   finish rc 表(default)
+ok   reset rc 表(default)
+ok   rc=0 干净: return 0
+ok   rc=0 cat stderr_file 内容到 >&2
+ok   rc=0 无诊断 [ERROR]
+ok   stderr_file 被 rm
+ok   build stage message
+ok   build rc 表(default)
+
+PASS=26 FAIL=0
+ok   devtool_dispatch.sh
+ok   parse普通: srctree
+ok   parse普通: recipefile(剥括号)
+ok   parse无recipefile: srctree
+ok   parse无recipefile: recipefile空
+ok   parse srctree含空格: srctree完整
+ok   parse srctree含空格: recipefile
+ok   parse recipefile含空格: recipefile完整
+ok   parse无匹配: srctree空
+ok   parse无匹配: recipefile空
+ok   parse前缀相近: srctree空
+ok   parse多行: srctree(精确匹配目标)
+ok   parse多行: recipefile(精确匹配目标)
+ok   parse空文件: srctree空
+ok   parse空文件: recipefile空
+ok   resolve绝对: phase空
+ok   resolve绝对: layer_root=meta-x
+ok   resolve绝对: layer_root是绝对路径
+ok   resolve绝对: rc=0
+ok   resolve相对: phase空
+ok   resolve相对: layer_root(按base_dir解析)
+ok   resolve无layer.conf: phase=metadata
+ok   resolve无layer.conf: layer_root空
+ok   resolve嵌套: layer_root=最近meta-x
+ok   resolve file含空格: layer_root
+ok   resolve跨base_dir: layer_root
+ok   parse trap不变
+ok   resolve trap不变
+ok   resolve NUL corruption trunc: phase=metadata(fail closed)
+ok   resolve NUL corruption nosentinel: phase=metadata(fail closed)
+ok   capture git: phase空
+ok   capture git: JSON校验(过滤build/workspace/attic + sha64hex + status)
+ok   capture 复用: 二次仍phase空
+ok   capture非git: phase非空(fail closed)
+ok   capture toplevel!=openbmc_dir: phase非空(M2 fail closed, 不静默降级)
+ok   detect patch: mode
+ok   detect patch: phase空
+ok   detect patch: patches
+ok   detect patch: recipe_files
+ok   detect patch: srcrev空
+ok   detect patch: landing_layer=meta-x(相对openbmc)
+ok   detect dirty-to-dirty: mode=srcrev
+ok   detect dirty-to-dirty: phase空
+ok   detect dirty-to-dirty: recipe_files含foo.bb(digest变)
+ok   detect dirty-to-dirty: srcrev=post值
+ok   detect patch-only: mode=patch
+ok   detect patch-only: phase空(不因recipe_files空fail)
+ok   detect patch-only: patches
+ok   detect patch-only: recipe_files空
+ok   detect srcrev: mode=srcrev
+ok   detect srcrev: srcrev值
+ok   detect srcrev: patches空
+ok   detect srcrev无SRCREV: mode=srcrev(按落点判, 不因缺 SRCREV 降级)
+ok   detect srcrev无SRCREV: srcrev空(正则未匹配, 下游 null)
+ok   detect deleted patch: phase=landing(fail closed)
+ok   detect 多layer: phase=landing
+ok   detect noop: phase=landing(无变化)
+ok   detect JSON失败: phase=landing
+ok   capture trap不变
+ok   detect trap不变
+ok   patch: rc=0
+ok   patch: phase空
+ok   patch: disposition=moved
+ok   patch: srctreebase
+ok   patch: destination_parent=ws/attic/sources
+ok   patch: cleaned_bbappend
+ok   patch: landing_mode=patch
+ok   patch: landing_layer=meta-x
+ok   patch: patches(JSON array, 相对OPENBMC_DIR)
+ok   patch: recipe_files(JSON array)
+ok   fallback: rc=0
+ok   fallback: phase空(bitbake -e FILE → resolve, 不 metadata)
+ok   fallback: disposition=moved(非 noop, fallback 成功落回)
+ok   noop: rc=0
+ok   noop: disposition=noop
+ok   noop: landing_mode空
+ok   noop: patches空
+ok   noop: srctree空
+ok   finish-fail: rc非0
+ok   finish-fail: phase=finish
+ok   capture非git: phase=landing(fail closed, 不 finish)
+ok   capture非git: rc非0
+ok   空格: disposition=moved
+ok   空格: srctree含空格原样
+ok   空格: srctreebase含空格原样
+ok   run trap不变
+
+PASS=85 FAIL=0
+ok   devtool_finish.sh
+ok   ① 合法 rc=0
+ok   ① machine=romulus
+ok   ① subcmd=list
+ok   ① pattern=ipmi
+ok   ① recipe 空(list 不收 recipe)
+ok   ② 等号 rc=0
+ok   ② machine=romulus
+ok   ② subcmd=modify
+ok   ② recipe=phosphor-ipmi-host
+ok   ③ -d rc=0
+ok   ③ DRY_RUN=1(全局副作用)
+ok   ④ unknown option rc=1
+ok   ④ stderr 含 unknown option
+ok   ⑤ --machine 缺值 rc=1
+ok   ⑥a --machine 空值 rc=1
+ok   ⑥b --machine=-x rc=1
+ok   ⑦ list too-many rc=1
+ok   ⑦ stderr too many patterns
+ok   ⑧ modify too-many rc=1
+ok   ⑨ 空入参 rc=0
+ok   ⑨ subcmd 空(留 TTY/dispatch)
+ok   t① list+pattern rc=0
+ok   t① subcmd=list
+ok   t① pattern=ipmi
+ok   t② modify rc=0
+ok   t② subcmd=modify
+ok   t② recipe=phosphor-ipmi-host
+ok   t③ cancel rc=2
+ok   t④ invalid rc=1
+ok   t④ stderr invalid selection
+ok   t⑤ read-fail rc=1
+ok   t⑥ reset ok rc=0
+ok   t⑥ subcmd=reset
+ok   t⑥ recipe=phosphor-ipmi-host(经 pick ok)
+ok   t⑦ reset empty rc=3
+ok   t⑧ reset cancel rc=2
+ok   t⑨ modify 空recipe rc=3
+
+PASS=37 FAIL=0
+ok   devtool_intake.sh
+ok   devtool_modify_run srctree 非空(含 recipe)
+ok   devtool_modify_run stage=command
+ok   devtool_modify_run stderr_file 存在
+ok   devtool_modify_run modify 被调(state 含 target)
+ok   devtool_modify_run 已 modify 不重复 modify(行数不变)
+ok   status 失败不 modify(state 空)
+ok   recipe 含 . 字面匹配(srctree)
+ok   recipefile 后缀剥离(srctree)
+ok   srctree 不含 recipefile 括号
+ok   srctree 非绝对 → rc!=0
+
+PASS=10 FAIL=0
+ok   devtool_modify.sh
+ok   🔴 格式契约: 冒号格式解析非空(非 <TAB>)
+ok   ① stage: helper 恒返回 0(leaf-pure)
+ok   ① stage: _pick_st=status-failed(🔴2 非 empty)
+ok   ① stage: stderr 文案(build env not ready)
+ok   ② rc: helper 恒返回 0(leaf-pure)
+ok   ② rc: _pick_st=status-failed(🔴2 非 empty)
+ok   ② rc: stderr 文案(devtool failed rc,stage)
+ok   ③ empty: helper 恒返回 0
+ok   ③ empty: _pick_st=empty
+ok   ④ ok: _pick_st=ok:<recipe>
+ok   ⑤ cancel: _pick_st=cancel
+ok   ⑥ read-fail: _pick_st=read-fail
+
+PASS=12 FAIL=0
+ok   devtool_pick.sh
+ok   json合法: rc=0
+ok   json合法: stdout==内容(无尾换行被剥)
+ok   json合法: tmpfile删
+ok   json含空格: rc=0
+ok   json含空格: stdout完整(空格不截断)
+ok   json.dumps生成: rc=0
+ok   json.dumps生成: round-trip解析相等
+ok   json.dumps生成: tmpfile删
+ok   json多行: rc
+ok   json多行: tmpfile删
+ok   json无尾换行: rc
+ok   json无尾换行: tmpfile删
+ok   json非法: rc
+ok   json非法: tmpfile删
+ok   json截断对象缺}: rc
+ok   json截断对象缺}: tmpfile删
+ok   json尾垃圾: rc
+ok   json尾垃圾: tmpfile删
+ok   json截断数组缺]: rc
+ok   json截断数组缺]: tmpfile删
+ok   json空: rc
+ok   json空: tmpfile删
+ok   json缺文件: rc非0
+ok   json含NUL: rc非0(NUL破坏json.loads)
+ok   json含NUL: tmpfile删
+ok   jsonl合法2行: rc=0
+ok   jsonl合法2行: round-trip两行key正确
+ok   jsonl合法2行: tmpfile删
+ok   jsonl合法1行: rc
+ok   jsonl含空格值: rc=0
+ok   jsonl含空格值: tmpfile删
+ok   jsonl行数不等(期望2实际1): rc
+ok   jsonl含空行: rc
+ok   jsonl key不符(缺srctree): rc
+ok   jsonl key多余: rc
+ok   jsonl某行非法: rc
+ok   jsonl无尾换行: rc
+ok   jsonl空文件expected0: rc非0(无尾换行拒绝)
+ok   jsonl空文件: tmpfile删
+ok   jsonl缺文件: rc非0
+ok   jsonl expected非数字: rc非0
+ok   jsonl expected非数字: tmpfile删
+ok   emit_json trap不变
+ok   emit_jsonl trap不变
+ok   emit_json失败trap不变
+ok   reset encoder rc=0
+ok   reset encoder 7 字段序 + None 规则
+ok   reset encoder dest_parent 非空 rc=0
+ok   reset encoder dest_parent 非空保留
+ok   finish encoder rc=0
+ok   finish encoder 12 字段序 + list/srcrev
+ok   finish encoder 空值 rc=0
+ok   finish encoder 空值 → []/null
+ok   status encoder rc=0
+ok   status encoder 两行 JSONL
+ok   status encoder 每行 key 集 {recipe,srctree}
+ok   finish encoder 非法 patches JSON: rc 非0
+ok   finish encoder 非法 patches JSON: stdout 空
+
+PASS=58 FAIL=0
+ok   devtool_porcelain.sh
+ok   无conf: rc=0
+ok   无conf: phase空
+ok   无conf: raw=default
+ok   无conf: eff=default
+ok   无[General]: rc=0
+ok   无[General]: phase空
+ok   无[General]: raw=default
+ok   无key: rc=0
+ok   无key: phase空
+ok   无key: raw=default
+ok   空值: phase=metadata
+ok   空值: rc非0
+ok   仅空白: phase=metadata
+ok   相对: rc=0
+ok   相对: phase空
+ok   相对: raw未canonicalize(字面myws)
+ok   相对: eff=build_dir/myws
+ok   绝对: rc=0
+ok   绝对: phase空
+ok   绝对: raw=/abs/work
+ok   绝对: eff=/abs/work
+ok   目录: phase=metadata
+ok   目录: rc非0
+ok   语法损坏: phase=metadata
+ok   含空格: rc=0
+ok   含空格: phase空
+ok   含空格: raw完整(含空格)
+ok   含空格: eff完整(含空格)
+ok   含%%插值: rc=0
+ok   含%%插值: raw=ws%name(镜像 devtool 默认插值)
+ok   含单%非法插值: phase=metadata
+ok   trap不变(仍TEST_TRAP)
+ok   NUL corruption trunc: phase=metadata(fail closed)
+ok   NUL corruption extra: phase=metadata(fail closed)
+ok   NUL corruption nosentinel: phase=metadata(fail closed)
+ok   locate普通: rc=0
+ok   locate普通: phase空
+ok   locate普通: srctreebase_raw=status_srctree(无注释)
+ok   locate普通: bbappend=命中文件路径
+ok   locate注释: rc=0
+ok   locate注释: srctreebase_raw=注释值
+ok   locate注释: bbappend=命中文件路径
+ok   locate注释后置: srctreebase_raw=注释值(顺序无关)
+ok   locate注释后置: bbappend=命中文件路径
+ok   locate gstreamer1.0: rc=0
+ok   locate gstreamer1.0: srctreebase_raw
+ok   locate gstreamer1.0: bbappend=命中文件路径
+ok   locate前缀相近: phase=metadata
+ok   locate前缀相近: bbappend空(metadata)
+ok   locate注释伪: phase=metadata
+ok   locate注释伪: bbappend空(metadata)
+ok   locate多冲突行: phase=metadata
+ok   locate多冲突行: bbappend空(metadata)
+ok   locate零匹配: phase=metadata
+ok   locate零匹配: bbappend空(metadata)
+ok   locate无appends目录: phase=metadata
+ok   locate无appends目录: bbappend空(metadata)
+ok   locate多bbappend: phase=metadata
+ok   locate多bbappend: bbappend空(metadata)
+ok   locate EXTERNALSRC!=status: phase=metadata
+ok   locate EXTERNALSRC!=status: bbappend空(metadata)
+ok   classify moved: rc=0
+ok   classify moved: phase空
+ok   classify moved: expected=moved
+ok   classify retained: expected=retained
+ok   classify sources-backup: phase=metadata
+ok   classify alias../sources: phase=metadata
+ok   classify symlink出: phase=metadata
+ok   classify symlink入: phase=metadata
+ok   classify相对: expected=moved
+ok   classify empty_dir: expected=removed
+ok   classify missing: expected=absent
+ok   classify非目录: phase=metadata
+ok   classify dangling symlink: phase=metadata(非折叠 absent)
+ok   classify重叠appends: phase=metadata
+ok   classify重叠recipes: phase=metadata
+ok   classify trap不变
+ok   moved: rc=0
+ok   moved: phase空
+ok   moved: disposition=moved
+ok   moved: srctree
+ok   moved: srctreebase
+ok   moved: destination_parent=ws/attic/sources
+ok   moved: cleaned_bbappend=命中bbappend
+ok   retained: rc=0
+ok   retained: disposition=retained
+ok   retained: destination_parent空
+ok   retained: cleaned_bbappend=命中bbappend
+ok   removed: rc=0
+ok   removed: disposition=removed
+ok   removed: destination_parent空
+ok   removed: cleaned_bbappend=命中bbappend
+ok   absent: rc=0
+ok   absent: disposition=absent
+ok   absent: cleaned_bbappend=命中bbappend
+ok   noop: rc=0
+ok   noop: disposition=noop
+ok   noop: srctree空
+ok   noop: srctreebase空
+ok   noop: destination_parent空
+ok   noop: cleaned_bbappend空(未locate)
+ok   post-fail: rc非0
+ok   post-fail: phase=postcondition
+ok   postcondition recipe仍在: rc非0
+ok   postcondition recipe仍在: phase=postcondition
+ok   postcondition status失败: rc非0
+ok   postcondition status失败: phase=postcondition
+ok   reset-fail: rc非0
+ok   reset-fail: phase=reset
+ok   status-fail: rc非0
+ok   status-fail: phase=status
+ok   postcondition-fail: rc非0
+ok   postcondition-fail: stage=postcondition
+ok   postcondition-fail: phase=status
+ok   空格: disposition=moved
+ok   空格: srctree含空格原样
+ok   空格: srctreebase含空格原样
+ok   空格: destination_parent含空格
+ok   metadata: rc非0
+ok   metadata: phase=metadata
+ok   run trap不变
+
+PASS=121 FAIL=0
+ok   devtool_reset.sh
+ok   list 无 pattern → 3 行
+ok   list pattern ipmi → 含 phosphor-ipmi-host
+ok   list pattern ipmi → 不含 bmcweb
+ok   list JSONL layer 非空
+ok   list JSONL layer 非空
+ok   list JSONL layer 非空
+ok   cache_state fresh
+ok   cache_state stale(cache_sha 不匹配 meta)
+ok   cache_state stale(schema_version 不匹配)
+ok   cache_state missing(无 cache)
+ok   cache_state stale(meta commit 不匹配)
+ok   cache_state stale(无 meta)
+ok   refresh rc=0
+ok   refresh stage=command
+ok   refresh stderr_file 存在
+ok   refresh 写 cache(JSONL)
+ok   refresh 写 meta
+ok   refresh meta count uses valid records
+ok   refresh 后 cache_state=fresh
+ok   malformed JSONL makes refresh fail
+ok   malformed JSONL does not publish cache
+ok   malformed JSONL does not publish metadata
+ok   malformed JSONL diagnostic
+ok   blank JSONL makes refresh fail
+ok   blank JSONL does not publish cache
+ok   blank JSONL does not publish metadata
+ok   incomplete JSONL schema makes refresh fail
+ok   incomplete JSONL does not publish cache
+ok   incomplete JSONL does not publish metadata
+ok   semantic-invalid cache_state is stale
+ok   refresh 失败 rc!=0
+ok   refresh 失败保留旧 cache
+ok   backup failure makes refresh fail
+ok   backup failure preserves cache
+ok   backup failure preserves metadata
+ok   cache publish failure makes refresh fail
+ok   cache publish failure restores cache
+ok   cache publish failure restores metadata
+ok   successful rollback leaks no backup
+ok   restore failure makes refresh fail
+ok   restore failure retains metadata backup
+ok   restore failure reports retained backup path
+ok   restore failure leaves cache stale
+ok   diagnostics tempfile failure makes refresh fail
+ok   diagnostics tempfile failure preserves cache
+ok   diagnostics tempfile failure preserves metadata
+ok   diagnostics tempfile failure has no stderr tempfile
+ok   diagnostics tempfile failure writes fallback diagnostic
+ok   stage tempfile failure makes refresh fail
+ok   stage tempfile failure preserves cache
+ok   stage tempfile failure preserves metadata
+ok   stage tempfile failure returns stderr tempfile
+ok   stage tempfile failure records diagnostic
+ok   command-output tempfile failure makes refresh fail
+ok   command-output tempfile failure preserves cache
+ok   command-output tempfile failure preserves metadata
+ok   command-output tempfile failure returns stderr tempfile
+ok   command-output tempfile failure records diagnostic
+ok   git fingerprint failure makes refresh fail
+ok   git fingerprint failure makes cache stale
+ok   git fingerprint failure preserves cache
+ok   git fingerprint failure preserves metadata
+ok   bblayers hash failure makes refresh fail
+ok   bblayers hash failure makes cache stale
+ok   bblayers hash failure preserves cache
+ok   bblayers hash failure preserves metadata
+ok   cache hash failure makes refresh fail
+ok   cache hash failure makes cache stale
+ok   cache hash failure preserves cache
+ok   cache hash failure preserves metadata
+ok   mtime failure makes refresh fail
+ok   mtime failure makes cache stale
+ok   mtime failure preserves cache
+ok   mtime failure preserves metadata
+ok   writer reaches meta/cache window
+ok   writer completes
+ok   shared read sees fresh completed generation
+ok   shared read renders new generation
+ok   clear waits for shared reader lock(cache remains)
+ok   clear waits for shared reader lock(meta remains)
+ok   shared reader lock holder completes
+ok   clear completes after shared reader lock
+ok   locked clear removes cache after reader exits
+ok   locked clear removes metadata after reader exits
+ok   clear 删 cache
+ok   clear 删 meta
+ok   clear DRY_RUN 保留 cache
+ok   clear DRY_RUN 保留 meta
+
+PASS=88 FAIL=0
+ok   devtool_search.sh
+ok   status_run rc 0
+ok   status_run stage=command
+ok   status_run entries 行数
+ok   status_run entries ipmi-host
+ok   status_run rc 失败返回非零
+ok   status_run 失败时 entries 空
+ok   status_run 失败 stage=command
+ok   status_run postcondition 失败返回非零
+ok   status_run postcondition stage 传播
+ok   status_run postcondition entries 空
+
+PASS=10 FAIL=0
+ok   devtool_status.sh
+ok   ① dry_run: return 0
+ok   ① dry_run: stderr 含 [DRY-RUN] notice
+ok   ① dry_run: relay 未被调
+ok   ② empty entries: return 0（良性，非失败）
+ok   ② empty entries: relay 被调
+ok   ② empty entries: warn No modified recipes
+ok   ③ relay rc=1: handler return 1
+ok   ③ relay rc=1: relay 被调
+ok   ④ emit rc=1: handler return 1
+ok   ⑤ 正常: return 0
+ok   ⑤ 正常: relay 被调
+ok   ⑤ 正常: stdout = emit 输出
+ok   ⑥ refresh dry_run: return 0
+ok   ⑥ refresh dry_run: stderr 含 [DRY-RUN]
+ok   ⑦ refresh rc=1: return 1
+ok   ⑦ refresh rc=1: stderr 含 failed
+ok   ⑧ refresh 正常: return 0
+ok   ⑧ refresh 正常: stdout 空
+ok   ⑨ modify recipe 空: return 3
+ok   ⑨ modify recipe 空: remedy list [pattern]
+ok   ⑩ modify dry_run: return 0
+ok   ⑩ modify dry_run: stderr [DRY-RUN]
+ok   ⑪ modify relay rc=1: return 1
+ok   ⑫ modify 正常: return 0
+ok   ⑫ modify 正常: stdout = srctree
+ok   ⑬ build recipe 空: return 3
+ok   ⑬ build recipe 空: remedy status
+ok   ⑭ build dry_run: return 0
+ok   ⑭ build dry_run: stderr [DRY-RUN]
+ok   ⑮ build not_mod: return 3
+ok   ⑮ build not_mod: relay 未被调(D5 锁)
+ok   ⑮ build not_mod: stderr not modified
+ok   ⑯ build relay rc=1: return 1
+ok   ⑰ build 正常: return 0
+ok   ⑰ build 正常: stdout 空
+ok   ⑱ reset recipe 空: return 3
+ok   ⑱ reset recipe 空: remedy list
+ok   ⑲ reset dry_run: return 0
+ok   ⑲ reset dry_run: stderr [DRY-RUN]
+ok   ⑳ reset relay rc=1: return 1
+ok   ㉑ reset emit rc=1: return 1
+ok   ㉒ reset 正常: return 0
+ok   ㉒ reset 正常: stdout = emit 输出
+ok   ㉓ finish recipe 空: return 3
+ok   ㉓ finish recipe 空: remedy status
+ok   ㉔ finish dry_run: return 0
+ok   ㉔ finish dry_run: stderr [DRY-RUN]
+ok   ㉕ finish relay rc=1: return 1
+ok   ㉖ finish emit rc=1: return 1
+ok   ㉗ finish 正常: return 0
+ok   ㉗ finish 正常: stdout = emit 输出
+ok   ㉘ list dry_run: return 0
+ok   ㉘ list dry_run: stderr [DRY-RUN]
+ok   ㉙ list read rc≠0: return 1
+ok   ㉚ list stale: return 3
+ok   ㉚ list stale: stderr refresh
+ok   ㉛ list missing+refresh fail: return 1
+ok   ㉜ list missing+refresh ok+重检 fresh: return 0
+ok   ㉝ list missing+重检非fresh: return 1
+ok   ㉞ list fresh: return 0
+
+PASS=60 FAIL=0
+ok   devtool_subcmd.sh
+ok   _devtool_env_exec echo rc=0
+ok   _devtool_env_exec stdout 含 HELLO
+ok   _devtool_env_exec stdout 不含 setup 噪声
+ok   _devtool_env_exec stage=command
+ok   _devtool_env_exec 同一 subshell(SETUP 可见)
+ok   _devtool_env_exec postcondition 失败 rc!=0
+ok   _devtool_env_exec stage=postcondition
+ok   parse_srctree 字面匹配+剥 recipefile
+ok   parse_srctree 精确匹配 other
+ok   parse_srctree 含 . 字面匹配(非正则)
+ok   parse_srctree 无匹配输出空
+ok   parse_status_all 行数(2 recipe,header 跳过)
+ok   parse_status_all foorecipe+srctree
+ok   parse_status_all 剥掉 recipefile 后缀
+ok   parse_status_all 跳过 header
+ok   parse_status_all 空文件无输出
+ok   parse_status_all 负例全跳过(0 行)
+
+PASS=17 FAIL=0
+ok   devtool_workspace.sh
+ok   false-positive exits (sys.exit/awk/prose/exited) not counted (rc=0)
+ok   exit 4 caught (X) (rc=1)
+ok   util.sh unexpected exit caught (Y-c basename) (rc=1)
+ok   machine_state.sh unexpected exit caught (Y-c basename rc)
+ok   machine_state.sh unexpected exit mentions basename
+ok   machine_state.sh unexpected exit mentions function
+ok   empty require_path remedy caught (Z) (rc=1)
+ok   direct exit-3 with remedy OK (Z) (rc=0)
+ok   diagnostic-only exit-3 warns not fails (rc)
+ok   warns on diagnostic-only exit-3
+ok   ob prints X verdict
+ok   ob prints Y verdict
+ok   ob prints Z verdict
+
+PASS=13 FAIL=0
+ok   exit_contract.sh
+ok   clean lib fixture passes (rc=0)
+ok   header top-level rc
+ok   header top-level reported
+ok   gap top-level rc
+ok   gap top-level reported
+ok   footer top-level rc
+ok   footer top-level reported
+
+PASS=7 FAIL=0
+ok   extract_funcs.sh
+ok   S1 no-entry silent
+ok   S1 no-entry ssh not probed
+ok   S2 track-A stale warning
+ok   S2 track-A clear command
+ok   S2 track-A non-interactive → no auto-delete
+ok   S3 perm-denied silent (entry still valid)
+ok   S4 track-B warning
+ok   S4 track-B clear cmd
+ok   S4 track-B → no auto-delete
+
+PASS=9 FAIL=0
+ok   hostkey_conflict.sh
+ok   bitbake ok → rc 0
+ok   bitbake called once
+ok   bitbake target
+ok   bitbake fail → rc 1
+ok   bitbake called once (fail)
+ok   enter fail → rc 1
+ok   enter fail: bitbake not called
+
+PASS=7 FAIL=0
+ok   image_build.sh
+ok   ① empty rc=3
+ok   ① empty remedy
+ok   ② fastpath rc=0
+ok   ② MACHINE 保持 romulus
+[0;33m[WARN][0m Machine 'bogus' is not in the available list.
+ok   ③ nontty rc=3
+ok   ③ nontty remedy
+
+PASS=6 FAIL=0
+ok   init_intake.sh
+ok   confirm y rc
+ok   confirm n rc
+ok   confirm invalid then y rc
+ok   prompt abs rc
+ok   prompt abs result
+ok   prompt non-abs retry rc
+ok   prompt non-abs result
+ok   port free returns 0 (rc=0)
+
+PASS=8 FAIL=0
+ok   interact.sh
+ok   ① given+init rc=0
+ok   ① given+init keep MACHINE
+ok   ② given+noinit rc=3
+ok   ② verify remedy is not initialized
+ok   ② verify remedy init hint
+ok   ③ empty+ok rc=0
+ok   ③ empty+ok set MACHINE
+ok   ④ empty+empty rc=3
+ok   ④ empty remedy
+ok   ④ empty remedy hint
+ok   ⑤ pick-read-fail rc=1
+ok   ⑤ no cancel warn on read-fail
+ok   ⑥ nontty rc=3
+ok   ⑥ nontty remedy
+ok   ⑦ cancel rc=2
+ok   ⑦ cancel warn on stdout
+ok   ⑦ cancel warn not on stderr
+
+PASS=17 FAIL=0
+ok   machine_resolve.sh
+ok   ① empty: status=empty
+ok   ② nontty: status=nontty
+
+PASS=2 FAIL=0
+ok   machine_selection_guard.sh
+ok   machine_state_records removed
+machine_state_initialized_machines
+ok   machine_state_initialized_machines defined
+machine_state_firmware_image_ready_machines
+ok   machine_state_firmware_image_ready_machines defined
+machine_state_is_initialized
+ok   machine_state_is_initialized defined
+machine_state_firmware_image_path
+ok   machine_state_firmware_image_path defined
+machine_state_display_machines
+ok   machine_state_display_machines defined
+machine_state_orphan_firmware_image_machines
+ok   machine_state_orphan_firmware_image_machines defined
+machine_state_init_state
+ok   machine_state_init_state defined
+machine_state_snapshot_state
+ok   machine_state_snapshot_state defined
+machine_state_init_time
+ok   machine_state_init_time defined
+machine_state_firmware_image_mtime
+ok   machine_state_firmware_image_mtime defined
+machine_state_is_firmware_image_ready
+ok   machine_state_is_firmware_image_ready defined
+machine_state_is_orphan_firmware_image
+ok   machine_state_is_orphan_firmware_image defined
+ok   machine_state_list_records removed
+ok   machine_state_record_field removed
+ok   machine_state_build_state removed
+ok   machine_state_image_path removed
+ok   machine_state_has_init_done removed
+ok   no state yields empty display machines
+ok   no state yields empty orphan machines
+ok   snapshot-only init state query
+ok   snapshot-only snapshot state query
+ok   snapshot-only repo count query
+ok   snapshot-only init time query
+ok   snapshot-only image path rc
+ok   snapshot-only firmware mtime query
+ok   snapshot-only ready query rc
+ok   snapshot-only orphan query rc
+ok   marker-only init state query
+ok   marker-only snapshot state query
+ok   marker-only repo count query
+ok   marker-only init time query
+ok   marker-only ready query rc
+ok   bad snapshot init state query
+ok   bad snapshot state query
+ok   bad snapshot repo count query
+ok   initialized without image state query
+ok   initialized without image ready query rc
+ok   initialized without image orphan query rc
+ok   image path sorted first
+ok   ready init state query
+ok   ready query rc
+ok   ready not orphan query rc
+ok   ready firmware image mtime query
+ok   missing image path rc
+ok   has init-done rc
+ok   missing init-done rc
+ok   artifact-only image path query
+ok   artifact-only init state query
+ok   artifact-only snapshot state query
+ok   artifact-only orphan query rc
+ok   partial artifact init state query
+ok   partial artifact snapshot state query
+ok   partial artifact not ready query rc
+ok   partial artifact orphan query rc
+ok   mismatched build machine ignored
+ok   mismatched deploy machine ignored
+ok   mismatched build machine not orphan
+ok   mismatched deploy machine not orphan
+ok   missing build dir yields empty display machines
+ok   missing build dir yields empty orphan machines
+ok   initialized list includes marker-only
+ok   initialized list includes ready
+ok   initialized list skips partial snapshot
+ok   initialized list skips orphan artifact
+ok   ready list includes ready
+ok   ready list skips marker-only
+ok   ready list skips orphan artifact
+ok   ready list skips partial artifact
+ok   display list includes snapshot-only
+ok   display list includes marker-only
+ok   display list includes ready
+ok   display list includes partial artifact
+ok   display list skips artifact-only orphan
+ok   orphan list includes artifact-only orphan
+ok   orphan list includes partial artifact
+ok   orphan list skips ready
+ok   write snapshot rc
+ok   snapshot created
+ok   legacy lock not created
+ok   snapshot machine field
+ok   snapshot commit field
+ok   snapshot target image
+ok   snapshot local path
+ok   write snapshot missing deps rc
+ok   failed snapshot write preserves target
+ok   mark init-done rc
+ok   init-done marker created
+ok   init-done marker UTC
+ok   clear init progress rc
+ok   clear removes marker
+ok   clear removes snapshot
+ok   clear removes legacy lock
+ok   dry-run clear rc
+ok   dry-run keeps marker
+ok   dry-run keeps snapshot
+ok   dry-run keeps legacy lock
+ok   dry-run snapshot write rc
+ok   dry-run snapshot write no file
+ok   dry-run mark rc
+ok   dry-run mark no file
+ok   build_dir path
+ok   deploy_dir path
+
+PASS=101 FAIL=0
+ok   machine_state.sh
+ok   skip rc=0
+ok   skip 无 stdout
+ok   skip: npm_config_registry 未 export
+ok   skip: BB_ENV_PASSTHROUGH_ADDITIONS 未设
+ok   resolve rc=0
+ok   npm_config_registry export
+ok   npm_config_fetch_timeout
+ok   npm_config_fetch_retry_maxtimeout
+ok   npm_config_fetch_retry_mintimeout
+ok   npm_config_fetch_retry_factor
+ok   BB empty-existing(无前缀)
+ok   nonempty rc=0
+ok   BB existing 前置
+ok   empty-registry rc=0
+ok   空 registry 已 export(设但空)
+ok   空 registry 值为空
+ok   空 registry: BB 含 vars
+
+PASS=17 FAIL=0
+ok   npm_registry.sh
+ok   status failure fails integration
+ok   status failure does not call candidate modify
+ok   status failure does not reset user recipe
+ok   list failure fails integration
+ok   list failure does not query devtool status
+ok   partial modify failure fails integration
+ok   partial modify failure resets recipe
+ok   partial modify cleanup leaves no modified recipe
+ok   all sampled recipes modified is a skip
+ok   skip outcome is explicit
+ok   skip outcome matches runner protocol
+ok   reset failure fails integration
+ok   reset failure cleanup resets recipe(ADR-0008 recheck)
+ok   reset failure cleanup leaves no modified recipe
+ok   orphan appends → SKIP 77(不选用户遗留)
+ok   orphan appends 不调 candidate modify(user-recipe)
+ok   继承 EXTERNAL_SRCTREE + reset-fail: integration exit 1
+ok   继承的 EXTERNAL_SRCTREE 未被 cleanup 误删
+
+PASS=18 FAIL=0
+ok   ob_dev_integration_safety.sh
+ok   no args → COMMAND empty (rc=0)
+ok   build → COMMAND=build (rc=0)
+ok   init romulus (rc=0)
+ok   init --dry-run sets DRY_RUN (rc=0)
+ok   start-qemu ports/no-wait (rc=0)
+ok   --help (rc=0)
+ok   -h (rc=0)
+ok   unknown command (rc=1)
+ok   unknown opt (rc=1)
+ok   missing --ssh-port val (rc=1)
+ok   missing --url val (rc=1)
+
+PASS=11 FAIL=0
+ok   parse_args.sh
+ok   qemu url config path
+ok   harness root = ob dir
+ok   workspace dir
+ok   configs dir
+ok   detect_wsl matches /proc/version
+ok   parallelism positive int
+ok   parallelism <= nproc
+
+PASS=7 FAIL=0
+ok   paths.sh
+ok   number 1 rc
+ok   number 1 MACHINE
+ok   number 2 rc
+ok   number 2 MACHINE
+ok   name rc
+ok   name MACHINE
+ok   cancel rc
+ok   渲染序号+名字表
+ok   post-list-msg 打印
+ok   无 post-list-msg 兼容
+ok   read_choice number rc
+ok   read_choice number MACHINE
+ok   read_choice name rc
+ok   read_choice name MACHINE
+ok   read_choice cancel rc
+ok   eof read-fail rc
+ok   invalid then valid rc
+ok   invalid then valid MACHINE
+ok   read_list_choice 数字选中 rc
+ok   read_list_choice 数字选中值
+ok   read_list_choice 名字选中 rc
+ok   read_list_choice 名字选中值
+ok   read_list_choice cancel rc
+ok   read_list_choice 非法重试后选中 rc
+ok   read_list_choice 非法重试后选中值
+
+PASS=25 FAIL=0
+ok   pick_machine.sh
+ok   get_port_occupants empty
+ok   get_port_occupants occupied
+ok   ports all free (rc=0)
+ok   ports conflict exit 3 (rc=3)
+ok   qemu_instance_is_alive exited rc
+ok   qemu_instance_is_alive recycled rc
+
+PASS=6 FAIL=0
+ok   ports.sh
+ok   no local build → skip_no_build
+ok   non-jenkins url → skip_not_jenkins
+ok   no remote → skip_no_remote
+ok   same build → up_to_date
+ok   diff build → update_available
+ok   local-empty beats jenkins-check
+ok   env wins over config
+ok   config when no env
+ok   community+arm → default jenkins
+ok   community+aarch64 → none
+ok   non-community → needs_input
+
+PASS=11 FAIL=0
+ok   qemu_binary_decision.sh
+ok   artifact 后缀剥离
+ok   仅 lastSuccessfulBuild 后缀
+ok   无后缀原样返回
+ok   binary: file 直传 ok
+ok   binary: dir+arch → ok:dir/arch
+ok   binary: dir 缺 arch → err_dir_no_arch
+ok   binary: 不存在 → err_not_file
+ok   pcbios: 直接含 bootrom → ok:input
+ok   pcbios: 嵌套 pc-bios → ok:input/pc-bios
+ok   pcbios: 无 bootrom → err_no_bootrom
+ok   pcbios: 非 dir → err_not_dir
+
+PASS=11 FAIL=0
+ok   qemu_binary_resolve.sh
+ok   list returns all machines
+ok   load sets pid
+ok   load sets machine
+ok   load sets pid file path
+ok   load no-arg keeps compatibility
+ok   load no-arg without QEMU_PID_FILE returns 1
+ok   list empty when no pids
+ok   full has PID line
+ok   full has Ports line
+ok   full has Serial line
+ok   brief stale marks stale
+ok   brief stale has ports
+ok   brief excludes machine name (caller lays out)
+ok   brief running marks running
+ok   brief recycled marks stale
+ok   brief load-fail marks stale
+ok   clean_stale removes pid file
+ok   clean_stale idempotent rc
+
+PASS=18 FAIL=0
+ok   qemu_instance.sh
+ok   ast2600 machine
+ok   ast2600 mem
+ok   ast2600 no loader
+ok   ast2600 no pc-bios search path
+ok   ast2700 machine
+ok   ast2700 uboot nodtb
+ok   ast2700 uboot dtb offset
+ok   ast2700 bl31
+ok   ast2700 optee
+ok   ast2700 http fwd
+ok   ast2700 pc-bios search path
+ok   ast2700 platform machine
+ok   ast2700 platform mem
+ok   ast2700 platform no external loader
+ok   binary machine override name
+ok   binary machine override source
+ok   binary machine override keeps no-prefix machine
+ok   firmware no skips missing pc-bios (rc=0)
+ok   firmware yes missing bootrom (rc=3)
+ok   firmware yes bootrom present (rc=0)
+
+PASS=20 FAIL=0
+ok   qemu_launch_consumers.sh
+ok   qemu bin dir
+ok   qemu bin file
+ok   qemu pids dir
+ok   qemu pid file
+ok   read url config
+ok   read url config after upsert
+ok   read custom url config
+ok   manifest created
+ok   manifest asset
+ok   manifest source
+ok   manifest arch
+ok   manifest sha256
+ok   manifest src_key
+ok   manifest build_no
+ok   pcbios manifest created
+ok   pcbios asset
+ok   pcbios source
+ok   pcbios src
+
+PASS=18 FAIL=0
+ok   qemu_manifest.sh
+ok   previously initialized prints done machine
+ok   previously initialized keeps original index
+ok   previously initialized formats raw time
+ok   previously initialized skips partial
+ok   previously initialized ignores legacy lock
+ok   previously initialized does not read records
+ok   previously initialized reads initialized list once
+ok   previously initialized reads init time once
+
+PASS=8 FAIL=0
+ok   repo_previously_initialized.sh
+ok   missing path exit 3 (rc=3)
+ok   custom exit code 5 (rc=5)
+ok   existing path returns 0 (rc=0)
+ok   hint in stderr
+
+PASS=4 FAIL=0
+ok   require_path.sh
+ok   pass fixture 含 5 条 ✓ 断言行(judge 真实产出)
+ok   pass self-diff exit 0
+ok   pass fixture 全 5 条被 parser 解析
+ok   pass fixture 0 未解析(looking == parsed)
+ok   fail fixture 含 5 条 ✗ 断言行(judge 真实产出)
+ok   fail self-diff exit 0(✗→✗ 不变不算回归)
+ok   fail fixture 全 5 条被 parser 解析
+ok   fail fixture 0 未解析(looking == parsed)
+ok   pass→fail mix 触发回归 exit 1
+ok   mix 报 REGRESSION
+ok   mix 全 5 条 ✓→✗ 退化被检出
+
+PASS=11 FAIL=0
+ok   smoke_diff_contract.sh
+ok   no-regression (version change, same ✓) rc 0
+ok   no-regression prints OK 闸门放行
+ok   no-regression 不含 REGRESSION 字样
+ok   regression (IPMI ✓→✗) rc 1
+ok   regression prints REGRESSION
+ok   regression prints 退化项名
+ok   regression prints 闸门拦截
+ok   improvement (✗→✓) rc 0
+ok   improvement prints 改善 info
+ok   breakdown-dup regression rc 1
+ok   breakdown-dup 仍检出 IPMI 退化
+ok   breakdown-dup current 计 5 条(去重)
+ok   new-✗ regression rc 1
+ok   new-✗ prints REGRESSION
+ok   new-✗ mentions IPMI
+ok   new-✗ prints absent baseline 标注
+ok   new-✗ prints 闸门拦截
+ok   new-✓ no-regression rc 0
+ok   new-✓ prints 新出现的 ✓ info
+ok   new-✓ info mentions IPMI
+ok   new-✓ 不含 REGRESSION
+ok   nonexistent file rc 2 (rc=2)
+ok   --help rc 0
+ok   --help prints 用法
+ok   --help doc 反映新语义(新出现的 ✗)
+
+PASS=25 FAIL=0
+ok   smoke_diff.sh
+ok   实现用 mktemp 生成 baseline/current 临时文件
+ok   实现有 trap 清理临时文件(不残留)
+ok   无 baselines/ 受版本目录引用(spatial 期望)
+ok   无 profiles/ 受版本目录引用
+ok   无 expected_profile / expected-baseline 词汇
+ok   无 git add/commit baseline 的动作
+ok   无 $machine 派生文件路径落盘(重定向)
+ok   git diff main...HEAD 无受版本 baseline/profile 产物
+
+PASS=8 FAIL=0
+ok   smoke_regression_alpha_safety.sh
+ok   soc from arm
+ok   soc source from arm
+ok   soc confidence from arm
+ok   soc from aarch64
+ok   system name kept
+ok   unknown system no soc
+ok   unknown system no binary name
+ok   machine from bitbake
+ok   machine source bitbake
+ok   derive from machine
+ok   machine source legacy
+ok   derive no dash exit 3 (rc=3)
+ok   chain contains ast2600
+ok   chain contains ast2700
+ok   chain loop terminates
+ok   chain missing file
+ok   soc ast2600 → arm
+ok   soc ast2700 → aarch64
+ok   soc unknown → empty
+ok   extract QB_MEM
+ok   extract QB_SYSTEM_NAME
+ok   extract missing var
+
+PASS=22 FAIL=0
+ok   soc.sh
+ok   kv source_label
+ok   kv origin_url
+ok   kv missing key rc
+ok   kv missing file rc
+ok   label from manifest
+ok   label default when no manifest
+ok   dry-run no file
+ok   write creates file
+ok   manifest normalized_source
+ok   manifest origin_url
+ok   manifest source_label
+
+PASS=11 FAIL=0
+ok   source_manifest.sh
+ok   main_repo missing rc
+ok   main_repo missing shows missing
+ok   main_repo missing hides present
+ok   main_repo present rc
+ok   main_repo present
+ok   main_repo source + label
+ok   main_repo branch
+ok   main_repo upstream passthrough
+ok   main_repo local path
+ok   main_repo no init dash when provided
+ok   machines header
+ok   machines init disp
+ok   machines fw ready disp
+ok   machines fw missing disp
+ok   machines expansion romulus
+ok   machines repos round-trip
+ok   machines fw name round-trip
+ok   machines init time formatted not dash
+ok   machines partial1 not expanded (snapshot=missing)
+ok   machines nameref business name rc
+ok   machines nameref business name works
+ok   machines empty rc
+ok   machines empty shows none
+ok   diag title
+ok   diag name
+ok   diag next step
+ok   diag empty rc
+ok   diag empty no section
+ok   tips no repo rc
+ok   tips no repo
+ok   tips has_init rc
+ok   tips no init machine
+ok   tips no_fw rc
+ok   tips init no fw
+ok   tips fw_ready rc
+ok   tips no tip when fw ready
+
+PASS=36 FAIL=0
+ok   status_render.sh
+ok   host from GITLAB_IP script
+ok   host from GIT_MIRROR_HOST script
+ok   host from git@ origin
+ok   host from ssh origin (drop user@ + port)
+ok   host from https origin
+ok   empty host returns 0 (rc=0)
+ok   empty host echoes nothing
+ok   cache returns first value
+ok   cache: 2nd call unchanged
+ok   first call empty
+ok   cached empty sticks until unset
+ok   hostkey parse
+ok   hostkey no match
+
+PASS=13 FAIL=0
+ok   url_extra.sh
+ok   norm https
+ok   norm git@
+ok   norm slash
+ok   valid https
+ok   valid git@
+ok   invalid bare
+ok   label community
+ok   label custom
+
+PASS=8 FAIL=0
+ok   url.sh
+=== orchestration ===
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mStep 5/8: Populating bare mirrors...[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+[0;32m[INFO][0m Mirror cache: /tmp/tmp.kMiXAG74yp/downloads/git2
+[0;32m[INFO][0m Mirrors: 0 new, 0 existing in /tmp/tmp.kMiXAG74yp/downloads/git2
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mStep 5/8: Populating bare mirrors...[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+[0;32m[INFO][0m Mirror cache: /tmp/tmp.vb7ZtD9NuU/downloads/git2
+[0;32m[INFO][0m [1/2] Processing: repo1
+[0;32m[INFO][0m [2/2] Processing: repo2
+[0;32m[INFO][0m Mirrors: 2 new, 0 existing in /tmp/tmp.vb7ZtD9NuU/downloads/git2
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mStep 5/8: Populating bare mirrors...[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+[0;32m[INFO][0m Mirror cache: /tmp/tmp.XOxKLRg0BQ/downloads/git2
+[0;32m[INFO][0m [1/20] Processing: repo1
+[0;32m[INFO][0m [2/20] Processing: repo2
+[0;32m[INFO][0m [3/20] Processing: repo3
+[0;32m[INFO][0m [4/20] Processing: repo4
+[0;32m[INFO][0m [5/20] Processing: repo5
+[0;32m[INFO][0m [6/20] Processing: repo6
+[0;32m[INFO][0m [7/20] Processing: repo7
+[0;32m[INFO][0m [8/20] Processing: repo8
+[0;32m[INFO][0m [9/20] Processing: repo9
+[0;32m[INFO][0m [10/20] Processing: repo10
+[0;32m[INFO][0m [11/20] Processing: repo11
+[0;32m[INFO][0m [12/20] Processing: repo12
+[0;32m[INFO][0m [13/20] Processing: repo13
+[0;32m[INFO][0m [14/20] Processing: repo14
+[0;32m[INFO][0m [15/20] Processing: repo15
+[0;32m[INFO][0m [16/20] Processing: repo16
+[0;32m[INFO][0m [17/20] Processing: repo17
+[0;32m[INFO][0m [18/20] Processing: repo18
+[0;32m[INFO][0m [19/20] Processing: repo19
+[0;32m[INFO][0m [20/20] Processing: repo20
+[0;32m[INFO][0m Mirrors: 20 new, 0 existing in /tmp/tmp.XOxKLRg0BQ/downloads/git2
+diag: python total N=0/2/20 = 2/2/2; planner = 1/1/1
+diag: git global-config N=0/2/20 = 0/0/0; clone = 0/2/20; scoped = 0/2/20
+ok   provision rc N=0 == 0
+ok   provision rc N=2 == 0
+ok   provision rc N=20 == 0
+ok   python total N=0 == N=2
+ok   python total N=2 == N=20
+ok   planner count N=0
+ok   planner count N=2
+ok   planner count N=20
+ok   N=0 no clone
+ok   global config N=0 == 0
+ok   global config N=2 == 0
+ok   global config N=20 == 0
+ok   clone count N=2 == 2
+ok   clone count N=20 == 20
+ok   scoped clone N=2 == 2
+ok   scoped clone N=20 == 20
+ok   N=0 public base
+ok   N=0 public status
+ok   bad JSON provision rc=1
+ok   bad JSON base empty after failure
+ok   bad JSON status empty after failure
+
+PASS=21 FAIL=0
+ok   bare_mirror_cost.sh
+ok   confirm cancel rc=2
+ok   confirm cancel warn (merged)
+
+PASS=2 FAIL=0
+ok   build_confirm_cancel.sh
+ok   enter cds into build dir
+ok   enter actually sourced setup
+ok   enter restores nounset
+ok   enter cds to OPENBMC_DIR first
+
+PASS=4 FAIL=0
+ok   build_env_enter.sh
+ok   dry-run banner
+ok   dry-run mirror dir empty
+ok   dry-run no populated line
+ok   dry-run no failed line
+ok   dry-run no git invoked
+ok   clone success counts
+ok   clone fail count
+ok   clone fail entry
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mStep 5/8: Populating bare mirrors...[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+[0;32m[INFO][0m Mirror cache: /tmp/tmp.DdkS1iJzjl/downloads/git2
+[0;32m[INFO][0m [1/1] Processing: priv
+[0;32m[INFO][0m Mirrors: 1 new, 0 existing in /tmp/tmp.DdkS1iJzjl/downloads/git2
+ok   GITLAB_IP expanded in clone URL
+ok   no unresolved ${GITLAB_IP}
+ok   normalized clone URL/path calls
+ok   existing not cloned
+ok   existing dir retained
+ok   new dir created
+ok   malformed skip verbose
+ok   malformed not cloned
+ok   unresolved not cloned
+ok   failed dir cleaned
+ok   report new/existing
+ok   report failed count
+ok   report fail unresolved
+ok   report fail clone
+ok   failure order unresolved<failed
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mStep 5/8: Populating bare mirrors...[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+[0;32m[INFO][0m Mirror cache: /tmp/tmp.yvjj1CeX9M/downloads/git2
+ok   corrupt deps.json rc=1
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mStep 5/8: Populating bare mirrors...[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+[0;32m[INFO][0m Mirror cache: /tmp/tmp.qNkAOaSr7B/downloads/git2
+ok   missing required fields ([{}]) rc=1
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mStep 5/8: Populating bare mirrors...[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+[0;32m[INFO][0m Mirror cache: /tmp/tmp.iBgXZ68Vhu/downloads/git2
+ok   missing required fields ([{"name":"r1"}]) rc=1
+ok   cleanup rc=1
+ok   cleanup failure message
+ok   partial mirror remains
+ok   base empty after failure
+ok   no status after failure
+ok   no leaked plan files
+[0;36m────────────────────────────────────────────────────────────[0m
+  [1m[0;36mStep 5/8: Populating bare mirrors...[0m
+[0;36m────────────────────────────────────────────────────────────[0m
+ok   mirror-base mkdir failure rc=1
+ok   null src_uri rc=0
+ok   null src_uri skip verbose
+ok   null src_uri no clone
+ok   null src_uri zero counts
+
+PASS=37 FAIL=0
+ok   clone_sub_repos.sh
+ok   cmd_build rc (bitbake ok)
+ok   bitbake called once (ok)
+ok   bitbake target (ok)
+ok   bitbake runs from build dir
+ok   cmd_build rc (bitbake fail)
+ok   bitbake called once (fail)
+ok   bitbake target (fail)
+
+PASS=7 FAIL=0
+ok   cmd_build_bitbake_handoff.sh
+ok   list fresh exit 0
+ok   list fresh stdout JSONL(含 recipe)
+ok   list fresh stdout 纯(无 [ERROR])
+ok   list shared-lock read failure exit 1
+ok   list shared-lock read failure diagnostic
+ok   list stale exit 3
+ok   list stale remedy(refresh)
+ok   list missing exit 0(懒生成)
+ok   list missing 调了 refresh
+ok   list missing stdout JSONL
+ok   list missing refresh 失败 exit 1
+ok   modify 无 recipe exit 3
+ok   modify 无 recipe remedy(list)
+ok   modify 已 modify exit 0
+ok   modify stdout srctree(恰好一行)
+ok   modify stdout 恰好一行
+ok   modify setup 失败 exit 1
+ok   modify setup 失败诊断(build env)
+ok   modify command 失败 exit 1
+ok   modify command 失败诊断(devtool)
+ok   refresh exit 0
+ok   无子命令 exit 3
+ok   无子命令 remedy(list)
+ok   无 --machine 非 TTY exit 3
+ok   无 --machine remedy(Specify machine)
+ok   无候选 exit 3
+ok   无候选 remedy(ob init)
+ok   dry-run modify exit 0
+ok   dry-run modify 不调 devtool_modify_run
+ok   dry-run modify 预览(srctree preview)
+ok   dry-run refresh exit 0
+ok   dry-run refresh 不调 devtool_search_refresh
+ok   dry-run list exit 0
+ok   invalid recipe(modify 失败) exit 1
+ok   尾随 -d modify exit 0(dry-run)
+ok   尾随 -d 不调 devtool_modify_run
+ok   recipe 后 -d 不调 devtool_modify_run
+ok   refresh 后 -d exit 0(dry-run)
+ok   多余 positional(modify 2 recipe) 拒绝
+ok   --machine=-d 拒绝
+ok   --machine=-d 诊断
+ok   reset moved: exit 0
+ok   reset moved (JSON 七字段精确)
+ok   reset retained (JSON 七字段精确)
+ok   reset removed (JSON 七字段精确)
+ok   reset absent (JSON 七字段精确)
+ok   reset noop: exit 0
+ok   reset noop (JSON 七字段精确)
+ok   reset 特殊字符 round-trip (JSON 七字段精确)
+ok   JSON 编码失败: exit 1
+ok   JSON 编码失败: stdout 空
+ok   stage=postcondition: exit 1
+ok   stage=postcondition: build env 诊断
+ok   reset phase=metadata: exit 1
+ok   reset phase=metadata 诊断
+ok   reset phase=status: exit 1
+ok   reset phase=status 诊断
+ok   reset phase=reset 诊断
+ok   reset phase=postcondition 诊断
+ok   reset 无recipe: exit 3
+ok   reset 无recipe remedy(list)
+ok   reset 尾随dry-run: exit 0
+ok   reset dry-run 不调 devtool_reset_run
+ok   reset 双recipe 拒绝
+ok   --remove-work(子命令前): exit 1
+ok   --remove-work 诊断(unknown option)
+ok   --remove-work(recipe 后): exit 1
+ok   reset porcelain: exit 0
+ok   reset stdout 纯(无 [ERROR])
+ok   reset stdout 恰好一行 JSON
+ok   JSON 字节: 生产 stdout 恰好一个尾换行
+ok   finish patch: exit 0
+ok   finish patch (JSON 12 字段精确)
+ok   finish noop: exit 0
+ok   finish noop (JSON 12 字段精确)
+ok   finish argv round-trip: exit 0
+ok   finish argv round-trip: patches 逐元素精确(含空格/引号/反斜杠)
+ok   finish 编码失败: exit 1
+ok   finish 编码失败: stdout 空
+ok   finish phase=metadata: exit 1
+ok   finish phase=metadata 诊断
+ok   finish phase=status 诊断
+ok   finish phase=finish 诊断
+ok   finish phase=landing 诊断
+ok   finish phase=postcondition 诊断
+ok   finish 无recipe: exit 3
+ok   finish 无recipe remedy(status)
+ok   finish 尾随dry-run: exit 0
+ok   finish dry-run 不调 devtool_finish_run
+ok   finish 双recipe 拒绝
+ok   finish porcelain: exit 0
+ok   finish stdout 纯(无 [ERROR])
+ok   finish stdout 恰好一行 JSON
+ok   status 列表 exit 0
+ok   status stdout 恰好 2 行 JSONL
+ok   status stdout 每行合法 JSON + recipe/srctree 字段
+ok   status stdout 纯(无 [ERROR])
+ok   status 空 exit 0
+ok   status 空 stdout 空
+ok   status 空 stderr warn
+ok   status 失败 exit 1
+ok   status dry-run exit 0
+ok   status dry-run stderr 提示
+ok   status 编码失败 exit 1
+ok   status 编码失败 stdout 空(不 partial 发布)
+ok   status 编码失败 stderr 诊断
+ok   build 无 recipe: exit 3
+ok   build 无 recipe remedy(status)
+ok   build not-modified: exit 3
+ok   build not-modified 诊断(not modified)
+ok   build not-modified remedy(modify)
+ok   build 成功: exit 0
+ok   build 成功: stdout 空
+ok   build stage=postcondition: exit 1
+ok   build stage=postcondition 诊断(build env)
+ok   build command 失败: exit 1
+ok   build command 失败诊断(devtool)
+ok   build dry-run exit 0
+ok   build dry-run 不调 devtool_build_run
+ok   build dry-run stderr 提示
+ok   build 双recipe 拒绝
+
+PASS=121 FAIL=0
+ok   cmd_dev.sh
+ok   ① rc=0 (no qemu + build ok)
+ok   ① setsid sentinel written (start invoked)
+ok   ① new .pid written
+ok   ① no confirm banner (qemu not running)
+ok   ② rc=0 (qemu running + confirm y + build ok)
+ok   ② old fake_qemu killed (stop invoked)
+ok   ② new .pid by start (pid=12345, not stale fake_pid)
+ok   ② port reuse: new .pid ssh_port=29222 (injected from old)
+ok   ③ rc=1 (build fail)
+ok   ③ fake_qemu alive (build-first: build fail no stop)
+ok   ③ bitbake called once
+ok   ③ bitbake target obmc-phosphor-image
+ok   ③ setsid not invoked (build-first)
+ok   ④ rc=2 (confirm rejected)
+ok   ④ fake_qemu alive (confirm reject no stop)
+ok   ④ bitbake not called
+ok   ④ setsid not invoked
+ok   ⑤ rc=1 (setsid fail)
+ok   ⑤ Image Rebuilt stage marker
+ok   ⑤ recovery hint ob start-qemu
+ok   ⑥ rc=3 (init-done missing)
+ok   ⑥ stderr hints ob init
+ok   ⑦ rc=0 (dry-run)
+ok   ⑦ [DRY-RUN] output
+ok   ⑦ bitbake not called
+ok   ⑦ setsid not invoked
+
+PASS=26 FAIL=0
+ok   deploy_to_qemu.sh
+[0;32m[INFO][0m [DRY-RUN] Would clear init progress for drykeep
+ok   dry-run keeps existing machine state files
+ok   snapshot dry-run no file
+ok   snapshot machine
+ok   snapshot commit
+ok   snapshot subrepo
+ok   snapshot does not write legacy lock
+ok   build_config dry-run no file
+ok   inc externalsrc
+ok   inc DL_DIR
+ok   inc SSTATE_DIR
+ok   inc npm timeout
+ok   inc PREMIRRORS
+ok   user dl not overridden
+ok   user sstate not overridden
+ok   user dl no assignment
+ok   user sstate no assignment
+
+PASS=16 FAIL=0
+ok   generate_config.sh
+ok   missing git rc
+ok   missing git msg
+ok   missing python3 rc
+ok   missing python3 msg
+
+PASS=4 FAIL=0
+ok   prerequisites_check.sh
+ok   download_core succeeds
+ok   download_core sets DLQB_BIN_PATH
+ok   download_core sets DLQB_SHA256
+ok   ensure_qemu_binary_community succeeds
+ok   binary installed
+ok   manifest written
+ok   manifest has jenkins url
+ok   manifest has build_number 42
+ok   manifest has sha256
+
+PASS=9 FAIL=0
+ok   qemu_binary_download.sh
+ok   acquire core 成功 → rc=0
+ok   acquire: DLQB_BIN_PATH 已 chmod+x
+ok   acquire core 失败 → rc=1
+ok   commit 正常 → rc=0
+ok   commit 正常: binary 已换新
+ok   commit 正常: bak 已清理
+ok   commit 正常: manifest build_number=42
+ok   swap-fail → rc=1(rollback 后)
+ok   rollback 恢复旧 binary
+ok   wrapper acquire-fail → rc=1
+ok   wrapper acquire-fail: 旧 binary 未动
+ok   wrapper flock-busy → rc=1
+ok   wrapper flock-busy: 旧 binary 未动
+ok   wrapper happy → rc=0
+ok   wrapper happy: binary 换新
+
+PASS=15 FAIL=0
+ok   qemu_binary_replace.sh
+ok   execute pipeline succeeds
+ok   setsid invoked (sentinel written)
+ok   sentinel has binary path
+ok   PID file written
+ok   PID file has fake pid
+ok   PID file has machine
+ok   summary printed
+
+PASS=7 FAIL=0
+ok   qemu_execute_launch.sh
+ok   qemuboot fast path rc
+ok   qemuboot fast path skips bitbake
+ok   qemuboot source
+ok   qemuboot machine
+ok   qemuboot machine source
+ok   qemuboot mem
+ok   qemuboot system
+ok   bitbake arm rc
+ok   bitbake arm soc
+ok   bitbake arm source
+ok   bitbake arm confidence
+ok   bitbake arm system
+ok   bitbake mem
+ok   bitbake nonzero with output rc
+ok   bitbake nonzero with output diagnosis
+ok   bitbake aarch64 rc
+ok   bitbake aarch64 soc
+ok   bitbake aarch64 pcbios
+ok   bitbake aarch64 bootloader
+ok   ast2700 partial bootloader rc
+ok   ast2700 partial bootloader diagnosis
+ok   ast2700 partial bootloader remedy
+ok   conf ast2600 rc
+ok   conf ast2600 soc
+ok   conf ast2600 source
+ok   conf ast2600 system inferred
+ok   missing machine mem lines rc
+ok   missing machine mem lines machine fallback
+ok   missing machine mem lines empty mem
+ok   missing machine mem lines system
+ok   unknown system fallback rc
+ok   unknown system fallback soc
+ok   unknown system fallback system inferred
+ok   missing all qb lines rc
+ok   missing all qb lines remedy
+ok   bitbake conf conflict rc
+ok   bitbake conf conflict text
+ok   conf deploy conflict rc
+ok   conf deploy conflict text
+ok   partial with strong ast2600 rc
+ok   partial with strong ast2600 soc
+ok   legacy fallback rc
+ok   legacy fallback soc
+ok   legacy fallback confidence
+ok   legacy fallback warning
+ok   partial without strong rc
+ok   partial without strong remedy
+ok   no evidence rc
+ok   no evidence remedy
+ok   machine name fallback rc
+ok   machine name fallback
+ok   machine source fallback
+ok   machine name fallback failure rc
+ok   machine name fallback failure remedy
+ok   reset precondition rc
+ok   reset precondition bootloader set
+ok   reset second rc
+ok   reset clears bootloader
+ok   reset clears pcbios
+
+PASS=59 FAIL=0
+ok   qemu_launch_profile.sh
+ok   prepare succeeds
+ok   profile resolved (SoC set)
+ok   machine name set
+ok   ssh port resolved
+ok   serial log resolved
+ok   QEMU_CMD assembled (len > 0)
+ok   QEMU_CMD[0] is the binary
+ok   qemuboot fast path skips bitbake
+
+PASS=8 FAIL=0
+ok   qemu_prepare_launch.sh
+ok   PID file removed (live process)
+ok   process killed
+ok   process actually dead
+ok   PID file removed (exited process)
+
+PASS=4 FAIL=0
+ok   qemu_stop_instance.sh
+ok   launch machine
+ok   launch mem
+ok   launch system
+ok   launch soc
+ok   launch rc ok
+ok   empty bitbake -e exit 1 (rc=1)
+
+PASS=6 FAIL=0
+ok   resolve_qb_vars.sh
+ok   redfish probe nameref code 200
+ok   redfish probe nameref body has marker
+ok   redfish probe→judge pass returns 0
+ok   redfish probe→judge prints ✓
+ok   redfish probe nameref code 500
+ok   redfish probe→judge fail returns 1
+ok   redfish probe→judge fail prints ✗
+ok   redfish probe conn-fail → nameref code 000
+ok   redfish probe conn-fail → nameref body 空
+ok   managers probe nameref code 200
+ok   managers probe nameref body has ManagerType
+ok   managers probe nameref body has FirmwareVersion
+ok   managers probe→judge pass returns 0
+ok   managers probe→judge prints ✓
+ok   swversion probe→judge pass returns 0
+ok   swversion probe→judge prints ✓
+ok   swversion probe→judge prints version
+ok   managers probe nameref code 500
+ok   managers probe→judge fail returns 1
+ok   managers probe→judge fail prints ✗
+ok   swversion probe→judge fail(missing) returns 1
+ok   swversion probe→judge fail prints ✗
+ok   ipmi probe nameref rc 0 on stub success
+ok   ipmi probe nameref out has Device ID
+ok   ipmi probe→judge pass returns 0
+ok   ipmi probe nameref rc 1 on stub fail
+ok   ipmi probe→judge fail returns 1
+ok   tcp probe open port returns 0
+ok   ssh probe nameref rc=0 on open
+ok   tcp probe closed port(1) returns non-zero
+ok   ssh probe nameref rc!=0 on closed
+ok   smoke 退役: 无 _smoke_cleanup 函数
+ok   smoke 退役: 无 _verify_cleanup 函数
+ok   smoke 退役: qemu_commands.sh 无 trap
+
+PASS=34 FAIL=0
+ok   smoke_orchestration.sh
+ok   (a) identical baseline/current → gate exit 0
+ok   (b) ✓→✗ regression → gate exit 1
+ok   (b) gate stdout 含 diff REGRESSION 报告
+ok   (b) gate stdout 含 IPMI 退化项
+ok   (b) gate stdout 含 闸门拦截
+ok   (c) ob smoke exit 3 → gate 透传 exit 3
+ok   (d) current capture exit 3 → gate 透传 exit 3
+ok   (e) ob smoke exit 1 两边一致 → gate exit 0(真相非失败)
+
+PASS=8 FAIL=0
+ok   smoke_regression.sh
+ok   F1: --force restart did NOT exit 3 (got rc=0)
+ok   staged old instance killed
+
+PASS=2 FAIL=0
+ok   start_qemu_force_restart.sh
+ok   start-qemu stale .pid cleaned (clean_stale ran)
+
+PASS=1 FAIL=0
+ok   start_qemu_stale_pid.sh
+ok   stop-qemu stale .pid cleaned (clean_stale ran)
+
+PASS=1 FAIL=0
+ok   stop_qemu_stale_pid.sh
+=== integration ===
+ok   init dry-run exit rc (romulus)
+ok   Step 1/8 present
+ok   Step 8/8 present
+ok   dry-run marker present
+
+PASS=4 FAIL=0
+ok   init_dryrun_sanity.sh
+[integration] deploy-to-qemu machine=gb200nvl-obmc
+deploy rc=0
+new QEMU pid file: workspace/qemu-bin/.pids/gb200nvl-obmc.pid (ssh_port=2222)
+[integration] BMC SSH ready on port 2222
+[integration] OK (deploy-to-qemu: image rebuilt + QEMU restarted for gb200nvl-obmc)
+ok   ob_deploy_to_qemu.sh
+[integration] machine=gb200nvl-obmc openbmc=/home/iasi/ob-harness/workspace/openbmc
+list records=2618
+invalid recipe rc=1 (expect 1)
+modify recipe=a2jmidid (selected unmodified, no orphan appends)
+modify rc=0 srctree=/home/iasi/ob-harness/workspace/openbmc/build/gb200nvl-obmc/workspace/sources/a2jmidid
+build rc=0 (ob relay; 0=devtool build 成功 / 1=失败, 均合法)
+reset moved rc=0
+attic new dirs=1 (want 1)
+finish modify rc=0 srctree=/home/iasi/ob-harness/workspace/openbmc/build/gb200nvl-obmc/workspace/sources/a2jmidid
+finish rc=0
+finish disposition=moved landing_mode=patch (detect mode=patch phase=n/a)
+[integration] OK (modify → moved reset → external → retained reset → noop → modify → finish[moved/patch])
+ok   ob_dev.sh
+[integration] smoke machine=gb200nvl-obmc
+[integration] starting QEMU for 'gb200nvl-obmc'...
+[integration] waiting for Redfish root HTTP 200 (https://localhost:2443/redfish/v1, up to 150s)...
+[integration] Redfish root HTTP 200 after attempt 1 (~5s)
+
+smoke rc=1
+  | 
+  | [38;2;255;216;106m      ██████╗ ██████╗ ███████╗ ███╗   ██╗ ██████╗ ███╗   ███╗ ██████╗[0m
+  | [38;2;220;220;90m     ██╔═══██╗██╔══██╗██╔════╝ ████╗  ██║ ██╔══██╗████╗ ████║██╔════╝ [0m
+  | [38;2;180;215;100m     ██║   ██║██████╔╝█████╗   ██╔██╗ ██║ ██████╔╝██╔████╔██║██║      [0m
+  | [38;2;160;210;115m     ██║   ██║██╔═══╝ ██╔══╝   ██║╚██╗██║ ██╔══██╗██║╚██╔╝██║██║      [0m
+  | [38;2;140;200;150m     ╚██████╔╝██║     ███████╗ ██║ ╚████║ ██████╔╝██║ ╚═╝ ██║╚██████╗ [0m
+  | [38;2;125;195;185m      ╚═════╝ ╚═╝     ╚══════╝ ╚═╝  ╚═══╝ ╚═════╝ ╚═╝     ╚═╝ ╚═════╝ [0m
+  | [38;2;115;195;215m     ██╗  ██╗  █████╗  █████╗   ███╗   ██╗ ███████╗ ███████╗ ███████╗ [0m
+  | [38;2;115;195;235m     ██║  ██║ ██╔══██╗ ██╔══██╗ ████╗  ██║ ██╔════╝ ██╔════╝ ██╔════╝ [0m
+  | [38;2;135;190;240m     ███████║ ███████║ ██████╔╝ ██╔██╗ ██║ █████╗   ███████╗ ███████╗ [0m
+  | [38;2;165;185;240m     ██╔══██║ ██╔══██║ ██╔══██╗ ██║╚██╗██║ ██╔══╝   ╚════██║ ╚════██║ [0m
+  | [38;2;195;180;240m     ██║  ██║ ██║  ██║ ██║  ██║ ██║ ╚████║ ███████╗ ███████║ ███████║ [0m
+  | [38;2;208;184;240m     ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═╝ ╚═╝  ╚═══╝ ╚══════╝ ╚══════╝ ╚══════╝ [0m
+  |     ┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+  |     ┃      OpenBMC Development Environment · [38;2;255;210;80mob-harness[0m · 𝓲𝓪𝓼𝓲      ┃
+  |     ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+  | 
+  | [0;32m[INFO][0m Smoke-probing forwarded ports: SSH 2222 / Redfish 2443 / IPMI 2623 (UDP)
+  | [0;32m[INFO][0m Waiting for BMC SSH port 2222 to accept connections (up to 150s)...
+  | [0;32m[INFO][0m BMC SSH port 2222 connectable after attempt 1 (~5s)
+  | 
+  | [0;36m────────────────────────────────────────────────────────────[0m
+  |   [1m[0;36mSmoke assertions for 'gb200nvl-obmc'[0m
+  | [0;36m────────────────────────────────────────────────────────────[0m
+  |   ✓ Redfish root reachable (HTTP 200, Redfish structural marker present)
+  |   ✓ Redfish Managers reachable (HTTP 200, Manager resource present)
+  |   ✓ Redfish SoftwareVersion reported (BMC reports firmware version 3.1.0-dev-580-gfc5c29842e.1783844758.184008)
+  |   ✗ IPMI over LAN works (ipmitool exit 1) — Error: Unable to establish IPMI v2 / RMCP+ session
+  |   ✓ System ready signal (SSH port TCP-connectable)
+  | 
+  | [0;31mSmoke summary: 4/5 assertions passed[0m
+  | 
+  | [0;31m[ERROR][0m Failed assertions (1):
+  |   [0;31m✗ IPMI over LAN works[0m
+  | ----- RAW response (for localization) -----
+  | interface: IPMI @ localhost:2623/UDP (ipmitool mc info)
+  | ipmitool return code: 1
+  | RAW output:
+  | Error: Unable to establish IPMI v2 / RMCP+ session
+  | possible cause: image may lack an RMCP+/LAN responder (phosphor-ipmi-netbridged not installed/enabled) — image-side, not a smoke defect; Redfish remains the canonical probe.
+  | -------------------------------------------
+  | 
+  | [0;31m[ERROR][0m ob smoke: smoke assertions failed for 'gb200nvl-obmc' (see ✗ rows + RAW responses above).
+  | [0;33m[WARN][0m exit 1 here is the α truth-reporter contract: the ✗ rows above report the BMC interface's ACTUAL state, NOT a smoke command failure — read the ✗ rows to see which interface and why (debug the BMC interface, not smoke).
+[integration] OK (smoke: α truth for gb200nvl-obmc — Redfish✓(×3) IPMI✗(image lacks RMCP+) ready✓ → rc=1 by design)
+ok   smoke_e2e.sh
+SKIP: smoke help-clarity suite is agent-driven; set OB_HELP_CLARITY_RUN=1 and OB_HELP_CLARITY_ANSWERS=<dir> (see file header)
+skip smoke_help_clarity.sh
+skip build_e2e.exp (set OB_RUN_BUILD_E2E=1 to run real build)
+ok   manual_matrix_qemu.exp
+
+ALL GREEN
