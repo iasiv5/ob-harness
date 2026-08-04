@@ -489,9 +489,23 @@ _smoke_probe_ssh_tcp() {
 cmd_smoke() {
     detect_harness_root
 
-    # ── 前置 1: machine arg 必填(MVP: 无交互选号——probe-only 命令, 选号不在 scope; 给了 remedy 即可) ──
+    # ── 前置 1: machine arg 必填(probe-only 命令不做交互选号——scope 裁剪; 但列出可 smoke 的对象) ──
+    # smoke 的合法对象 = running QEMU 实例(非 initialized machines, 见前置 2), 故列 qemu_instance_list,
+    # 不引向 ob status(那是 build 的 initialized-machine 语义, 会把用户引向未启动的 machine)。
+    # 缺参数仍 exit 3(precondition missing, exit 契约不变)。
     if [[ -z "$MACHINE" ]]; then
         error "No machine specified."
+        local -a _smoke_targets=()
+        mapfile -t _smoke_targets < <(qemu_instance_list)
+        if [[ ${#_smoke_targets[@]} -eq 0 ]]; then
+            error "No QEMU instance is running. smoke probes a running instance — run 'ob start-qemu <machine>' first."
+        else
+            error "Running QEMU instances you can smoke:"
+            local _t
+            for _t in "${_smoke_targets[@]}"; do
+                printf '  %-20s %s\n' "$_t" "$(qemu_instance_summarize_brief "$_t")" >&2
+            done
+        fi
         error "Specify a machine: ob smoke <machine>"
         exit 3
     fi
