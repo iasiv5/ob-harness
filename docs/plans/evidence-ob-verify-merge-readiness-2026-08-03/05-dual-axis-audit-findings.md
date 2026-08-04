@@ -94,14 +94,19 @@ Coverage reality (radar shows structure-only "✗ uncovered" for all 12 smoke fn
 
 ---
 
-## Deferred non-blocking 🟡 (independent reviewer convergence — NOT landed, recorded honestly)
+## Resolved non-blocking 🟡 — LANDED as docs in bestpractice_06 (reviewer convergence)
 
 Both blind reviewers (A and B, zero-context, independent) INDEPENDENTLY converged on the
-same 🟡 non-blocking hardening opportunity. Per the driver's prod-change boundary
-("ONLY mechanical fixes when ALL THREE hold: clear bug + test covers it + ob_check green")
-and to preserve the integrity of criterion 4 (the reviewed diff == final diff), this 🟡
-is recorded as a deferred follow-up rather than landed in this verification cycle. It is
-NON-BLOCKING: criterion 4 is unaffected (both reviewers gave it NO-BLOCKER explicitly).
+same 🟡 non-blocking hardening opportunity. **Resolution (post-DONE, user-adjudicated):**
+the α exception was LANDED in `rules/knowhow/bestpractice_06-ob_first.md` (the agent's
+exit-code contract + fallback authority) as a dedicated "exit 1 的 smoke α 例外" section +
+a cross-reference from the fallback protocol's exit-1 step — NOT in the `ob --help` global
+Exit Codes table (which stays a clean 0/1/2/3). Rationale: the user declined to pollute the
+global contract table; bestpractice_06 is the on-point home (it is what an agent reads when
+deciding whether to fall back on exit 1). This is a DOCS change (rules/knowhow), touches
+none of the 4 reviewed prod files → criterion 4 reviewed-prod-diff still == committed; no
+re-review needed. ob_check re-verified ALL GREEN (PASS=14) post-change. It remains
+NON-BLOCKING: criterion 4 was unaffected either way (both reviewers gave NO-BLOCKER).
 
 **The converged 🟡**: the global "Exit Codes" section in `ob --help` appears BELOW the
 smoke Options section. An agent that grep-only jumps to the global "1 = Failure — broken"
@@ -123,14 +128,14 @@ harden against that grep-only misread.
 > hardening opportunities, not 🔴 blockers — the contract violation is documented,
 > deliberated, and three-times mitigated.
 
-**Disposition**: DEFERRED to a follow-up. Rationale: (1) it touches `ob` help-text (prod),
-and the 🟡 is a clarity hardening, not a "clear bug" — does not meet the prod-change
-3-condition bar; (2) landing it post-review would make the final diff diverge from the
-reviewed diff, weakening criterion 4's evidence (re-running 2 opus reviewers for a
-help-text tweak is disproportionate); (3) the current mitigation stack (override banner
-positioned ABOVE the global section + in-band stderr line at exit time + ADR-0020) already
-addresses the misuse path for any agent that reads ob's output per bestpractice_06 step 4.
-The back-reference is a clean, low-risk follow-up item.
+**Disposition history**: originally DEFERRED (driver discretion, master-endorsed at DONE)
+on 3 grounds: (1) ob help-text is prod and the 🟡 is clarity hardening, not a clear bug;
+(2) a post-review prod edit would diverge final-diff from reviewed-diff; (3) the mitigation
+stack (override banner above the global section + in-band stderr at exit + ADR-0020) already
+covers agents that read ob's output. **User adjudicated post-DONE → chose to LAND the α
+exception, but in bestpractice_06 (docs) rather than ob help-text (prod)** — preserving both
+the clean 0/1/2/3 contract table AND agent-decision-point visibility. LANDED in the follow-up
+commit; ob_check ALL GREEN (PASS=14). No remaining follow-up for this 🟡.
 
 ---
 

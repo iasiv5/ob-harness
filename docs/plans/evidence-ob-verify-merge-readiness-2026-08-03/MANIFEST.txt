@@ -1,6 +1,6 @@
 # MANIFEST.txt — ob-verify merge-readiness per-criterion pass evidence
 # Date: 2026-08-03  Branch: feat/ob-verify  cwd: /bmc/iasi/ob-harness-community
-# Final state: 17 ahead / 0 behind main (15 original + 2 test-layer commits ecd8551 + <evidence>),
+# Final state: 18 ahead / 0 behind main (15 original + 3 commits this cycle: ecd8551 + b8e6a51 + <this>),
 # clean, fast-forwardable. All 6 criteria PASS (each objectively re-verified by the driver agent).
 
 ## C1 — Static read-only gate   ✅ PASS
@@ -56,10 +56,11 @@
             F2-F4 (over-eng candidates, DROP) — distinct contract facets / opt-in / layered coverage.
             F6-debounce — integration-revealed test-layer robustness fix (smoke_e2e Redfish gate
                debounce); LANDED during C2 verification (see 05-audit-findings addendum).
-            Deferred 🟡 (NOT landed, recorded honestly): both reviewers independently flagged that
-               a back-reference from the global Exit Codes section to the smoke exception would help
-               grep-only agents. Deferred (option c, master-endorsed) — touches prod help-text, and
-               landing post-review would make final-diff ≠ reviewed-diff, weakening C4. Clean follow-up.
+            Resolved 🟡 (LANDED as docs post-DONE, user-adjudicated): both reviewers independently
+               flagged the α-exception visibility gap. User chose to land it in bestpractice_06 (docs,
+               the agent fallback-decision authority) rather than the ob --help global Exit Codes table
+               (kept clean 0/1/2/3). Docs-only → C4 reviewed-prod-diff unchanged; ob_check ALL GREEN
+               (PASS=14) post-change. See "Resolved non-blocking 🟡" section in 05-audit-findings.
   PASS    : no unprocessed KEEP-level finding (F1 fix landed + ob_check re-green; F6-debounce landed).
 
 ## C6 — Evidence archive   ✅ PASS
@@ -68,10 +69,11 @@
   reproduce: REPRODUCE.txt lists every command for a fresh agent to re-run the whole pack.
 
 ## Final git state
-  branch  : feat/ob-verify (17 ahead / 0 behind main, clean, fast-forwardable)
-  commits : 15 original branch commits + 2 test-layer commits this cycle:
+  branch  : feat/ob-verify (18 ahead / 0 behind main, clean, fast-forwardable)
+  commits : 15 original branch commits + 3 commits this cycle:
               - ecd8551 test(smoke): F1 start-qemu non-TTY cov-gap lock + smoke_e2e F6 debounce gate
-              - <this commit> docs(plans): ob-verify merge-readiness evidence pack (6 criteria)
+              - b8e6a51 docs(plans): ob-verify merge-readiness evidence pack (6 criteria)
+              - <this commit> docs(ob_first): smoke exit-1 α 例外落 bestpractice_06 + evidence 更新
   prod    : ob / lib/*.sh / tools/exit_contract.py UNCHANGED this cycle → reviewed-prod-diff ==
             committed-prod-diff (criterion-4 integrity preserved). All test-layer/docs only.
 
