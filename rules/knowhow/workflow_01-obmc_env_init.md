@@ -253,6 +253,38 @@ bitbake -c cleansstate <failed-recipe>
 ls workspace/openbmc/build/<machine>/tmp/log/cooker/<machine>/
 ```
 
+### ob smoke 阶段（QEMU 验证）
+
+#### 7. smoke 第3条 `Redfish SoftwareVersion reported` ✗（bmcweb 不填 FirmwareVersion）
+
+**症状**：`ob smoke <machine>` 4/5 通过、唯一失败是第3条，bmcweb 的 Manager 资源 body 不含 `FirmwareVersion`/`SoftwareVersion` 字段（其它4条全 ✓）。
+**影响**：smoke exit 1（α truth-reporter，如实报告 BMC 接口态），成功标准（exit 0 / 5/5）无法达成。
+
+**判别**（区分 timing vs 确定性配置缺口）：
+
+1. 先确认 BMC 已 boot 完全稳定（romulus 在 community QEMU 有 workqueue/soft-lockup，boot 需 5-7min，bmcweb 在 lockup 期偶发 HTTP 500/空 body）。用串口 socket 看实时态：
+   `socat -,rawer,escape=0x1d UNIX-CONNECT:/bmc/iasi/tmp/qemu-<machine>-serial.sock`
+2. BMC 稳定后若第3条仍稳定 ✗、body 是完整 200 JSON 但**缺 FirmwareVersion 字段** → 是确定性配置缺口，不是 timing。
+3. 用 D-Bus 确认：`busctl tree xyz.openbmc_project.Software.BMC.Updater` 只有 `/software/<id>` 没有 `/software/bmc/functional`；`/software/functional` 可能存在。bmcweb（`BMCWEB_REDFISH_UPDATESERVICE_USE_DBUS` 默认 enabled）查 `/software/bmc/functional`（不存在）→ 不填 FirmwareVersion。
+
+**根因**（romulus 上游 OBMC 配置不一致，非 bug 非 timing 非 ob-harness 缺陷）：
+- romulus 在 phosphor-software-manager 侧 `PACKAGECONFIG:remove:romulus = "software-update-dbus-interface"`（meta-ibm/meta-romulus/.../phosphor-software-manager_%.bbappend，注释 "New code update doesn't fit in Romulus"）→ 装旧式 `Software.BMC.Updater`（ALL-type），只创建 `/software/functional`，**不创建** `/software/bmc/functional`。
+- 但 romulus 的 bmcweb **没配套禁用** `redfish-updateservice-use-dbus`，仍查不存在的 `/software/bmc/functional`。
+- sbp1 是正确先例：同样移除 dbus-interface，但**同时**在 bmcweb 侧禁用了 USE_DBUS 让它回退读 `/software/functional`。romulus 漏了这步。
+
+**修复**（在 working tree 改 OBMC layer，理论修复应提 OpenBMC 与 sbp1 对齐）：
+
+```bash
+# 加到 meta-ibm/meta-romulus/recipes-phosphor/interfaces/bmcweb_%.bbappend
+EXTRA_OEMESON += "-Dredfish-updateservice-use-dbus=disabled"
+# 强制 bmcweb 重编（见下两坑），然后重打包 image
+```
+
+**两个 sstate/layer 假成功坑**（改完 bbappend 后必须避开，否则修复编不进镜像）：
+
+1. **sstate 复用 → bmcweb 不重编**：改 bbappend 后 `ob build` 镜像时间戳会更新（do_rootfs 必重做），但 bmcweb 二进制可能命中旧 sstate（USE_DBUS 仍 enabled）= 修复没进镜像。必须 `bitbake -c cleansstate bmcweb` 强制清 sstate 后重编 bmcweb，再 `bitbake -c clean obmc-phosphor-image && ob build` 重打包。**铁证**：`build/<machine>/tmp/work/.../bmcweb/1.0+git/build/config/bmcweb_config.h` 里 grep `REDFISH_UPDATESERVICE_USE_DBUS` 必须=false 才算编进。
+2. **layer 归属坑**：sbp1 的 `-Dredfish-updateservice-use-dbus=disabled` 写在 meta-ibm **公共层**，但 romulus 的 bblayers 只含 `meta-ibm/meta-romulus` 子层，不含 meta-ibm 公共层——抄 sbp1 写到公共层对 romulus 无效。必须写到 romulus **自己**的 bmcweb bbappend。**核实绕过假成功**：`bitbake -e bmcweb | grep ^EXTRA_OEMESON=` 必须含你的 flag。
+
 ---
 
 ## 已知限制
@@ -264,3 +296,5 @@ ls workspace/openbmc/build/<machine>/tmp/log/cooker/<machine>/
 | 个别 bare mirror 失败不阻塞 init | 设计决策：允许部分失败，BitBake 按需从远程拉取 | 重跑 init 或手动补 mirror |
 | `--skip-deps` 需要已有 deps.json | 跳过 bitbake -g + Tinfoil，直接复用缓存 | 先完整跑一次 init |
 | `ob build` 需要交互终端 | 必须交互选择 machine + Y/N 确认 | 无 TTY 环境下手动 `source setup && bitbake` |
+| romulus smoke 第3条 FirmwareVersion 缺失 | OBMC 上游 romulus 配置不一致：移除 software-update-dbus-interface 但没配 bmcweb USE_DBUS=disabled | 见故障排除 #7（改 bmcweb bbappend + cleansstate 重编） |
+| romulus community QEMU boot 慢/偶发 lockup | workqueue/soft-lockup（srcu_drive_gp stuck） | boot 完全稳定（login prompt + 服务全起，~5-7min）后再 smoke；串口 socat 看实时态 |
