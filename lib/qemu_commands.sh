@@ -94,6 +94,14 @@ cmd_start_qemu() {
                     exit 2
                 fi
                 qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
+                # ── Port reuse (restart 语义, ADR-0021): 沿用旧实例端口。
+                # X-α: -z guard 保 CLI flag 优先(用户 restart 时 --ipmi-port 不被覆盖)。
+                # deploy-to-qemu 用无条件赋值(start 场景无 CLI 冲突);start-qemu 加 guard。
+                [[ -z "$QEMU_SSH_PORT" ]]    && QEMU_SSH_PORT="$PIDFILE_SSH_PORT"
+                [[ -z "$QEMU_REDFISH_PORT" ]] && QEMU_REDFISH_PORT="$PIDFILE_REDFISH_PORT"
+                [[ -z "$QEMU_IPMI_PORT" ]]   && QEMU_IPMI_PORT="$PIDFILE_IPMI_PORT"
+                [[ -n "$PIDFILE_HTTP_PORT" && "$PIDFILE_HTTP_PORT" != "none" && -z "$QEMU_HTTP_PORT" ]] \
+                    && QEMU_HTTP_PORT="$PIDFILE_HTTP_PORT"
             else
                 error "QEMU instance already running for '$MACHINE' (PID $PIDFILE_PID)."
                 error "Use --force to kill and restart, or 'ob stop-qemu $MACHINE' first."
