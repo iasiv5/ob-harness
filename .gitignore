@@ -15,3 +15,6 @@ tmp_*/
 # user know-how：本地定制经验，不回上游（ADR-0017）
 contexts/knowhow/*
 !contexts/knowhow/.gitkeep
+
+# Claude Code 插件运行产物（better-harness 的 durable reports，本机生成，不入库）
+.claude/better-harness/
