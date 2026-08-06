@@ -88,6 +88,19 @@ _Avoid_: QEMU lock, QEMU state
 workspace 里某个 machine 对应的、可能正在运行的 QEMU 进程的逻辑视图，由 `QEMU PID file` 记录。它回答"哪个 machine 的 QEMU 在跑 / 状态如何（存活、PID、转发端口）"，是 `ob status` 展示、`ob stop-qemu` 枚举、`ob start-qemu` 冲突检测共同关心的抽象；`QEMU PID file` 是它的物理载体，二者是实体与记录的关系。与 `machine lifecycle state` 正交：lifecycle state 回答 machine 处于 init/build 的哪个阶段，instance 回答 machine 的 QEMU 进程当前是否在跑——一个 `firmware-image-ready machine` 可以没有 QEMU instance（未 start-qemu），一个 stale QEMU instance 也不改 lifecycle state。instance 集合的增（start-qemu 写 PID file）删（stop-qemu / kill-restart 删 PID file）是 lifecycle 动作的副作用，不是 instance 视图自身的职责。
 _Avoid_: QEMU process（OS 进程，太底层）, QEMU runtime（与 qemu.sh runtime 模块撞名）, 把 QEMU PID file 当 instance（记录 ≠ 实体）
 
+**重启 (restart)**:
+`ob start-qemu` 的一种 QEMU lifecycle declaration：同 machine 存在 running `QEMU instance`（`qemu_instance_is_alive` alive）且本次会 kill 它后重新拉起。它是"原位替换"语义——默认沿用即将被 kill 的旧实例的端口（见 `端口解析链`），区别于"首启"（无旧实例）与"stale 清理"（`is_alive` 返 exited/recycled，端口可用前提已崩，不沿用）。`restart` 仅发生在 `cmd_start_qemu` 的**交互确认分支**（running + 用户敲 y）；`--force` **不是** restart（它是 confirmation-gate modifier，修饰"是否问 y/N"，非 lifecycle declaration，见 `--force`）。决策见 [ADR-0021](docs/adr/0021-qemu-restart-port-reuse.md)。
+_Avoid_: kill-and-restart（UI 文案，术语用 restart）, reboot（与 BMC reboot 混）, 把 `--force` 当 restart
+
+**端口解析链 (port resolution chain)**:
+`ob start-qemu` / `ob deploy-to-qemu` 决定 QEMU 生效转发端口（`QEMU_LAUNCH_SSH_PORT` / `QEMU_LAUNCH_REDFISH_PORT` / `QEMU_LAUNCH_IPMI_PORT` / `QEMU_LAUNCH_HTTP_PORT`）的有序来源，按"显式程度"从高到低：`本次 CLI flag（--ssh-port / QEMU_SSH_PORT）> 本次 env var（OB_QEMU_SSH_PORT）> [restart-only] 旧实例端口（PIDFILE_SSH_PORT）> 默认值（2222/2443/2623）`。restart-only 层**仅**在 `重启 (restart)` 交互确认路径注入（`-z` guard 到 `QEMU_*_PORT`，ADR-0021 D2/D6），首启 / stale 清理 / `--force` 路径该层缺失、直接 fallback 到 env/默认。`cmd_deploy_to_qemu` 用无条件赋值 `QEMU_*_PORT`（注入到 CLI flag 层、无 `-z` guard），叠加 build-first 间隔后端口概率释放，场景与 start-qemu restart 不同——两者注入规则略不对称（deploy 无 guard、start 有 guard），差异见 [ADR-0021](docs/adr/0021-qemu-restart-port-reuse.md)。`端口解析链` 把"端口来源"显式化为独立领域概念，防止把"默认值漂移"误读为"端口冲突"。
+_Avoid_: 端口选择（口语化）, port fallback（用链强调有序性）, 把 PIDFILE_* 当解析链一层（它是旧实例端口的物理载体，不是链上独立来源——经 `-z` guard 注入到 CLI flag 层才进链）
+
+**--force**:
+`ob start-qemu` / `ob stop-qemu` 的 confirmation-gate modifier：kill 既有 `QEMU instance`（start-qemu 冲突分支）或批量停止（stop-qemu）时**不要求 y/N 交互确认**。它是 confirmation 修饰语，**非** lifecycle declaration——不触发 `重启 (restart)` 语义、不沿用旧实例端口、走 `端口解析链` 的首启链（`CLI > env > 默认`）。与 `重启 (restart)`（lifecycle declaration、注入旧端口）正交。`--force`-restart 会重新撞默认端口（如 IPMI 2623）的内核残留属可接受代价，用 `export OB_QEMU_*_PORT=` env 规避。决策见 [ADR-0021](docs/adr/0021-qemu-restart-port-reuse.md)。
+_Avoid_: force restart（--force 非 restart）, 强制重启（口语化）, 把 --force 当 lifecycle 语义
+
+
 **QB variable**:
 BitBake 变量（`QB_MACHINE`、`QB_MEM` 等），定义在 OpenBMC machine conf 及其 include 链中。`ob start-qemu` 优先读取 deploy 产物 `*.qemuboot.conf` 中的最终 QEMU 启动值；缺少该产物时才回退 `bitbake -e` 解析最终生效值。变量缺失时是否采用兼容 fallback 由 `QEMU launch profile` 表达，fallback 不应被称为 QB variable。
 _Avoid_: QEMU 配置变量, QEMU 参数, 把 legacy fallback 当 QB variable
