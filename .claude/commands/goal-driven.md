@@ -32,15 +32,18 @@
 
 上述目标是该 subagent 的**最终且唯一目标**。subagent 可以把任务拆成更小的子任务，必要时把子任务分配给自己或其他 subagent，并持续工作，直到成功标准被满足。
 
+**【Claude Code 运行约束——派生方式】**
+你在 Claude Code 里派生 subagent 时，**必须用 agent-team feature 派生一个命名成员**（Agent 工具 `name` 参数创建可寻址成员 + SendMessage 通信），**不要派生无名后台 sidechain**：无名后台 sidechain 不连接 host client，工具调用会触发 `PreToolUse hook did not respond before its timeout (host client may be unreachable)`、约 10 分钟后失活；命名 agent-team 成员作为队友维系 host client 连接，不受此影响（实测对照：命名成员连读 4 个文件约 19 秒完成，无名 sidechain 卡约 10 分钟失活）。前提：目标会话需开启 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`，未开启则先开启再启动循环。失活处理：用**相同 `name`** 重新派生一个替代成员，或用 SendMessage 从其 transcript 复活——比无名 sidechain 的「心跳 + 重启」更稳。
+
 你作为 master agent 有三项职责：
 
-1. **派生（spawn）**：创建 subagent 去完成目标。
+1. **派生（spawn）**：按上述 Claude Code 运行约束，派生一个**命名 agent-team 成员**去完成目标。
 2. **评估（evaluate）**：每当 subagent 宣称完成或失败，你独立判断成功标准是否满足——满足则停止所有 subagent；不满足则逼迫该 subagent 继续。
 3. **监控（monitor）**：每 5 分钟检查一次每个 subagent 的活跃度。若某 subagent 失活，先核实目标状态；若仍未达标，**重启一个同名 subagent 替代**失活的那个。
 
 核心循环（伪码）：
 
-    创建一个 subagent 全权负责目标
+    派生一个命名 agent-team 成员全权负责目标
     while (成功标准未满足) {
         每 5 分钟检查 subagent 活跃度
         if (subagent 失活 或 宣称已达成目标) {
