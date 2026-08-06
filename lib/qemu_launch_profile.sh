@@ -78,6 +78,10 @@ qemu_launch_profile_record_soc_evidence() {
     fi
 }
 
+# QEMU machine 名解析链：QB_MACHINE（qemuboot.conf deploy 产物 > bitbake -e）→ 缺失时
+# 走下方 legacy <prefix>-bmc fallback。ob 不依据已安装 binary 支持的机型改写此值——
+# 机型事实源单一化为 recipe 的 QB_MACHINE；binary 不认的值由 QEMU 的 unsupported-machine
+# 直接暴露（fail-loud），不被兜底掩盖。（binary machine override 已移除。）
 qemu_launch_profile_apply_machine_name() {
     local qb_machine_name="$1"
     local machine_name="$2"
@@ -99,33 +103,6 @@ qemu_launch_profile_apply_machine_name() {
     QEMU_LAUNCH_MACHINE_NAME="${prefix}-bmc"
     QEMU_LAUNCH_MACHINE_NAME_SOURCE="legacy-name"
     warn "QB_MACHINE not defined; derived QEMU machine name from machine name: $QEMU_LAUNCH_MACHINE_NAME"
-}
-
-qemu_binary_supports_machine() {
-    local machine_name="$1"
-
-    [[ -n "$machine_name" && -x "$QEMU_BIN_FILE" ]] || return 1
-    "$QEMU_BIN_FILE" -machine help 2>/dev/null | awk -v name="$machine_name" '$1 == name { found = 1; exit } END { exit(found ? 0 : 1) }'
-}
-
-qemu_launch_profile_apply_binary_machine_override() {
-    local prefix="${MACHINE%%-*}"
-    local candidate=""
-    local previous=""
-    local previous_source=""
-
-    [[ -n "$QEMU_LAUNCH_MACHINE_NAME" ]] || return 0
-    [[ "$prefix" != "$MACHINE" ]] || return 0
-
-    candidate="${prefix}-bmc"
-    [[ "$candidate" != "$QEMU_LAUNCH_MACHINE_NAME" ]] || return 0
-    qemu_binary_supports_machine "$candidate" || return 0
-
-    previous="$QEMU_LAUNCH_MACHINE_NAME"
-    previous_source="$QEMU_LAUNCH_MACHINE_NAME_SOURCE"
-    QEMU_LAUNCH_MACHINE_NAME="$candidate"
-    QEMU_LAUNCH_MACHINE_NAME_SOURCE="qemu-binary"
-    info "Using QEMU binary-supported machine '$candidate' (overrides '$previous' from $previous_source)."
 }
 
 qemu_launch_profile_uses_external_ast2700_loaders() {

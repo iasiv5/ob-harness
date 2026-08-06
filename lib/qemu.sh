@@ -90,7 +90,6 @@ qemu_prepare_launch() {
     resolve_qemu_launch_profile "$machine"
 
     ensure_qemu_binary
-    qemu_launch_profile_apply_binary_machine_override
 
     ensure_qemu_firmware
 

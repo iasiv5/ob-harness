@@ -76,5 +76,62 @@ assert_match "QEMU_CMD[0] is the binary" "$out" 'QEMU_CMD_0=\[[^]]'
 bitbake_calls=0; [[ -f "$DB/.bitbake.calls" ]] && bitbake_calls=$(wc -l < "$DB/.bitbake.calls")
 assert_eq "qemuboot fast path skips bitbake" "$bitbake_calls" "0"
 
+# ── regression: declared machine not rewritten by binary -machine help (override removed) ──
+# MACHINE 带连字符(prefix != MACHINE) + fake binary 的 -machine help 暴露 <prefix>-bmc。
+# 原 override 会把声明的 romulus-declared 改写成 romulus-bmc; 删除后 prepare 必须保留声明值。
+TMP2="$(mktemp -d)"; DB2="$(mktemp -d)"
+O2="$TMP2/openbmc"; B2="$O2/build/romulus-extra"; W2="$TMP2/workspace"; C2="$W2/configs"
+mkdir -p "$B2" "$C2/qemu-bin" "$W2/qemu-bin/community"
+: > "$O2/setup"
+printf 'source_label=community\n' > "$C2/openbmc-source.manifest"
+d2="$B2/tmp/deploy/images/romulus-extra"; mkdir -p "$d2"
+cat > "$d2/romulus-extra.qemuboot.conf" <<QB
+[config_bsp]
+qb_machine = -machine romulus-declared
+qb_mem = -m 512
+qb_system_name = qemu-system-arm
+QB
+img2="$d2/obmc-phosphor-image-romulus-extra.static.mtd"; : > "$img2"
+
+# fake QEMU binary(arm): -machine help 暴露 romulus-bmc(<prefix>-bmc), 触发原 override 改写路径
+cat > "$W2/qemu-bin/community/qemu-system-arm" <<'STUB'
+#!/usr/bin/env bash
+if [[ "$*" == "-machine help" ]]; then
+    echo "romulus-bmc OpenBMC Romulus"
+    exit 0
+fi
+echo fake-qemu
+STUB
+chmod +x "$W2/qemu-bin/community/qemu-system-arm"
+
+mkfake_bin "$DB2" ss
+make_qemu_curl_fake "$DB2"
+make_bitbake_env_fake "$DB2"
+
+# scoped subshell: 显式切换 prepare 依赖的全部全局目录变量, 与前一个 romulus case 隔离。
+# 漏设任一项都会让 prepare 跑到旧 romulus 环境(找不到 romulus-extra.qemuboot.conf / 旧 binary)。
+(
+    OPENBMC_DIR="$O2"
+    BUILD_DIR="$B2"
+    WORKSPACE_DIR="$W2"
+    CONFIGS_DIR="$C2"
+    SOURCE_MANIFEST_FILE="$C2/openbmc-source.manifest"
+    MACHINE=romulus-extra
+    PATH="$DB2:$PATH"
+
+    qemu_prepare_launch romulus-extra "$img2"
+    echo "RC=$?"
+    echo "MACHINE_NAME=[$QEMU_LAUNCH_MACHINE_NAME]"
+    printf 'QEMU_CMD=[%s]\n' "${QEMU_CMD[*]}"
+) > "$TMP2/out" 2>&1
+rc2=$?
+out2=$(cat "$TMP2/out")
+
+assert_eq "prepare declared-machine case rc" "$rc2" "0"
+assert_match "declared machine kept, not rewritten" "$out2" 'MACHINE_NAME=\[romulus-declared\]'
+assert_false "QEMU_CMD not rewritten to prefix-bmc" grep -Fq "romulus-bmc" <<< "$out2"
+
+rm -rf "$TMP2" "$DB2"
+
 rm -rf "$TMP" "$DB"
 assert_summary

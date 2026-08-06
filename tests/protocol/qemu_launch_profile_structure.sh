@@ -77,6 +77,7 @@ assert_function_not_match "check_jenkins_update no old arch vars" "$QEMU_BINARY_
 assert_function_not_match "ensure_qemu_binary_community no old arch vars" "$QEMU_BINARY_SH" ensure_qemu_binary_community 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
 assert_function_not_match "ensure_qemu_binary_custom no old arch vars" "$QEMU_BINARY_SH" ensure_qemu_binary_custom 'QB_SYSTEM_NAME|\bSOC_TYPE\b'
 assert_function_not_match "ensure_qemu_firmware no soc-derived gating" "$QEMU_BINARY_SH" ensure_qemu_firmware 'QB_SYSTEM_NAME|QEMU_LAUNCH_SOC_TYPE|\bSOC_TYPE\b'
+assert_function_not_match "qemu_prepare_launch no binary machine rewrite" "$QEMU_SH" qemu_prepare_launch 'apply_binary_machine_override|qemu_binary_supports_machine'
 assert_function_contains "ensure_qemu_firmware uses pcbios flag" "$QEMU_BINARY_SH" ensure_qemu_firmware "QEMU_LAUNCH_REQUIRES_PCBIOS"
 assert_function_contains "machine conf lookup stops after first hit" "$QEMU_LAUNCH_PROFILE_SH" qemu_launch_profile_find_machine_conf "-print -quit"
 assert_function_contains "include lookup stops after first hit" "$QEMU_LAUNCH_PROFILE_SH" resolve_machine_conf_include "-print -quit"
