@@ -26,10 +26,11 @@ cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}" 2>/dev/null \
 
 # 本轮 working tree 改动(committed 已在 CI 跑过,不重复)
 changed=$(git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard 2>/dev/null)
-# 触发范围: ob / lib/*.sh(受检对象) + tools/*.py(ob_check 实际调用的 checker 实现,例如
-# exit_contract.py / coverage_radar.py / extract_funcs.py)。改 checker 本身也要本地自检,
-# 否则 checker 被改坏(如 exit_contract 静默假 PASS)会本地零信号直放行、只能等 CI 兜底。
-if ! grep -qE '(^|/)lib/[^/]+\.sh$|^ob$|(^|/)tools/[^/]+\.py$' <<<"$changed"; then
+# 触发范围: ob / lib/*.sh(受检对象) + tools/*.py(checker 实现) + tools/*.sh(编排器/采集器,
+# 如 ob_check.sh 本体、trace_collect.sh、smoke_regression.sh)。改 checker 或编排器本身也要
+# 本地自检,否则被改坏(注释掉一道 gate、放宽 surface 正则、exit_contract 静默假 PASS)会本地
+# 零信号直放行;注意 CI 只在 main/refactor/** 与 PR 上跑,better-harness/* 等特性分支无 CI 兜底。
+if ! grep -qE '(^|/)lib/[^/]+\.sh$|^ob$|(^|/)tools/[^/]+\.py$|(^|/)tools/[^/]+\.sh$' <<<"$changed"; then
   exit 0   # 未触及 ob/lib/tools 检查器,放行
 fi
 
