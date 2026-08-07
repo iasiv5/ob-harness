@@ -33,12 +33,12 @@
 上述目标是该 subagent 的**最终且唯一目标**。subagent 可以把任务拆成更小的子任务，必要时把子任务分配给自己或其他 subagent，并持续工作，直到成功标准被满足。
 
 **【Claude Code 运行约束——派生方式】**
-你在 Claude Code 里派生 subagent 时，**必须用 agent-team feature 派生一个命名成员**（Agent 工具 `name` 参数创建可寻址成员 + SendMessage 通信），**不要派生无名后台 sidechain**：无名后台 sidechain 不连接 host client，工具调用会触发 `PreToolUse hook did not respond before its timeout (host client may be unreachable)`、约 10 分钟后失活；命名 agent-team 成员作为队友维系 host client 连接，不受此影响（实测对照：命名成员连读 4 个文件约 19 秒完成，无名 sidechain 卡约 10 分钟失活）。前提：目标会话需开启 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`，未开启则先开启再启动循环。失活处理：用**相同 `name`** 重新派生一个替代成员，或用 SendMessage 从其 transcript 复活——比无名 sidechain 的「心跳 + 重启」更稳。
+你在 Claude Code 里派生 subagent 时，**必须用 agent-team feature 派生一个命名成员**（Agent 工具 `name` 参数创建可寻址成员 + SendMessage 通信），**不要派生无名后台 sidechain**：无名后台 sidechain 不连接 host client，工具调用会触发 `PreToolUse hook did not respond before its timeout (host client may be unreachable)`、约 10 分钟后失活；命名 agent-team 成员作为队友维系 host client 连接，不受此影响（实测对照：命名成员连读 4 个文件约 19 秒完成，无名 sidechain 卡约 10 分钟失活）。前提：目标会话需开启 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`，未开启则先开启再启动循环。失活处理：用**相同 `name`** 重新派生一个替代成员，或用 SendMessage 从其 transcript 复活——比无名 sidechain 的「心跳 + 重启」更稳。**两种恢复路径的取舍（实测）**：transcript 复活保留旧上下文，对**状态化循环**（带断点 state 文件、跨 429/多 turn）是双刃剑——复活的 in-context 旧状态可能盖过 state 文件真相、并在「整理」时 reset 掉已 commit 的产物（曾发生：复活 driver 把已修 commit reset 成悬空、记录仍标 verified）。这类情况优先 **fresh 重派**（读 state 文件干净起步）；若用复活，唤醒消息须强约束「以 state 文件为权威、先对账再动作、不得动已 commit 的产物」。
 
 你作为 master agent 有三项职责：
 
 1. **派生（spawn）**：按上述 Claude Code 运行约束，派生一个**命名 agent-team 成员**去完成目标。
-2. **评估（evaluate）**：每当 subagent 宣称完成或失败，你独立判断成功标准是否满足——满足则停止所有 subagent；不满足则逼迫该 subagent 继续。
+2. **评估（evaluate）**：每当 subagent 宣称完成或失败，你独立判断成功标准是否满足——满足则停止所有 subagent；不满足则逼迫该 subagent 继续。**独立验证不止于重跑 criteria 谓词**：还要对账交付物完整性——subagent 自评/记录声称已改的产物，是否真在工作树/diff 里（实测：记录全绿但产物被 reset 缺失的情况存在，重跑 criteria 抓不到）。
 3. **监控（monitor）**：用 **durable recurring heartbeat** 自驱动（见下「持续监控与自愈」），**不要**用 REPL 内 `sleep` 长轮询——后者遇到 429 限流（与 subagent 共享额度、一起卡死）或会话/turn 被打断就断、且不自动续。每个 heartbeat tick 探活 subagent：失活则重启同名替代、宣称达成则独立验证 criteria、终态则清理并停。
 
 核心循环（伪码，durable heartbeat 驱动）：
@@ -49,7 +49,7 @@
       if (subagent paused_by_quota / idle) → SendMessage 同名 subagent 唤醒续做（agent-team 自带上下文）
       if (subagent 失活)                    → 重派同名 subagent（从 git/工作产物自定位）
       if (subagent 宣称已达成目标) {
-          独立验证 criteria（重跑可判定谓词）
+          独立验证 criteria（重跑可判定谓词）+ 对账交付物完整性（记录声称的产物真在 diff/树里）
           满足   → CronDelete 清理 + 停止所有 subagent + 结束
           未满足 → 重派替代 subagent
       }
@@ -62,7 +62,7 @@ REPL 内 `sleep` 长轮询的 master 一旦遇到任何中断——5h rolling �
 - **启动时** `CronCreate(cron:"<每 5 分钟、避开 :00/:30，如 2-59/5 * * * *>", durable:true, recurring:true, prompt:"<自包含 heartbeat：探活 subagent→idle 则 SendMessage 唤醒/失活则重派/宣称达成则验 criteria/终态则 CronDelete+停>")`。
 - **自愈链**：任何原因把 master turn 打成 idle（429 限流 / 会话打断 / turn 结束）→ 下个 cron 匹配时 durable tick 触发 → 若是 429 且额度没刷新，这 tick 也 429、再 idle、下个 tick 再试，刷新了就续；若是非额度中断，直接续 → **无需人敲「继续」**。
 - **边界**：tick 仅在会话 idle+活着时触发；关闭期间不触发但重开补跑；7 天自动过期；终态/手动结束必须 `CronDelete`。
-- **无需状态文件**：criteria 每次重跑判定、subagent 进度在代码/git/测试里、agent-team 同名成员自带上下文。仅当某 goal 的过程态不在工作产物里（如多轮 review）时，由该 goal 自行持久化。
+- **进度记录本（state 文件）是否需要，由 master 按 goal 形态自评，不强制**：criteria 每次可重跑、subagent 进度在代码/git/产物里、agent-team 同名成员自带上下文——满足这些的短循环可不配 state 文件；但跨 429/多 turn 的长循环里 in-context 状态不可靠（实测：429 击杀后上下文丢失，靠 state 文件才断点续做），这种情况建议配 state 文件（原子写 + schema 一致性）。
 
 **在成功标准被满足之前，不要停止 subagent；只有用户从外部手动介入时才结束这个进程。** 终态或手动结束时记得 `CronDelete` 清理 heartbeat，别留遗孤调度。 该过程可能消耗大量时间与 token，请确保预算充足。
 
