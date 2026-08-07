@@ -182,6 +182,21 @@ assert_contains "ast2700 partial bootloader diagnosis" "$out" "AST2700 bootloade
 assert_contains "ast2700 partial bootloader remedy" "$out" "Run 'ob build ast2700a1-evb' first."
 rm -rf "$TMP" "$DB"
 
+# --- non-EVB AST2700 machine does not require split bootloaders ---
+# Real custom AST2700 boards boot from MTD with the bootloader embedded in the
+# flash image; they neither produce u-boot-nodtb.bin/u-boot.dtb nor consume
+# them. The profile must succeed (rc 0) without those files, set pcBIOS=yes,
+# and leave the bootloader variables empty.
+TMP="$(mktemp -d)"; DB="$(mktemp -d)"; mkfake_bin "$DB" bitbake
+make_case_root "$TMP" custom-ast2700-board
+write_bitbake_output "$DB" "-machine custom-board" "-m 1G" "qemu-system-aarch64"
+out="$(run_profile_subshell "$TMP" "$DB" custom-ast2700-board)"; rc=$?
+assert_eq "non-evb ast2700 rc" "$rc" "0"
+assert_contains "non-evb ast2700 soc" "$out" "soc=ast2700"
+assert_contains "non-evb ast2700 pcbios" "$out" "pcbios=yes"
+assert_contains "non-evb ast2700 no bootloader" "$out" "uboot="
+rm -rf "$TMP" "$DB"
+
 # --- machine conf evidence when QB_SYSTEM_NAME is empty ---
 TMP="$(mktemp -d)"; DB="$(mktemp -d)"; mkfake_bin "$DB" bitbake
 make_case_root "$TMP" romulus
@@ -314,11 +329,13 @@ assert_contains "machine name fallback failure remedy" "$out" "Define QB_MACHINE
 rm -rf "$TMP" "$DB"
 
 # --- entry reset clears AST2700 bootloader state before AST2600 profile ---
+# Uses ast2700a1-evb (an EVB machine) so external AST2700 loaders are actually
+# resolved and the bootloader variable is set, exercising the reset-clear path.
 TMP="$(mktemp -d)"; DB="$(mktemp -d)"; mkfake_bin "$DB" bitbake
-make_case_root "$TMP" romulus
+make_case_root "$TMP" ast2700a1-evb
 touch_ast2700_bootloaders
-write_bitbake_output "$DB" "-machine romulus" "" "qemu-system-aarch64"
-rc=0; with_stub "$DB" -- resolve_qemu_launch_profile romulus >/dev/null 2>&1 || rc=$?
+write_bitbake_output "$DB" "-machine ast2700a1-evb" "" "qemu-system-aarch64"
+rc=0; with_stub "$DB" -- resolve_qemu_launch_profile ast2700a1-evb >/dev/null 2>&1 || rc=$?
 assert_eq "reset precondition rc" "$rc" "0"
 assert_contains "reset precondition bootloader set" "${QEMU_LAUNCH_BOOTLOADER_UBOOT_NODTB:-}" "u-boot-nodtb.bin"
 rm -rf "$BUILD_DIR/tmp/deploy/images/$MACHINE"

@@ -321,7 +321,14 @@ resolve_qemu_launch_profile() {
 
     if [[ "$QEMU_LAUNCH_SOC_TYPE" == "ast2700" ]]; then
         QEMU_LAUNCH_REQUIRES_PCBIOS="yes"
-        qemu_launch_profile_resolve_ast2700_bootloaders
+        # only resolve/validate the 4 split bootloader files for
+        # EVB-type machines that actually load them as external -device loader.
+        # Non-EVB AST2700 machines boot from MTD with the bootloader embedded in
+        # the flash image — they neither produce u-boot-nodtb.bin/u-boot.dtb nor
+        # consume them — so requiring those files is a false gate (exit 3).
+        if qemu_launch_profile_uses_external_ast2700_loaders; then
+            qemu_launch_profile_resolve_ast2700_bootloaders
+        fi
     else
         QEMU_LAUNCH_REQUIRES_PCBIOS="no"
     fi
