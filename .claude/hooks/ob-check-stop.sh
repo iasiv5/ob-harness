@@ -13,8 +13,11 @@ cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}" || exit 0
 
 # 本轮 working tree 改动(committed 已在 CI 跑过,不重复)
 changed=$(git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard 2>/dev/null)
-if ! grep -qE '(^|/)lib/[^/]+\.sh$|^ob$' <<<"$changed"; then
-  exit 0   # 未触及 ob/lib,放行
+# 触发范围: ob / lib/*.sh(受检对象) + tools/*.py(ob_check 实际调用的 checker 实现,例如
+# exit_contract.py / coverage_radar.py / extract_funcs.py)。改 checker 本身也要本地自检,
+# 否则 checker 被改坏(如 exit_contract 静默假 PASS)会本地零信号直放行、只能等 CI 兜底。
+if ! grep -qE '(^|/)lib/[^/]+\.sh$|^ob$|(^|/)tools/[^/]+\.py$' <<<"$changed"; then
+  exit 0   # 未触及 ob/lib/tools 检查器,放行
 fi
 
 out=$(mktemp)
