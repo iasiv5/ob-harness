@@ -17,12 +17,15 @@ emit_block() {  # $1 = reason
   python3 -c 'import json,sys; print(json.dumps({"decision":"block","reason":sys.argv[1]}, ensure_ascii=False))' "$1" 2>/dev/null \
     || printf '{"decision": "block", "reason": "%s"}\n' "${1//\"/\\\"}"
 }
-for _dep in git python3 mktemp grep; do
+# 早守卫：git 与 grep 必须先可用——相关性判定同时依赖 git diff 与 grep -qE，缺任一都会让相关性
+# 门禁本身失灵（fail-open）。git/grep 缺失或 cwd 不可定位 → fail-closed，绝不静默放行。
+# 其余依赖（python3/mktemp、ob_check.sh）只在相关性通过、真要跑 ob_check 时才检查，
+# 避免无 ob/lib/tools 改动的无关轮次因依赖缺失被误阻塞成 stop-loop（r2 回归修复）。
+for _dep in git grep; do
   command -v "$_dep" >/dev/null 2>&1 || { emit_block "ob-check-stop: 缺少依赖 $_dep（门禁 fail-closed，不静默放行）。"; exit 0; }
 done
 cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}" 2>/dev/null \
   || { emit_block "ob-check-stop: cwd 不可定位（CLAUDE_PROJECT_DIR 未注入且 git rev-parse 失败），门禁 fail-closed 不放行。"; exit 0; }
-[[ -f tools/ob_check.sh ]] || { emit_block "ob-check-stop: 缺少 tools/ob_check.sh（门禁 fail-closed，不静默放行）。"; exit 0; }
 
 # 本轮 working tree 改动(committed 已在 CI 跑过,不重复)
 changed=$(git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard 2>/dev/null)
@@ -33,6 +36,13 @@ changed=$(git diff --name-only; git diff --cached --name-only; git ls-files --ot
 if ! grep -qE '(^|/)lib/[^/]+\.sh$|^ob$|(^|/)tools/[^/]+\.py$|(^|/)tools/[^/]+\.sh$' <<<"$changed"; then
   exit 0   # 未触及 ob/lib/tools 检查器,放行
 fi
+
+# 相关性通过、即将运行 ob_check：此时才检查 ob_check 需要的其余依赖（r2 回归修复——这些依赖缺失
+# 只在真要跑 ob_check 时 fail-closed，不再阻塞无 ob/lib/tools 改动的无关轮次）。
+for _dep in python3 mktemp; do
+  command -v "$_dep" >/dev/null 2>&1 || { emit_block "ob-check-stop: 缺少依赖 $_dep（门禁 fail-closed，不静默放行）。"; exit 0; }
+done
+[[ -f tools/ob_check.sh ]] || { emit_block "ob-check-stop: 缺少 tools/ob_check.sh（门禁 fail-closed，不静默放行）。"; exit 0; }
 
 out=$(mktemp)
 if OB_CHECK_SKIP_TESTS=1 OB_CHECK_READONLY=1 bash tools/ob_check.sh >"$out" 2>&1; then
