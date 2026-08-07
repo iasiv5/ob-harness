@@ -39,21 +39,32 @@
 
 1. **派生（spawn）**：按上述 Claude Code 运行约束，派生一个**命名 agent-team 成员**去完成目标。
 2. **评估（evaluate）**：每当 subagent 宣称完成或失败，你独立判断成功标准是否满足——满足则停止所有 subagent；不满足则逼迫该 subagent 继续。
-3. **监控（monitor）**：每 5 分钟检查一次每个 subagent 的活跃度。若某 subagent 失活，先核实目标状态；若仍未达标，**重启一个同名 subagent 替代**失活的那个。
+3. **监控（monitor）**：用 **durable recurring heartbeat** 自驱动（见下「持续监控与自愈」），**不要**用 REPL 内 `sleep` 长轮询——后者遇到 429 限流（与 subagent 共享额度、一起卡死）或会话/turn 被打断就断、且不自动续。每个 heartbeat tick 探活 subagent：失活则重启同名替代、宣称达成则独立验证 criteria、终态则清理并停。
 
-核心循环（伪码）：
+核心循环（伪码，durable heartbeat 驱动）：
 
     派生一个命名 agent-team 成员全权负责目标
-    while (成功标准未满足) {
-        每 5 分钟检查 subagent 活跃度
-        if (subagent 失活 或 宣称已达成目标) {
-            独立验证成功标准是否满足
-            if (未满足) → 重启一个替代 subagent
-            else        → 停止所有 subagent 并结束
-        }
-    }
+    CronCreate 排一个 durable recurring heartbeat（每 5 分钟、off-minute、durable:true）作为监控驱动
+    每个 heartbeat tick（durable 按点触发，非 REPL sleep）：
+      if (subagent paused_by_quota / idle) → SendMessage 同名 subagent 唤醒续做（agent-team 自带上下文）
+      if (subagent 失活)                    → 重派同名 subagent（从 git/工作产物自定位）
+      if (subagent 宣称已达成目标) {
+          独立验证 criteria（重跑可判定谓词）
+          满足   → CronDelete 清理 + 停止所有 subagent + 结束
+          未满足 → 重派替代 subagent
+      }
+      否则 → 空转退出，等下个 tick
+    （无论 429 限流还是会话/turn 被打断，durable heartbeat 都按点唤醒 master 续作）
 
-**在成功标准被满足之前，不要停止 subagent；只有用户从外部手动介入时才结束这个进程。** 该过程可能消耗大量时间与 token，请确保预算充足。
+**【持续监控与自愈（durable heartbeat）】**
+REPL 内 `sleep` 长轮询的 master 一旦遇到任何中断——5h rolling 额度撞 429（master 与 subagent 共用账号、同时被限流）、会话被关掉/重启、master turn 自然结束——监控就断了、不自动续。改用 Claude Code 原生 durable 调度（CLI 与 VS Code 均可用，**不依赖 `claude -p`**，已 PoC 验证 idle 后按点触发），持久化到 `.claude/scheduled_tasks.json`、不随单次 turn 死：无论有没有额度限制，都让监控扛得住中断。
+
+- **启动时** `CronCreate(cron:"<每 5 分钟、避开 :00/:30，如 2-59/5 * * * *>", durable:true, recurring:true, prompt:"<自包含 heartbeat：探活 subagent→idle 则 SendMessage 唤醒/失活则重派/宣称达成则验 criteria/终态则 CronDelete+停>")`。
+- **自愈链**：任何原因把 master turn 打成 idle（429 限流 / 会话打断 / turn 结束）→ 下个 cron 匹配时 durable tick 触发 → 若是 429 且额度没刷新，这 tick 也 429、再 idle、下个 tick 再试，刷新了就续；若是非额度中断，直接续 → **无需人敲「继续」**。
+- **边界**：tick 仅在会话 idle+活着时触发；关闭期间不触发但重开补跑；7 天自动过期；终态/手动结束必须 `CronDelete`。
+- **无需状态文件**：criteria 每次重跑判定、subagent 进度在代码/git/测试里、agent-team 同名成员自带上下文。仅当某 goal 的过程态不在工作产物里（如多轮 review）时，由该 goal 自行持久化。
+
+**在成功标准被满足之前，不要停止 subagent；只有用户从外部手动介入时才结束这个进程。** 终态或手动结束时记得 `CronDelete` 清理 heartbeat，别留遗孤调度。 该过程可能消耗大量时间与 token，请确保预算充足。
 
 ---
 
