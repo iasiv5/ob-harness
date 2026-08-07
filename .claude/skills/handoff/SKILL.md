@@ -120,7 +120,7 @@ argument-hint: 请说明要交接到新建会话的目标、要求或关注点�
 
 ## PHASE 3: 格式化输出
 
-严格使用 `references/handoff-output-template.md` 中的固定结构、预算、格式规则和续接说明块。
+严格使用 [handoff 输出模板](references/handoff-output-template.md)（`references/handoff-output-template.md`）中的固定结构、预算、格式规则和续接说明块。
 先做 materiality 三次筛选——按下一个 chat 的目标再筛一次，再填充模板；已有工件已稳定承载的信息只引用，不重复展开。
 把从 `交接上下文 / HANDOFF CONTEXT` 到 `正文结束 / END OF HANDOFF CONTEXT` 的正文整体放进单个外层代码块中，让聊天界面尽量以可复制文本框展示；说明区放在代码块外。
 不要新增模板之外的章节，除非用户明确要求。
