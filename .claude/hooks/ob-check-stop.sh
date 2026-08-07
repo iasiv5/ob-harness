@@ -9,7 +9,20 @@
 # fail-closed: 决策子进程(python3)失败/无输出时,纯 bash 兜底(最小转义 \ 和 ")仍产 decision:block——
 #   ob_check 失败这个事实必须传达,不能因 JSON 生成器自身故障而放行(防 fail-open 反向失效)。
 set -uo pipefail
-cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}" || exit 0
+
+# 依赖/cwd 前置守卫（防 fail-open 与『依赖缺失被误判成自检失败』）：关键依赖缺失或 cwd
+# 不可定位时，显式 decision:block 报真因，绝不静默 exit 0 放行——ob_check 自检失败与
+# 依赖/环境缺失必须可区分（lint: hook-portability-or-missing-dependency）。
+emit_block() {  # $1 = reason
+  python3 -c 'import json,sys; print(json.dumps({"decision":"block","reason":sys.argv[1]}, ensure_ascii=False))' "$1" 2>/dev/null \
+    || printf '{"decision": "block", "reason": "%s"}\n' "${1//\"/\\\"}"
+}
+for _dep in git python3 mktemp grep; do
+  command -v "$_dep" >/dev/null 2>&1 || { emit_block "ob-check-stop: 缺少依赖 $_dep（门禁 fail-closed，不静默放行）。"; exit 0; }
+done
+cd "${CLAUDE_PROJECT_DIR:-$(git rev-parse --show-toplevel)}" 2>/dev/null \
+  || { emit_block "ob-check-stop: cwd 不可定位（CLAUDE_PROJECT_DIR 未注入且 git rev-parse 失败），门禁 fail-closed 不放行。"; exit 0; }
+[[ -f tools/ob_check.sh ]] || { emit_block "ob-check-stop: 缺少 tools/ob_check.sh（门禁 fail-closed，不静默放行）。"; exit 0; }
 
 # 本轮 working tree 改动(committed 已在 CI 跑过,不重复)
 changed=$(git diff --name-only; git diff --cached --name-only; git ls-files --others --exclude-standard 2>/dev/null)
