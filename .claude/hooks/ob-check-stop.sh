@@ -28,8 +28,14 @@ else
   decision=$(python3 -c 'import json,sys; print(json.dumps({"decision":"block","reason":f"ob_check 失败(改了 ob/lib 须先过自检): {sys.argv[1]}"}, ensure_ascii=False))' "$summary" 2>/dev/null)
   rc=$?
   if [[ $rc -ne 0 || "$decision" != *'"decision"'* || "$decision" != *'"block"'* ]]; then
-    esc="${summary//\\/\\\\}"          # \ -> \\ (JSON 字符串转义,先转义反斜杠)
+    # 完整 JSON 字符串转义: 先反斜杠、双引号,再 tab/CR/LF,最后删除其余控制字符(0x00-0x1F),
+    # 保证纯 bash 兜底产出的 JSON 在 summary 含任意控制字符时仍合法(fail-closed 语义不变)。
+    esc="${summary//\\/\\\\}"          # \ -> \\
     esc="${esc//\"/\\\"}"               # " -> \"
+    esc="${esc//$'\t'/\\t}"             # tab -> \t
+    esc="${esc//$'\r'/\\r}"             # CR -> \r
+    esc="${esc//$'\n'/\\n}"             # LF -> \n (防御性,tr 已换行但仍兜底)
+    esc="$(printf '%s' "$esc" | tr -d '\000-\037')"   # 删除其余未转义控制字符
     printf '{"decision": "block", "reason": "ob_check 失败(改了 ob/lib 须先过自检,JSON 生成器故障 rc=%s,纯 bash 兜底): %s"}\n' "$rc" "$esc"
   else
     printf '%s\n' "$decision"
