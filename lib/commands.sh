@@ -192,6 +192,72 @@ cmd_doctor() {
     fi
 }
 
+# ob test — 改动后聚焦校验路由。tests/run_all.sh 是全量门禁，此前改一个 ob/lib 文件后
+# 只能全跑或自行记着跑 tests/<layer>/<name>.sh，且受影响测试到源文件的映射不由项目拥有。
+# ob test 把 run_all 的 per-file 约定按 layer/file 聚焦：agent 改单文件后用一条命令只跑
+# 受影响的 protocol/unit 测试。复用现有路径，不改测试语义、不引入并行机制。
+# 由 round-4 affected-check-routing 落地。
+# 用法: ob test                              → 全量快速子集(tests/run_all.sh)
+#       ob test protocol|unit|orchestration  → 只跑该层 .sh
+#       ob test <tests/.../*.sh>             → 只跑该测试文件
+# 退出: 0=通过 / 1=有失败 / 3=target 非法（exit-code 契约：3=precondition missing）。
+cmd_test() {
+    local _t="${OB_TEST_TARGET:-}"
+    step_header "ob test — focused validation routing"
+    if [[ ! -f "tests/run_all.sh" ]]; then
+        error "test: tests/run_all.sh not found — run 'ob test' from the ob-harness repo root."
+        exit 3
+    fi
+    if [[ -z "$_t" ]]; then
+        info "test: no target — running full quick subset (tests/run_all.sh)..."
+        bash tests/run_all.sh
+        return $?
+    fi
+    case "$_t" in
+        protocol|unit|orchestration)
+            if [[ ! -d "tests/$_t" ]]; then
+                error "test: layer 'tests/$_t' not found. Valid layers: protocol | unit | orchestration."
+                exit 3
+            fi
+            info "test: focused layer 'tests/$_t' (*.sh only)..."
+            shopt -s nullglob
+            # shellcheck disable=SC2206 # 故意 glob：$_t 是 layer 名(protocol|unit|orchestration)，需展开 *.sh
+            local _tfiles=(tests/$_t/*.sh)
+            shopt -u nullglob
+            if [[ ${#_tfiles[@]} -eq 0 ]]; then
+                warn "test: layer 'tests/$_t' has no .sh files."
+                return 0
+            fi
+            local _tf _trc=0 _tfailed=""
+            for _tf in "${_tfiles[@]}"; do
+                if bash "$_tf" >/dev/null 2>&1; then
+                    echo "  ok   $(basename "$_tf")"
+                else
+                    _trc=1; _tfailed="$_tfailed $(basename "$_tf")"
+                    echo "  FAIL $(basename "$_tf")"
+                fi
+            done
+            if [[ $_trc -eq 0 ]]; then
+                info "test: layer '$_t' ALL GREEN (${#_tfiles[@]} files)"
+                return 0
+            else
+                error "test: layer '$_t' FAILED:$_tfailed — re-run a failing file: ob test tests/$_t/<name>.sh"
+                exit 1
+            fi
+            ;;
+        *)
+            if [[ -f "$_t" ]]; then
+                info "test: focused file '$_t'..."
+                bash "$_t"
+                return $?
+            fi
+            error "test: unknown target '$_t'. Use one of: protocol | unit | orchestration | <path-to-tests/*.sh>."
+            echo "  hint: 'ob test' (no arg) runs the full quick subset." >&2
+            exit 3
+            ;;
+    esac
+}
+
 cmd_build() {
     # === Prerequisites ===
     require_path "$OPENBMC_DIR/.git" "OpenBMC main repository" "Run 'ob init' first." 3

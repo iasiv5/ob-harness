@@ -20,6 +20,7 @@ VERBOSE=0
 DRY_RUN=0
 SKIP_DEPS=0
 DEV_ARGS=()
+OB_TEST_TARGET=""   # ob test 的聚焦 target（layer 名或 tests/.../*.sh 路径）
 
 # QEMU-related (start-qemu / stop-qemu)
 QEMU_SSH_PORT=""
@@ -144,6 +145,13 @@ parse_args() {
         doctor)
             # ob doctor: 环境就绪体检（无位置参数；全局选项如 -v 由下方 while 解析）
             ;;
+        test)
+            # ob test [target]: 聚焦校验路由；target = protocol|unit|orchestration|<tests/*.sh>
+            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+                OB_TEST_TARGET="$1"
+                shift
+            fi
+            ;;
         *)
             error "Unknown command: $COMMAND"
             usage
@@ -205,6 +213,7 @@ Commands:
   smoke        [<machine>]    Probe a running QEMU-backed BMC (read-only OOB probe; no bring-up/teardown)
   dev          [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
   doctor                      Environment readiness preflight (repo binding, toolchain, QEMU binary, ports)
+  test         [target]        Run focused validation (no arg = full quick subset; target = protocol|unit|orchestration|<tests/*.sh>)
 
 Global Options:
   -d, --dry-run         Print actions without executing
@@ -345,6 +354,11 @@ main() {
 
     if [[ "$COMMAND" == "doctor" ]]; then
         cmd_doctor
+        return $?
+    fi
+
+    if [[ "$COMMAND" == "test" ]]; then
+        cmd_test
         return $?
     fi
 
