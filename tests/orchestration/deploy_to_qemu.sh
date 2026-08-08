@@ -2,7 +2,7 @@
 # tests/orchestration/deploy_to_qemu.sh — cmd_deploy_to_qemu 编排 stub 测试(8 场景)。
 # 锁四个不变量:
 #   1. 编排顺序: build → (QEMU 在跑则 stop + 端口复用注入) → start
-#   2. 端口复用: 新 .pid ssh_port == 旧 .pid ssh_port(场景② 2222==2222)
+#   2. 端口复用: 新 .pid ssh_port == 旧 .pid ssh_port(场景② 29222==29222)
 #   3. build-first: build 失败不 stop QEMU(场景③ fake_qemu 存活)
 #   4. deploy honor CLI(ADR-0022 D2): CLI 端口不被旧实例覆盖(场景⑧ 40022 honor, 非旧 29222)
 # 假 harness root = $TMP(OB_ENTRY_DIR=$TMP), detect_harness_root 算 $TMP/workspace/... 各路径。
