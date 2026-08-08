@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # tools/ob_check.sh — ob/lib 与 know-how 文档改动后一站式配套自检。
-# 聚合: extract_funcs(ob GAPS + lib 三段) / 多项 surface gate / 交互 prompt 文案契约 / know-how 长文件 TL;DR 门禁(ADR-0015) / shellcheck baseline(flat 合成 + 纯文本 multiset) / exit-contract(多文件) / run_all / know-how TL;DR drift advisory。
-# 固定顺序: extract_funcs → machine_state gate(1b) → surface gates(1c 族) → 交互 prompt 文案(1d) → know-how TL;DR gate(1e) → baseline(2) → exit-contract(3) → run_all(4) → drift advisory(5,advisory 不阻断;OB_CHECK_SKIP_TESTS 连带跳过)。
+# 聚合: extract_funcs(ob GAPS + lib 三段) / 多项 surface gate / 交互 prompt 文案契约 / know-how 长文件 TL;DR 门禁(ADR-0015) / tools/*.py 静态门禁(py_compile,1f) / shellcheck baseline(flat 合成 + 纯文本 multiset) / exit-contract(多文件) / run_all / know-how TL;DR drift advisory。
+# 固定顺序: extract_funcs → machine_state gate(1b) → surface gates(1c 族) → 交互 prompt 文案(1d) → know-how TL;DR gate(1e) → tools/*.py py_compile(1f) → baseline(2) → exit-contract(3) → run_all(4) → drift advisory(5,advisory 不阻断;OB_CHECK_SKIP_TESTS 连带跳过)。
 # OB_SOURCES = ob + lib/*.sh(nullglob);用于 extract_funcs/exit_contract。shellcheck 用合成 flat(保留单文件可见性,避 per-file SC2034 假阳)。
 # 用法: tools/ob_check.sh
 #       OB_CHECK_SKIP_TESTS=1 tools/ob_check.sh    # 跳过 run_all(被 run_all 递归调用时用,如 smoke)
@@ -155,6 +155,36 @@ if [[ -n "$_kt_missing" ]]; then
     bad "know-how 长文件缺 ## TL;DR(ADR-0015):$_kt_missing"
 else
     ok "know-how 长文件 TL;DR 门禁通过"
+fi
+
+# ── 1f. tools/*.py 静态门禁(py_compile;独立编译期检查,对偶 shellcheck 对 ob/lib) ──
+# tools/*.py 是改动热点(exit_contract.py/coverage_radar.py/parse_bitbake_recipes.py 等 8 个),
+# 此前仅靠执行即冒烟或 shell 包装单测(tests/unit/*.sh);本门禁独立 py_compile 每个 .py,
+# 捕获语法/编译期缺陷(与测试行为覆盖正交:未测分支的 SyntaxError 也被拦下)。
+# py_compile 总可用(标准库),不引入新依赖;不设 baseline(语法错误非可告警类型,无 benign 概念)。
+# 未来项目采纳 ruff/flake8 时可在此 graceful 叠加(lint 级 + baseline),当前最小静态门禁足够。
+shopt -s nullglob
+_py_files=(tools/*.py)
+shopt -u nullglob
+_py_bad=""
+if (( ${#_py_files[@]} > 0 )); then
+    for _pf in "${_py_files[@]}"; do
+        if ! python3 -m py_compile "$_pf" >/tmp/ob_check_pyc.out 2>&1; then
+            _py_bad="$_py_bad $(basename "$_pf")"
+            echo "  ✗ $(basename "$_pf") 编译失败:"
+            sed 's/^/    | /' /tmp/ob_check_pyc.out | head -4
+        fi
+    done
+    rm -f /tmp/ob_check_pyc.out
+    # py_compile 副作用:写 tools/__pycache__/*.pyc;清理避免污染 working tree(READONLY 亦清)
+    rm -rf tools/__pycache__ >/dev/null 2>&1
+    if [[ -n "$_py_bad" ]]; then
+        bad "tools/*.py 静态门禁(py_compile)失败:$_py_bad"
+    else
+        ok "tools/*.py 静态门禁通过(py_compile, ${#_py_files[@]} 个文件)"
+    fi
+else
+    ok "tools/*.py 静态门禁跳过(无 .py 文件)"
 fi
 
 # ── 2. shellcheck baseline(合成 flat + 纯文本 multiset;不 per-file 避 SC2034 跨文件假阳) ──
