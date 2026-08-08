@@ -69,4 +69,25 @@ assert_eq "S6 tools-sh + python3-missing exits 0 (block via JSON)" "$rc" "0"
 assert_contains "S6 emits block naming python3" "$out" 'python3'
 rm -f "$TMP/tools/probe.sh"
 
+# --- 7. r4 intask-validation-wiring: lib/*.sh 改动 → 完整 ob_check(含 run_all, 不 SKIP_TESTS) ---
+# 用记录型 stub：把传入的 OB_CHECK_SKIP_TESTS 写 marker，仍 exit 0。验证 hook 对 ob/lib 改动
+# 走完整路径（不设 SKIP_TESTS），AGENTS.md:36 的配套自检在交接前机械兜底。
+printf '#!/usr/bin/env bash\necho "SKIP=${OB_CHECK_SKIP_TESTS:-unset}" > "%s"\nexit 0\n' "$TMP/marker_lib" > "$TMP/tools/ob_check.sh"
+echo "# r4" >> "$TMP/lib/x.sh"
+rm -f "$TMP/marker_lib"
+out=$(cd "$TMP" && env CLAUDE_PROJECT_DIR="$TMP" bash "$HOOK" 2>&1); rc=$?
+assert_eq "S7 lib change exits 0 (stub passes)" "$rc" "0"
+assert_contains "S7 lib change → full ob_check (no SKIP_TESTS)" "$(cat "$TMP/marker_lib" 2>/dev/null)" "SKIP=unset"
+git -C "$TMP" checkout -q -- lib/x.sh 2>/dev/null || true
+rm -f "$TMP/marker_lib"
+
+# --- 8. r4: 仅 tools/* 改动 → 静态子集(SKIP_TESTS=1, run_all 由 CI 兜底) ---
+printf '#!/usr/bin/env bash\necho "SKIP=${OB_CHECK_SKIP_TESTS:-unset}" > "%s"\nexit 0\n' "$TMP/marker_tools" > "$TMP/tools/ob_check.sh"
+echo "# r4" >> "$TMP/tools/probe.sh"
+rm -f "$TMP/marker_tools"
+out=$(cd "$TMP" && env CLAUDE_PROJECT_DIR="$TMP" bash "$HOOK" 2>&1); rc=$?
+assert_eq "S8 tools-only exits 0 (stub passes)" "$rc" "0"
+assert_contains "S8 tools-only → static subset (SKIP_TESTS=1)" "$(cat "$TMP/marker_tools" 2>/dev/null)" "SKIP=1"
+rm -f "$TMP/tools/probe.sh" "$TMP/marker_tools"
+
 assert_summary

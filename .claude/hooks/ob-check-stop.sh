@@ -4,7 +4,10 @@
 #
 # working tree 级门禁(非严格 per-turn): git diff 看整个 working tree(含 cached/untracked),
 # 若仓库已有存量未提交的 ob/lib 改动,每轮 Stop 都会触发——已知行为,接受(评审 F3-2)。
-# 静态子集(D2=B): SKIP_TESTS 跳 run_all(省 ~14s,run_all 由 CI 兜底) + READONLY 不改 baseline(hook 不应改文件)。
+# 分层子集(round-4 intask-validation-wiring): ob/lib/*.sh 改动(高风险受检对象) → 完整 ob_check
+# (含 run_all),让运行时回归在任务回合内交接前被发现而非逃逸到 CI;仅 tools/* 改动(checker/编排器)
+# → 静态子集 SKIP_TESTS(省 ~14s,run_all 由 CI 兜底),保留 round-2 r2-stop-hook-trigger-tools-sh 扩展。
+# 两路均 READONLY 不改 baseline(hook 不应改文件;AGENTS.md:36 配套自检要求的 run_all 现机械兜底)。
 # 失败反馈(D3=A): python3 json.dumps 生成 decision:block,防 summary 含引号/反斜杠破坏 JSON(评审 F3-2)。
 # fail-closed: 决策子进程(python3)失败/无输出时,纯 bash 兜底(最小转义 \ 和 ")仍产 decision:block——
 #   ob_check 失败这个事实必须传达,不能因 JSON 生成器自身故障而放行(防 fail-open 反向失效)。
@@ -45,7 +48,14 @@ done
 [[ -f tools/ob_check.sh ]] || { emit_block "ob-check-stop: 缺少 tools/ob_check.sh（门禁 fail-closed，不静默放行）。"; exit 0; }
 
 out=$(mktemp)
-if OB_CHECK_SKIP_TESTS=1 OB_CHECK_READONLY=1 bash tools/ob_check.sh >"$out" 2>&1; then
+# 分层路由: ob/lib/*.sh 改动 → 完整 ob_check(含 run_all, AGENTS.md:36 要求的配套自检在任务内交接前机械兜底);
+# 仅 tools/* 改动 → 静态子集(SKIP_TESTS, run_all 由 CI 兜底)。两路 READONLY 不改 baseline。
+if grep -qE '(^|/)lib/[^/]+\.sh$|^ob$' <<<"$changed"; then
+  _oc_env=(OB_CHECK_READONLY=1)            # 完整: 不跳 run_all
+else
+  _oc_env=(OB_CHECK_SKIP_TESTS=1 OB_CHECK_READONLY=1)
+fi
+if env "${_oc_env[@]}" bash tools/ob_check.sh >"$out" 2>&1; then
   rm -f "$out"; exit 0
 else
   summary=$(grep -E '✗|FAIL=' "$out" | head -5 | tr '\n' '; ')
