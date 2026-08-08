@@ -57,6 +57,7 @@ LEAF_EXIT_EXCEPTIONS_BY_BASENAME = {
     'machine_state.sh': set(),
     'machine_picker.sh': set(),
     'qemu_instance.sh': set(),
+    'qemu_port_reuse.sh': set(),
     'bare_mirror.sh': set(),
     'devtool_build.sh': set(),
     'devtool_dispatch.sh': set(),
