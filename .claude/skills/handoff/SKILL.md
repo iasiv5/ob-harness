@@ -71,18 +71,9 @@ argument-hint: 请说明要交接到新建会话的目标、要求或关注点�
 - 建立了哪些约束、偏好或模式
 - 还剩下哪些阻塞、注意事项或未决问题
 
-证据冲突处理规则：
-- 如果 chat 已经被 compact，优先信任同会话历史，而不是当前可见对话
-- 对于文件事实，优先信任直接文件读取，而不是对话回忆
-- 对于文件修改事实，优先信任 git 状态，而不是 memory
-- 优先信任用户显式指令，而不是推断出来的偏好
-- 如果两个来源冲突且无法解决，不要默默选一个，要把不确定性记录下来
+证据冲突处理规则（compact/文件/git/显式指令优先级、不确定性记录）见 [handoff 程序细节 · 证据冲突处理规则](references/handoff-procedure-details.md#证据冲突处理规则)。
 
-收集纪律：
-- 不跑 install、build、format 或 test 来“丰富” handoff——这是针对中模型“跑个测试更彻底”冲动的 hard guardrail（入口「只读」总纲的具体解码守卫，非同义重复）
-- 区分 verified facts / inferred context / unknowns：弱推断不包装成强结论，合理但无证据的细节标 `未知` 或省略
-
-证据收集完成判据：上方 5 源已按可用性逐一检查（不可用的已记 `未知`/`无`）；下方提炼问题都能基于证据回答；全程未做写操作。
+收集纪律（不跑 install/build/test、verified/inferred/unknowns 区分、收集完成判据）见 [handoff 程序细节 · 收集纪律](references/handoff-procedure-details.md#收集纪律)。
 
 ## PHASE 2: 提炼上下文
 
@@ -101,12 +92,7 @@ argument-hint: 请说明要交接到新建会话的目标、要求或关注点�
 - 保留用户原话请求和显式约束
 - 清楚地区分 verified facts、inferred context 和 unknowns
 
-提炼硬规则：
-- 用户请求与显式约束按『硬约束』的 materiality 规则处理（过滤后 verbatim 复制；过滤后为空写 `无`；过期省略见『硬约束』）；**不拼成一句概括、不改写保留下来的原话**（此处 inline 守卫）
-- 如果关键信息已经稳定存在于 PRD、计划、ADR、issue、commit、diff 或其他工件中，不要在 handoff 中重复展开；只引用其路径或 URL，并说明它为何与续接相关
-- 不要杜撰约束、请求、决策、文件职责或测试结果
-- 只有在路径会影响续接时才写文件路径
-- 如果某个细节看起来合理但没有证据，要么省略，要么标成 `未知`
+提炼硬规则（materiality 处理、不拼概括不改写、引用稳定工件、不杜撰、路径必要性、无证据标未知）见 [handoff 程序细节 · 提炼硬规则](references/handoff-procedure-details.md#提炼硬规则)。
 
 提炼时重点考虑这些问题：
 - 事实层（用户让 agent 做什么、已完成什么、还剩什么、动过哪些文件、做过哪些决策）直接复用 PHASE 1 已回答的结果，不重复列举
@@ -120,7 +106,7 @@ argument-hint: 请说明要交接到新建会话的目标、要求或关注点�
 
 ## PHASE 3: 格式化输出
 
-严格使用 `references/handoff-output-template.md` 中的固定结构、预算、格式规则和续接说明块。
+严格使用 [handoff 输出模板](references/handoff-output-template.md) 中的固定结构、预算、格式规则和续接说明块。
 先做 materiality 三次筛选——按下一个 chat 的目标再筛一次，再填充模板；已有工件已稳定承载的信息只引用，不重复展开。
 把从 `交接上下文 / HANDOFF CONTEXT` 到 `正文结束 / END OF HANDOFF CONTEXT` 的正文整体放进单个外层代码块中，让聊天界面尽量以可复制文本框展示；说明区放在代码块外。
 不要新增模板之外的章节，除非用户明确要求。
