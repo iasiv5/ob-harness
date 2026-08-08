@@ -45,4 +45,13 @@ resolve_qemu_port_reuse 2222 2443 2623 8080; rc=$?
 assert_eq "恒 return 0 (HTTP CLI wins 路径)" "$rc" 0
 assert_eq "HTTP CLI wins over old" "$QEMU_HTTP_PORT" 9000
 
+# --- 全端口 cli_first 对称锁(Redfish/IPMI 同构; 防 resolver 单列退化成 old_first) ---
+reset_ports; QEMU_SSH_PORT=9001; QEMU_REDFISH_PORT=9002; QEMU_IPMI_PORT=9003; QEMU_HTTP_PORT=9004
+resolve_qemu_port_reuse 2222 2443 2623 8080; rc=$?
+assert_eq "恒 return 0 (全端口 CLI wins)" "$rc" 0
+assert_eq "CLI wins over old (SSH)"     "$QEMU_SSH_PORT" 9001
+assert_eq "CLI wins over old (Redfish)" "$QEMU_REDFISH_PORT" 9002
+assert_eq "CLI wins over old (IPMI)"    "$QEMU_IPMI_PORT" 9003
+assert_eq "CLI wins over old (HTTP)"    "$QEMU_HTTP_PORT" 9004
+
 assert_summary

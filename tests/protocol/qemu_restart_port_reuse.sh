@@ -37,6 +37,7 @@ assert_false "--force branch calls NO resolve_qemu_port_reuse" \
 
 # 4. stale 清理分支不注入(不调 module)
 stale_seg="$(awk '/qemu_instance_clean_stale/{g=1} g{print; if(/fi[[:space:]]*$/) exit}' <<< "$start_seg")"
+assert_true "stale_seg non-empty (stale cleanup branch located)" test -n "$stale_seg"
 assert_false "stale-cleanup branch calls NO resolve_qemu_port_reuse" \
     grep -Fq 'resolve_qemu_port_reuse' <<< "$stale_seg"
 

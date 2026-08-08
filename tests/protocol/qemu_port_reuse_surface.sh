@@ -28,8 +28,11 @@ assert_true "extracted cmd_deploy_to_qemu body" test -n "$deploy_seg"
 assert_eq "cmd_start_qemu calls resolve_qemu_port_reuse"   "$(grep -Fc 'resolve_qemu_port_reuse "$PIDFILE_SSH_PORT"' <<< "$start_seg")" 1
 assert_eq "cmd_deploy_to_qemu calls resolve_qemu_port_reuse" "$(grep -Fc 'resolve_qemu_port_reuse "$old_ssh_port"' <<< "$deploy_seg")" 1
 
-# forbidden: 两段不再内联注入 ritual(赋值到 QEMU_*_PORT 的旧形态)
-for pat in 'QEMU_SSH_PORT="$PIDFILE' 'QEMU_SSH_PORT="$old' 'QEMU_HTTP_PORT="$PIDFILE' 'QEMU_HTTP_PORT="$old'; do
+# forbidden: 两段不再内联注入 ritual(四端口族 × PIDFILE/old 两源, 全覆盖防 Redfish/IPMI 回潮)
+for pat in 'QEMU_SSH_PORT="$PIDFILE'     'QEMU_SSH_PORT="$old' \
+           'QEMU_REDFISH_PORT="$PIDFILE' 'QEMU_REDFISH_PORT="$old' \
+           'QEMU_IPMI_PORT="$PIDFILE'    'QEMU_IPMI_PORT="$old' \
+           'QEMU_HTTP_PORT="$PIDFILE'    'QEMU_HTTP_PORT="$old'; do
     assert_false "cmd_start_qemu drops inline $pat"   grep -Fq "$pat" <<< "$start_seg"
     assert_false "cmd_deploy_to_qemu drops inline $pat" grep -Fq "$pat" <<< "$deploy_seg"
 done
