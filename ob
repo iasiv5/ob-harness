@@ -141,6 +141,9 @@ parse_args() {
             DEV_ARGS=("$@")
             set --
             ;;
+        doctor)
+            # ob doctor: 环境就绪体检（无位置参数；全局选项如 -v 由下方 while 解析）
+            ;;
         *)
             error "Unknown command: $COMMAND"
             usage
@@ -201,6 +204,7 @@ Commands:
   deploy-to-qemu [<machine>]  Rebuild image and restart QEMU for clean verification
   smoke        [<machine>]    Probe a running QEMU-backed BMC (read-only OOB probe; no bring-up/teardown)
   dev          [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
+  doctor                      Environment readiness preflight (repo binding, toolchain, QEMU binary, ports)
 
 Global Options:
   -d, --dry-run         Print actions without executing
@@ -336,6 +340,11 @@ main() {
 
     if [[ "$COMMAND" == "smoke" ]]; then
         cmd_smoke
+        return $?
+    fi
+
+    if [[ "$COMMAND" == "doctor" ]]; then
+        cmd_doctor
         return $?
     fi
 

@@ -104,6 +104,94 @@ cmd_status() {
     fi
 }
 
+# ob doctor — 环境就绪体检前门（preflight）。复用 prerequisites_check / cmd_status 已采集的检测
+# 信号（OS / host tools / openbmc 仓库绑定 / QEMU 二进制 / 端口），收敛为 ob 前门单一子命令，
+# 缺失硬前置时给 ob 补救提示并 exit 3（exit-code 契约：3 = precondition missing，向前看 remedy）。
+# 只读，无副作用。退出：0=硬前置（仓库+工具链）就绪 / 3=硬前置缺失 / 1=不应到达。
+# 由 round-4 env-doctor-gap 落地：agent 进入环境时不再需要从 ob status / tools/ob_check.sh /
+# tests/orchestration/prerequisites_check.sh 三处拼信号。
+cmd_doctor() {
+    local _doc_hard_ready=1   # 硬前置就绪标志（仓库绑定 + 构建工具链）
+    step_header "ob doctor — Environment Readiness (preflight)"
+
+    # ── 维度 1/4: OpenBMC 仓库绑定（同 cmd_status 的 repo_exists 信号）──
+    echo "  [1/4] OpenBMC repository binding"
+    if [[ -d "$OPENBMC_DIR/.git" ]]; then
+        local _doc_origin="" _doc_label=""
+        _doc_origin=$(git -C "$OPENBMC_DIR" remote get-url origin 2>/dev/null || echo "<unknown>")
+        if [[ -f "$SOURCE_MANIFEST_FILE" ]]; then
+            _doc_label=$(read_manifest_field source_label 2>/dev/null || echo "")
+        fi
+        echo "        ✓ bound: $OPENBMC_DIR"
+        echo "          origin: $_doc_origin${_doc_label:+ ($_doc_label)}"
+    else
+        echo "        ✗ not bound ($OPENBMC_DIR/.git missing)"
+        echo "          remedy: run 'ob init [<machine>]' to clone and bind the OpenBMC source."
+        _doc_hard_ready=0
+    fi
+
+    # ── 维度 2/4: 构建工具链（host deps；复用 prerequisites_check 的工具清单，非 exiting 变体）──
+    echo "  [2/4] Build toolchain (host tools)"
+    local _doc_tool_missing="" _doc_tool
+    for _doc_tool in git python3 curl; do
+        if command -v "$_doc_tool" >/dev/null 2>&1; then
+            echo "        ✓ $_doc_tool: $(command -v "$_doc_tool")"
+        else
+            echo "        ✗ $_doc_tool: not found"
+            _doc_tool_missing="$_doc_tool_missing $_doc_tool"
+        fi
+    done
+    if [[ "$(uname -s)" == "Linux" ]]; then
+        echo "        ✓ OS: $(uname -s)"
+    else
+        echo "        ✗ OS: $(uname -s) — ob requires Linux; use WSL or a Linux container."
+        _doc_hard_ready=0
+    fi
+    if [[ -n "$_doc_tool_missing" ]]; then
+        echo "          remedy: install host tool(s):$_doc_tool_missing, then re-run 'ob doctor'."
+        _doc_hard_ready=0
+    fi
+
+    # ── 维度 3/4: QEMU 二进制（信息性；缺失不阻断 ob doctor，仅提示如何获取）──
+    echo "  [3/4] QEMU binary (advisory)"
+    local _doc_qbin_dir="$WORKSPACE_DIR/qemu-bin" _doc_qbin_count=0
+    if [[ -d "$_doc_qbin_dir" ]]; then
+        _doc_qbin_count=$( { find "$_doc_qbin_dir" -maxdepth 2 -type f -executable \
+            ! -path '*/.pids/*' ! -path '*/pc-bios/*' 2>/dev/null || true; } | wc -l )
+    fi
+    if [[ "$_doc_qbin_count" -gt 0 ]]; then
+        echo "        ✓ $_doc_qbin_count QEMU binary candidate(s) under $_doc_qbin_dir"
+    else
+        echo "        ⚠ none yet (fresh workspace) — 'ob start-qemu <machine>' downloads on first launch"
+    fi
+
+    # ── 维度 4/4: 端口（信息性；报告默认 QEMU 转发端口占用，不阻断）──
+    echo "  [4/4] Ports (default QEMU forwards; advisory)"
+    local _doc_port _doc_holder
+    for _doc_port in 2222 2443 2623; do
+        _doc_holder=""
+        if command -v ss >/dev/null 2>&1; then
+            _doc_holder=$(ss -ltnH "sport = :$_doc_port" 2>/dev/null | awk '{print $4}' | head -1)
+        elif command -v netstat >/dev/null 2>&1; then
+            _doc_holder=$(netstat -ltn 2>/dev/null | awk -v p=":$_doc_port" '$4 ~ p {print $4}' | head -1)
+        fi
+        if [[ -n "$_doc_holder" ]]; then
+            echo "        ⚠ $_doc_port: in use ($_doc_holder) — free it or pass --ssh-port to 'ob start-qemu'"
+        else
+            echo "        ✓ $_doc_port: free (or no probe tool)"
+        fi
+    done
+
+    echo ""
+    if [[ "$_doc_hard_ready" -eq 1 ]]; then
+        info "doctor: hard preconditions ready (repo + toolchain). Advisory dims above show situational readiness."
+        exit 0
+    else
+        error "doctor: hard preconditions missing — follow the remedy hints above, then re-run 'ob doctor'."
+        exit 3
+    fi
+}
+
 cmd_build() {
     # === Prerequisites ===
     require_path "$OPENBMC_DIR/.git" "OpenBMC main repository" "Run 'ob init' first." 3
