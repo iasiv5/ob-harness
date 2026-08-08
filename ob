@@ -20,6 +20,7 @@ VERBOSE=0
 DRY_RUN=0
 SKIP_DEPS=0
 DEV_ARGS=()
+TEST_ARGS=()
 
 # QEMU-related (start-qemu / stop-qemu)
 QEMU_SSH_PORT=""
@@ -78,6 +79,7 @@ done
 
 parse_args() {
     DEV_ARGS=()   # 重置(OB_NO_MAIN 多次调用测试防残留)
+    TEST_ARGS=()
     if [[ $# -lt 1 ]]; then
         COMMAND=""
         return 0
@@ -134,6 +136,14 @@ parse_args() {
                 MACHINE="$1"
                 shift
             fi
+            ;;
+        test)
+            TEST_ARGS=("$@")
+            set --
+            ;;
+        doctor)
+            TEST_ARGS=("$@")
+            set --
             ;;
         dev)
             # dev 子命令的私有参数(--machine/二级子命令)透传给 cmd_dev;
@@ -200,6 +210,8 @@ Commands:
   stop-qemu    [<machine>]    Stop a running QEMU instance
   deploy-to-qemu [<machine>]  Rebuild image and restart QEMU for clean verification
   smoke        [<machine>]    Probe a running QEMU-backed BMC (read-only OOB probe; no bring-up/teardown)
+  test         [layer|flags]  Run harness tests via tests/run_all.sh (layer: protocol|unit|orchestration|integration; flags: --full|--integration)
+  doctor                      Read-only environment readiness check (host/repo/machine/QEMU/feedback chain); a missing precondition is reported with its remedy
   dev          [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
 
 Global Options:
@@ -336,6 +348,16 @@ main() {
 
     if [[ "$COMMAND" == "smoke" ]]; then
         cmd_smoke
+        return $?
+    fi
+
+    if [[ "$COMMAND" == "test" ]]; then
+        cmd_test "${TEST_ARGS[@]}"
+        return $?
+    fi
+
+    if [[ "$COMMAND" == "doctor" ]]; then
+        cmd_doctor "${TEST_ARGS[@]}"
         return $?
     fi
 

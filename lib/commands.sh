@@ -380,6 +380,136 @@ cmd_dev() {
     case "$_rc" in 0) exit 0;; 1) exit 1;; 2) exit 2;; 3) exit 3;; *) exit 1;; esac
 }
 
+# ob test — 把测试/校验反馈链接到 ob 前门。无 layer → 转发 tests/run_all.sh(透传 --full/--integration);
+# 给定 layer(protocol|unit|orchestration|integration)→ 聚焦仅跑该层 .sh。只读,不改 baseline。
+# 退出码: 0 全过 / 1 有失败 / 3 前置缺失(run_all 不在)。本 seam 为 exit seam, 用 return 交 main 收口。
+cmd_test() {
+    local test_layer="" test_full=0 test_integration=0 _a
+    for _a in "$@"; do
+        case "$_a" in
+            protocol|unit|orchestration|integration) test_layer="$_a" ;;
+            --full)        test_full=1 ;;
+            --integration) test_integration=1 ;;
+            -h|--help)
+                echo "Usage: ob test [protocol|unit|orchestration|integration] [--full] [--integration]"
+                return 0
+                ;;
+            *) error "ob test: unknown argument: $_a"; return 1 ;;
+        esac
+    done
+
+    local run_all="$HARNESS_ROOT/tests/run_all.sh"
+    if [[ ! -f "$run_all" ]]; then
+        error "ob test: test runner not found: $run_all"
+        return 3
+    fi
+
+    step_header "ob test"
+    if [[ -z "$test_layer" ]]; then
+        local -a pass=()
+        [[ "$test_full" -eq 1 ]] && pass+=(--full)
+        [[ "$test_integration" -eq 1 ]] && pass+=(--integration)
+        info "Running: tests/run_all.sh ${pass[*]:-}"
+        if bash "$run_all" "${pass[@]}"; then
+            return 0
+        fi
+        local rc=$?
+        error "ob test: tests/run_all.sh reported failures (rc=$rc)"
+        return "$rc"
+    fi
+
+    # 单层聚焦: 仅跑 tests/<layer>/*.sh(从仓库根起跑,与 run_all 的 cwd 一致)
+    local layer_dir="$HARNESS_ROOT/tests/$test_layer"
+    if [[ ! -d "$layer_dir" ]]; then
+        error "ob test: layer '$test_layer' has no directory ($layer_dir)"
+        return 1
+    fi
+    info "Focused layer: $test_layer (.sh only)"
+    local f base frc failed=0
+    for f in "$layer_dir"/*.sh; do
+        [[ -e "$f" ]] || continue
+        base="$(basename "$f")"
+        printf '=== %s ===\n' "$base"
+        if bash "$f"; then
+            printf 'ok %s\n' "$base"
+        else
+            frc=$?
+            printf 'FAIL %s (rc=%s)\n' "$base" "$frc"
+            failed=1
+        fi
+    done
+    if [[ "$failed" -eq 0 ]]; then
+        info "Layer $test_layer: all .sh passed"
+        return 0
+    fi
+    error "Layer $test_layer: one or more .sh failed"
+    return 1
+}
+
+# ob doctor — 只读环境就绪度体检前门(受控执行: 发起 build/qemu 前廉价确认环境)。
+# 逐维断言 host 工具 / harness 根 / openbmc 主仓绑定 / 已初始化 machine / QEMU binary staging / 反馈链,
+# 只读不改状态。全绿 exit 0;任一前置缺失 exit 3 并打印 remedy(由 ob 补前置再重试)。
+cmd_doctor() {
+    step_header "ob doctor — 环境就绪度体检 (read-only)"
+    local ready=1
+
+    # 1. host: Linux + git + python3
+    local host_ok=1
+    [[ "$(uname -s)" == "Linux" ]] || host_ok=0
+    command -v git >/dev/null 2>&1 || host_ok=0
+    command -v python3 >/dev/null 2>&1 || host_ok=0
+    if [[ "$host_ok" -eq 1 ]]; then
+        info "✓ host: Linux + git + python3"
+    else
+        error "✗ host: 缺 Linux/git/python3 之一"; ready=0
+    fi
+
+    # 2. harness 根
+    if [[ -d "$HARNESS_ROOT" ]]; then
+        info "✓ harness root: $HARNESS_ROOT"
+    else
+        error "✗ harness root 未检出: ${HARNESS_ROOT:-<empty>}"; ready=0
+    fi
+
+    # 3. openbmc 主仓绑定
+    if [[ -d "$OPENBMC_DIR/.git" ]]; then
+        info "✓ openbmc 主仓已绑定: $OPENBMC_DIR"
+    else
+        warn "✗ openbmc 主仓未绑定 ($OPENBMC_DIR 无 .git)。remedy: ob init <machine>"; ready=0
+    fi
+
+    # 4. 已初始化 machine
+    local mcount
+    mcount=$(machine_state_display_machines 2>/dev/null | grep -c . || true)
+    if [[ "${mcount:-0}" -gt 0 ]]; then
+        info "✓ 已初始化 machine: ${mcount}"
+    else
+        warn "✗ 无已初始化 machine。remedy: ob init <machine>"; ready=0
+    fi
+
+    # 5. QEMU binary staging(只读探测,不 provision)
+    if find "$WORKSPACE_DIR/qemu-bin" -maxdepth 2 -name 'qemu-system-*' -print -quit 2>/dev/null | grep -q .; then
+        info "✓ QEMU binary 已 staging: $WORKSPACE_DIR/qemu-bin"
+    else
+        warn "✗ QEMU binary 未 staging。ob start-qemu 时会按需自动 provision"
+    fi
+
+    # 6. 反馈链本身
+    if [[ -f "$HARNESS_ROOT/tools/ob_check.sh" && -f "$HARNESS_ROOT/tests/run_all.sh" ]]; then
+        info "✓ 反馈链: tools/ob_check.sh + tests/run_all.sh"
+    else
+        warn "✗ 反馈链不完整 (tools/ob_check.sh 或 tests/run_all.sh 缺失)"
+    fi
+
+    echo ""
+    if [[ "$ready" -eq 1 ]]; then
+        info "ob doctor: 环境就绪"
+        return 0
+    fi
+    error "ob doctor: 环境未就绪——按上方 remedy 补前置后重试"
+    return 3
+}
+
 cmd_menu() {
     # Non-interactive terminal guard
     if [[ ! -t 0 ]]; then
