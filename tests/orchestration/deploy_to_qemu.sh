@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
-# tests/orchestration/deploy_to_qemu.sh — cmd_deploy_to_qemu 编排 stub 测试(7 场景)。
-# 锁三个不变量:
+# tests/orchestration/deploy_to_qemu.sh — cmd_deploy_to_qemu 编排 stub 测试(8 场景)。
+# 锁四个不变量:
 #   1. 编排顺序: build → (QEMU 在跑则 stop + 端口复用注入) → start
-#   2. 端口复用: 新 .pid ssh_port == 旧 .pid ssh_port(场景② 2222==2222)
+#   2. 端口复用: 新 .pid ssh_port == 旧 .pid ssh_port(场景② 29222==29222)
 #   3. build-first: build 失败不 stop QEMU(场景③ fake_qemu 存活)
+#   4. deploy honor CLI(ADR-0022 D2): CLI 端口不被旧实例覆盖(场景⑧ 40022 honor, 非旧 29222)
 # 假 harness root = $TMP(OB_ENTRY_DIR=$TMP), detect_harness_root 算 $TMP/workspace/... 各路径。
 # scaffold 组合: start_qemu_force_restart.sh(stage + 运行实例 + dynamic ss)
 #   + cmd_build_bitbake_handoff.sh(build_env_enter setup + bitbake stub)
@@ -216,6 +217,24 @@ assert_eq "⑦ rc=0 (dry-run)" "$rc" "0"
 assert_contains "⑦ [DRY-RUN] output" "$(cat "$TMP/out")" "[DRY-RUN]"
 assert_false "⑦ bitbake not called" test -f "$DB/.bitbake.calls"
 assert_false "⑦ setsid not invoked" test -s "$sentinel"
+
+# ============================================================================
+# 场景 ⑧ QEMU 在跑 + CLI 端口 override(--ssh-port 语义) → confirm 'y' → 新 .pid ssh_port=CLI(ADR-0022 D2 deploy honor)
+#    锁 deploy honor 行为级: deploy 跑时 QEMU_SSH_PORT(CLI flag) 不被旧实例端口覆盖(module cli_first)。
+#    对照 ②(空 CLI → 复用旧 29222): ⑧ 预设 CLI 40022 → 断言新 .pid 为 40022(非旧 29222)。
+#    注: run_deploy 用 OB_NO_MAIN 跳过 main/parse_args, 故 QEMU_SSH_PORT 直设全局(模拟 parser 产物);
+#        ⑧ 证 deploy+resolver 运行期 composition, 不覆盖 parser→QEMU_SSH_PORT 接线(parse_args 测试职责)。
+# ============================================================================
+reset_between
+stage_initialized_machine
+stage_running_qemu
+DRY_RUN=0
+QEMU_SSH_PORT=40022                          # CLI flag(模拟 ob deploy-to-qemu --ssh-port 40022)
+printf 'y\n' > "$TMP/yes"
+run_deploy "$TMP/yes"; rc=$?
+assert_eq "⑧ rc=0 (qemu running + confirm y + build ok + CLI port)" "$rc" "0"
+assert_true "⑧ deploy honors CLI: new .pid ssh_port=40022 (not old 29222)" grep -q '^ssh_port=40022$' "$QEMU_PIDS_DIR/$MACHINE.pid"
+QEMU_SSH_PORT=""                             # 清全局端口变量(防泄漏; deploy-honor 限于本场景)
 
 # ── 清理 ──
 [[ -n "$fake_pid" ]] && kill "$fake_pid" 2>/dev/null

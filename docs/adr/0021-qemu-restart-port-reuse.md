@@ -2,7 +2,7 @@
 
 `ob start-qemu` 检测到 running 旧实例、用户交互确认 "kill and restart" 后，`qemu_prepare_launch` 的端口解析**忽略** `PIDFILE_*`、从默认值（SSH 2222 / Redfish 2443 / IPMI 2623）重新解析——而默认 IPMI 2623/udp 常被内核残留 UNCONN socket（owner=`?`）占用，触发 `resolve_qemu_ports_interactive` 弹 prompt 要用户重输。根因：端口解析链缺失"旧实例端口"这一 fallback 层。经 `/grill-with-docs` 六决策锁定：restart 定义为"同 machine 存在 running 旧实例且本次会 kill 它"，交互确认路径把旧实例端口注入 `QEMU_*_PORT`（CLI flag 层）做端口复用，`-z` guard 保 CLI flag 优先，放弃软特权（D5 翻转：注入端口主治痛点、软特权语义反转，见 Consequences）；`--force` ≠ restart、不注入。本 ADR 记这条 load-bearing 决策。术语见 CONTEXT.md `重启 (restart)` / `端口解析链`。
 
-Status: accepted
+Status: accepted — deploy guard 不对称（old_first）经 [ADR-0022](0022-port-reuse-resolver-module.md) 统一为 cli_first；下文 deploy 注入代码块及 `qemu_commands.sh:367-370` 行号反映 pre-0022 历史（行号且已漂移至 375-378，0022 后该注入 ritual 移入 module，此处保留作决策日志）
 
 Amends: `cmd_start_qemu`（`lib/qemu_commands.sh`）交互确认分支新增旧实例端口注入（`-z` guard 到 `QEMU_*_PORT`）；`lib/qemu.sh` 不改（D5 翻转为无特权）。新增 CONTEXT.md 术语：`重启 (restart)`、`端口解析链`、`--force`。
 References: [ADR-0007](0007-qemu-launch-profile-start-qemu-decision-seam.md)（QEMU launch profile——本 ADR 改的是 prepare 的端口解析，紧邻 profile/binary/firmware provisioning 之后，不改 launch profile 接口）、[ADR-0011](0011-ob-deploy-to-qemu-toplevel-ownership.md)（`cmd_deploy_to_qemu` 是本 ADR 端口复用机制的既有先例——直接赋 `QEMU_SSH_PORT` 等，本 ADR 在 start-qemu 照搬此机制 + 加 `-z` guard 修 CLI flag 覆盖漏洞）。

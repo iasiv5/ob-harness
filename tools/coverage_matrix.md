@@ -74,6 +74,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | launch prepare 半段(profile/binary/firmware/ports/build) | qemu_prepare_launch | orchestration/qemu_prepare_launch.sh | Shape 2 half 1 |
 | launch execute 半段(setsid+PID+summary) | qemu_execute_launch | orchestration/qemu_execute_launch.sh | Shape 2 half 2;QEMU_NO_WAIT 跳 BMC-wait |
 | --force 同端口重启顺序(F1) | cmd_start_qemu | orchestration/start_qemu_force_restart.sh | F1 不变量:kill 先于 check_ports |
+| restart 端口复用注入（cli_first + HTTP none）| resolve_qemu_port_reuse | unit/qemu_port_reuse.sh;orchestration/deploy_to_qemu.sh 场景⑧ | leaf-pure（ADR-0022）; cli_first 四端口对称矩阵 + HTTP none sentinel; deploy honor CLI 行为级锁（场景⑧） |
 | binary 下载链 | download_qemu_binary_core;ensure_qemu_binary_community | orchestration/qemu_binary_download.sh | flat-binary 路径;原 #1 盲区 |
 | binary 更新/URL 决策 | qemu_binary_update_decision;qemu_binary_resolve_url | unit/qemu_binary_decision.sh | 纯决策 |
 | 实例四行显示 | qemu_instance_summarize_full | unit/qemu_instance.sh | start↔stop 复用；status 走 summarize_brief |
