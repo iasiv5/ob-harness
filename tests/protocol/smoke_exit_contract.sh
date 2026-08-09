@@ -142,6 +142,8 @@ assert_eq "(3) running + all 5 pass → exit 0" "$rc" "0"
 _check_5=$(printf '%s' "$out" | grep -cE '^[[:space:]]*✓ ' || true)
 assert_eq "(3) prints exactly 5 ✓ assertion lines" "$_check_5" "5"
 assert_false "(3) all-pass path emits NO α truth-reporter line" grep -q "truth-reporter" <<<"$out"
+assert_contains "(3) prints Smoke summary 5/5" "$out" "Smoke summary: 5/5 assertions passed"
+assert_contains "(3) all-pass machine passthrough" "$out" "all smoke assertions passed for 'romulus'"
 # tear down (3)'s instance before building (4)'s (clean port/PID space)
 kill "$FAKE_PID" 2>/dev/null || true
 kill "$LISTENER_PID" 2>/dev/null || true
@@ -155,5 +157,12 @@ assert_contains "(4) prints ✗ IPMI row" "$out" "✗ IPMI over LAN works"
 assert_true  "(4) emits α truth-reporter clarification" grep -q "truth-reporter" <<<"$out"
 assert_true  "(4) IPMI RAW shows generic RMCP+/LAN possible-cause hint" \
              grep -qi "RMCP+/LAN responder" <<<"$out"
+assert_contains "(4) prints Smoke summary 4/5" "$out" "Smoke summary: 4/5 assertions passed"
+assert_contains "(4) prints Failed assertions (1)" "$out" "Failed assertions (1)"
+assert_contains "(4) fail machine passthrough" "$out" "smoke assertions failed for 'romulus'"
+# RAW 块计数须锁 header 专属串 "RAW response (for localization)": 本用例 2>&1 合并捕获,
+# error 收尾行 "...see ✗ rows + RAW responses above)." 含 "RAW response" 子串, 裸 grep 会
+# 多算 1(2 而非 1)。勿简化回 grep -c "RAW response"。
+_raw4=$(grep -c "RAW response (for localization)" <<<"$out" || true); assert_eq "(4) exactly 1 RAW block" "$_raw4" 1
 
 assert_summary

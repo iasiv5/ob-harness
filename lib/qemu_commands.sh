@@ -486,6 +486,41 @@ _smoke_probe_ssh_tcp() {
     return 0
 }
 
+# _smoke_render_verdict <total> <passed> <failed_names_ref> <failed_raws_ref> <machine>
+#   cmd_smoke 私有 verdict 渲染(leaf-pure 风格: 不 exit, return 0=all-pass / 1=any-fail;
+#   exit 收口留 cmd_smoke)。消费 total/passed + failed_names[]/failed_raws[](nameref 只读),
+#   打 summary 行 + 失败 breakdown(✗ + RAW) + α-banner(>&2)。
+#   前置(lockstep): total/passed/failed_names 由 cmd_smoke 维护——每次 fail 同时 total++ 与
+#   failed_names+=, 故 ${#failed_names[@]} == total-passed(本函数不另做 mismatch 校验)。
+_smoke_render_verdict() {
+    local total="$1" passed="$2"
+    local -n _srv_fn="$3"     # failed_names (只读消费)
+    local -n _srv_fr="$4"     # failed_raws (只读消费)
+    local machine="$5"
+    echo ""
+    if [[ "$passed" -eq "$total" ]]; then
+        echo -e "${GREEN}Smoke summary: $passed/$total assertions passed${NC}"
+        info "ob smoke: all smoke assertions passed for '$machine'."
+        return 0
+    fi
+    echo -e "${RED}Smoke summary: $passed/$total assertions passed${NC}"
+    echo ""
+    error "Failed assertions (${#_srv_fn[@]}):"
+    local i
+    for (( i=0; i<${#_srv_fn[@]}; i++ )); do
+        echo -e "  ${RED}✗ ${_srv_fn[$i]}${NC}"
+        echo    "----- RAW response (for localization) -----"
+        echo    "${_srv_fr[$i]}"
+        echo    "-------------------------------------------"
+    done
+    echo ""
+    error "ob smoke: smoke assertions failed for '$machine' (see ✗ rows + RAW responses above)."
+    # α 重申: exit 1 当下向 stderr 喂一行 α 语义, 防 caller 据全局 "1 = broken" 误判 smoke 坏。
+    # warn 默认走 stdout, 显式 >&2 落 stderr(不污染 stdout 真相报告)。
+    warn "exit 1 here is the α truth-reporter contract: the ✗ rows above report the BMC interface's ACTUAL state, NOT a smoke command failure — read the ✗ rows to see which interface and why (debug the BMC interface, not smoke)." >&2
+    return 1
+}
+
 cmd_smoke() {
     detect_harness_root
 
@@ -601,29 +636,12 @@ cmd_smoke() {
         failed_raws+=("interface: SSH TCP @ localhost:$s_ssh"$'\n'"tcp connect rc: $p_ssh_rc"$'\n'"(port not accepting connections — BMC sshd may still be booting)")
     fi
 
-    # ── α verdict: 纯 truth-reporter。ALL pass → return 0; ANY fail → 打 breakdown + RAW, exit 1 ──
+    # ── α verdict: 渲染经 _smoke_render_verdict(leaf-pure 风格, return 0/1); exit 收口留本 cmd_smoke ──
     # 无 --allow-fail / 无 per-machine expected-profile / 无 baseline: 回归检测是 caller 的事(零 per-machine 知识)。
-    echo ""
-    if [[ $passed -eq $total ]]; then
-        echo -e "${GREEN}Smoke summary: $passed/$total assertions passed${NC}"
-        info "ob smoke: all smoke assertions passed for '$MACHINE'."
-        return 0                # smoke 不拥有 QEMU → 不 teardown, 直接 return
-    fi
-    echo -e "${RED}Smoke summary: $passed/$total assertions passed${NC}"
-    echo ""
-    error "Failed assertions (${#failed_names[@]}):"
-    local i
-    for (( i=0; i<${#failed_names[@]}; i++ )); do
-        echo -e "  ${RED}✗ ${failed_names[$i]}${NC}"
-        echo    "----- RAW response (for localization) -----"
-        echo    "${failed_raws[$i]}"
-        echo    "-------------------------------------------"
-    done
-    echo ""
-    error "ob smoke: smoke assertions failed for '$MACHINE' (see ✗ rows + RAW responses above)."
-    # α 重申(deliverable B): 在 exit 1 当下向 stderr 喂一行 α 语义, 防 caller 据全局
-    # "1 = broken" 误判 smoke 坏了。warn 默认走 stdout, 显式 >&2 落 stderr(stderr 不污染
-    # smoke 的 stdout 真相报告)。不动 exit 值(仍 1, ∈{0,1,2,3})、不加 trap、不改 judge。
-    warn "exit 1 here is the α truth-reporter contract: the ✗ rows above report the BMC interface's ACTUAL state, NOT a smoke command failure — read the ✗ rows to see which interface and why (debug the BMC interface, not smoke)." >&2
-    exit 1                       # smoke 不拥有 QEMU → 无 EXIT trap, 直接 exit 1
+    local _vrc=0
+    _smoke_render_verdict "$total" "$passed" failed_names failed_raws "$MACHINE" || _vrc=$?
+    case "$_vrc" in
+        0) return 0 ;;            # smoke 不拥有 QEMU → 不 teardown, 直接 return
+        *) exit 1 ;;              # smoke 不拥有 QEMU → 无 EXIT trap, 直接 exit 1
+    esac
 }
