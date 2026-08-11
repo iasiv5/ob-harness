@@ -40,6 +40,7 @@
 - [CLI 交互 prompt 卡壳：读逃生路径，别逐行回答](knowhow/bestpractice_11-interactive_prompt_bypass.md) — ob 或其他 CLI 弹出交互菜单时，别用 send_to_terminal 逐行喂答案；先读 prompt/报错自带的逃生提示、查 --help 的 --flag/ENV_VAR，一步跳过。
 - [经验沉淀的分层判定](knowhow/bestpractice_12-knowledge_layering.md) — 踩坑后有了一条经验，先走"三问路由"判定它该进哪层：源于 ob-harness 自身且别人会同样复发的进仓库分发层（rules/knowhow），纯环境/个人健忘的只记会话记忆。落盘即收口（覆盖检查 + 写入 + 更新入口）。
 - [给 QEMU 模拟的 BMC EEPROM 注入 FRU 数据](knowhow/bestpractice_13-inject_fru_data_into_bmc_eeprom.md) — QEMU BMC 板载 EEPROM 空导致 set-hostname/inventory 等失败时；两个致命陷阱：entity-manager type 编码反常（字段用 `0xC0|len` 非 `0x80|len`）+ ob 用 custom binary 复制（重编后必须 cp）；四阶段（构造 blob→runtime dd 验证→固化 `at24c_eeprom_init_rom`→重编+cp+回归）。
+- [给 QEMU 模拟缺失的 GPIO expander](knowhow/bestpractice_14-simulate_gpio_expander_in_qemu.md) — OpenBMC 服务（psu-manager 等）因 named GPIO line 不存在 SIGABRT（gpiod::find_line throw）时；定位用手动跑 binary 捕获 stderr（比 gdb stripped core 高效）；修法=查 dts expander 总线链+QEMU i2c_init 加 expander（pca9555/9554，kernel 从 dts 读 line names 注册 named line）；陷阱：改 config 名字不够、expander 要挂 dts 匹配总线、clone 错源码 repo。
 
 ---
 
