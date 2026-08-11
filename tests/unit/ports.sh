@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/unit/ports.sh — 端口/PID 检查单测(unit 层)。
-# 覆盖 get_port_occupants / check_ports_available(exit 3)/ qemu_instance_is_alive。
+# 覆盖 get_port_occupants / check_ports_available(exit 3)。
 source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
 source "$(dirname "$0")/../lib/stub.sh"
@@ -24,9 +24,5 @@ assert_rc 0 "ports all free" with_stub "$DB" -- bash -c 'OB_NO_MAIN=1 source "$1
 stub_out "$DB" ss "LISTEN users:((\"x\",pid=5,fd=3))"
 assert_rc 3 "ports conflict exit 3" with_stub "$DB" -- bash -c 'OB_NO_MAIN=1 source "$1"; MACHINE=m; check_ports_available tcp 2222' _ "$OB"
 rm -rf "$DB"
-
-# --- qemu_instance_is_alive: /proc 真实进程 ---
-qemu_instance_is_alive 99999999 qemu-system-arm romulus >/dev/null 2>&1; assert_eq "qemu_instance_is_alive exited rc" "$?" 1
-qemu_instance_is_alive "$$" qemu-system-arm romulus >/dev/null 2>&1;       assert_eq "qemu_instance_is_alive recycled rc" "$?" 2
 
 assert_summary

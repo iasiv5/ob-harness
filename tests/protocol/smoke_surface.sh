@@ -6,7 +6,7 @@
 #       (3) main smoke 真调 cmd_smoke(MACHINE 透传);
 #       (4) cmd_smoke 登记在 lib/qemu_commands.sh;
 #       (5) probe-only 不变量: cmd_smoke 函数体不引用 qemu_prepare_launch/qemu_execute_launch,
-#           不装 EXIT trap, 调 qemu_instance_is_alive(只探活实例, 绝不探死端口);
+#           不装 EXIT trap, 调 qemu_instance_liveness(只探活实例, 绝不探死端口);
 #       (6) 前置 exit 3 + 恰好一条 remedy: 无 machine arg / 无 PID file / stale PID 三路。
 set -uo pipefail
 source "$(dirname "$0")/../lib/ob_loader.sh"
@@ -61,8 +61,9 @@ SMOKE_BODY="$(awk '/^cmd_smoke\(\)/{g=1} g{print; if($0=="}") exit}' "$QCMDS")"
 assert_false "cmd_smoke probe-only: 不引用 qemu_prepare_launch" grep -q 'qemu_prepare_launch' <<<"$SMOKE_BODY"
 assert_false "cmd_smoke probe-only: 不引用 qemu_execute_launch" grep -q 'qemu_execute_launch' <<<"$SMOKE_BODY"
 assert_false "cmd_smoke probe-only: 不装 EXIT trap"             grep -q 'trap ' <<<"$SMOKE_BODY"
-assert_true  "cmd_smoke 调 qemu_instance_is_alive(只探活实例)"   grep -q 'qemu_instance_is_alive' <<<"$SMOKE_BODY"
-assert_true  "cmd_smoke 调 qemu_instance_load(读 PID file)"      grep -q 'qemu_instance_load' <<<"$SMOKE_BODY"
+# liveness grep 锁: 原 is_alive + load 两锁合并为单 liveness 锁(ADR-0024: liveness 吸收 load+probe,
+# 原 load 断言不再单独需要; 探活不变量由此单锁覆盖, 锁数 2→1 是有意)。
+assert_true  "cmd_smoke 调 qemu_instance_liveness(只探活实例)"  grep -q 'qemu_instance_liveness' <<<"$SMOKE_BODY"
 assert_true  "cmd_smoke 读 PIDFILE_SSH_PORT(端口来自实例)"        grep -q 'PIDFILE_SSH_PORT' <<<"$SMOKE_BODY"
 
 # === (6) 前置 exit 3 + remedy: 三路(无 machine / 无 PID / stale PID) ===
@@ -101,7 +102,7 @@ assert_eq "no PID file → exit 3" "$_rc" "3"
 assert_contains "no PID remedy 提示 start-qemu" "$_out" "ob start-qemu"
 
 # (6c) stale PID file(进程已退出)→ clean_stale + exit 3 + 同 remedy
-#   PID 999999 几乎必然无 /proc 条目 → qemu_instance_is_alive return 1(exited) → NOT alive → 清理 + exit 3。
+#   PID 999999 几乎必然无 /proc 条目 → qemu_instance_liveness = exited → NOT running → 清理 + exit 3。
 _stale_pid_content="pid=999999
 user=test
 machine=romulus

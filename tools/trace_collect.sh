@@ -4,7 +4,7 @@
 # 原理:对每个测试用 `BASH_XTRACEFD=3 bash -x` 显式开 xtrace,trace 写独立 fd3
 # (绕过测试内的 >/dev/null 重定向),PS4='@@${FUNCNAME[0]}@@ ' 让每行含函数名。
 #
-# 覆盖范围:"直接调用"的 ob 函数(qemu_instance_is_alive/normalize_repo_url/read_kv_field/
+# 覆盖范围:"直接调用"的 ob 函数(qemu_instance_liveness/normalize_repo_url/read_kv_field/
 #   write_source_manifest/derive_*/interact 的 select/confirm/prompt 等)。
 # 采集波动(非确定):assert_rc/with_stub 的 bash -c 子进程测试的函数(check_ports_available/
 #   parse_args/require_path/prompt_for_available_port 等)——其 xtrace 采集依赖

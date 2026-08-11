@@ -47,11 +47,17 @@ qemu_instance_load() {
     return 0
 }
 
-qemu_instance_is_alive() {
-    # return 0=running&match, 1=exited, 2=pid recycled — diagnostic only, NOT part of exit-code protocol
+# _qemu_instance_probe_alive <pid> <expected_binary> <expected_machine> — 私有 leaf-pure seam。
+# return 0=running&match, 1=exited, 2=pid recycled。供 qemu_instance_liveness 内部消费（不污染公开面）。
+# 输入有效性防线先于 /proc 检查：空字段 PID file 今天会误判 running（空 string 是任意 cmdline 子串），
+# 防线让 corrupt/空字段落 1=exited → clean_stale（ADR-0024 评审 🔴1，bug 修正非行为保持）。
+_qemu_instance_probe_alive() {
     local pid="$1"
     local expected_binary="$2"
     local expected_machine="$3"
+
+    # 防线：pid 非空且纯数字、binary/machine 非空，否则 return 1（exited）
+    [[ -z "$pid" || ! "$pid" =~ ^[0-9]+$ || -z "$expected_binary" || -z "$expected_machine" ]] && return 1
 
     if [[ ! -d "/proc/$pid" ]]; then
         return 1  # Process exited
@@ -67,6 +73,34 @@ qemu_instance_is_alive() {
     return 0  # Running and matches
 }
 
+# qemu_instance_liveness <machine> <status_outvar> — 公开 leaf-pure，恒 return 0（ADR-0024）。
+# 吸收 load + probe 两步：printf -v 写 running/exited/recycled/nopid 到 outvar，消灭 set-e 多态返回 footgun。
+# non-nopid 下 PIDFILE_* 已填（caller 在 running 分支读 PIDFILE_SSH_PORT 等），nopid 下已清空。
+# shellcheck disable=SC2034  # PIDFILE_* 清空为 nopid 不变量;字段供 caller 跨文件读取
+qemu_instance_liveness() {
+    local machine="$1"
+    local status_outvar="$2"
+
+    # 清空 PIDFILE_*（nopid 路径保持清空：qemu_instance_load 失败时不重置这些字段）
+    PIDFILE_PID=""; PIDFILE_USER=""; PIDFILE_MACHINE=""; PIDFILE_BINARY=""
+    PIDFILE_STARTED_AT=""; PIDFILE_SSH_PORT=""; PIDFILE_REDFISH_PORT=""
+    PIDFILE_IPMI_PORT=""; PIDFILE_HTTP_PORT=""; PIDFILE_SERIAL_LOG=""
+
+    if ! qemu_instance_load "$machine"; then
+        printf -v "$status_outvar" '%s' nopid
+        return 0
+    fi
+
+    local _rc=0
+    _qemu_instance_probe_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE" || _rc=$?
+    case "$_rc" in
+        0) printf -v "$status_outvar" '%s' running ;;
+        2) printf -v "$status_outvar" '%s' recycled ;;
+        *) printf -v "$status_outvar" '%s' exited ;;   # 1=exited；防御 * 一并落 exited
+    esac
+    return 0
+}
+
 # qemu_instance_summarize_full — 读 PIDFILE_* 全局(qemu_instance_load 设置)echo 统一四行实例信息。
 # 供 cmd_start_qemu 冲突块与 cmd_stop_qemu 确认时复用(四行详情);cmd_status 走 summarize_brief(单行)。
 qemu_instance_summarize_full() {
@@ -77,21 +111,24 @@ qemu_instance_summarize_full() {
 }
 
 # qemu_instance_summarize_brief <machine> — echo 单行实例详情（PID + 三端口 + 状态）。
-# machine 名不含（caller 决定布局）；running 标 ✅，stale（exited/recycled）标 ⚠️。
-# 内部 load → is_alive，统一存活判断（消灭 cmd_status/cmd_stop_qemu 的简化版双轨）。
+# machine 名不含（caller 决定布局）；running 标 ✅，stale（exited/recycled/nopid）标 ⚠️。
+# 内部走 qemu_instance_liveness（恒 return 0 + outvar 状态），统一存活判断。
 qemu_instance_summarize_brief() {
     local machine="$1"
-    if ! qemu_instance_load "$machine"; then
-        echo "⚠️ stale"   # PID 文件消失（race）或不可读 → 视作 stale，避免 caller 显示空行
-        return 0
-    fi
-    local status_mark
-    if qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
-        status_mark="✅ running"
-    else
-        status_mark="⚠️ stale"
-    fi
-    echo "PID ${PIDFILE_PID}   SSH(${PIDFILE_SSH_PORT}) Redfish(${PIDFILE_REDFISH_PORT}) IPMI(${PIDFILE_IPMI_PORT}/UDP)   ${status_mark}"
+    local _liv=""
+    qemu_instance_liveness "$machine" _liv
+    case "$_liv" in
+        running)
+            echo "PID ${PIDFILE_PID}   SSH(${PIDFILE_SSH_PORT}) Redfish(${PIDFILE_REDFISH_PORT}) IPMI(${PIDFILE_IPMI_PORT}/UDP)   ✅ running"
+            ;;
+        nopid)
+            echo "⚠️ stale"   # PID 文件消失（race）或不可读 → 视作 stale，避免 caller 显示空行
+            ;;
+        exited|recycled)
+            echo "PID ${PIDFILE_PID}   SSH(${PIDFILE_SSH_PORT}) Redfish(${PIDFILE_REDFISH_PORT}) IPMI(${PIDFILE_IPMI_PORT}/UDP)   ⚠️ stale"
+            ;;
+    esac
+    return 0
 }
 
 # qemu_instance_clean_stale <machine> — rm stale PID 文件（best-effort，恒返回 0）。
@@ -123,7 +160,7 @@ qemu_instance_stop() {
 }
 
 # qemu_instance_list — 枚举当前 workspace 所有 QEMU PID 文件对应的 machine 名（全集，
-# 每行一个）。作 list-source；存活判断不在此（caller 调 qemu_instance_is_alive）。
+# 每行一个）。作 list-source；存活判断不在此（caller 走 qemu_instance_liveness）。
 # 与 lib/qemu.sh derive_qemu_paths 的 QEMU_PIDS_DIR 同源（$WORKSPACE_DIR/qemu-bin/.pids）。
 qemu_instance_list() {
     local pid_file

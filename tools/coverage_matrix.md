@@ -66,7 +66,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | QEMU binary 路径/manifest | derive_qemu_paths;read_qemu_url_config;write_qemu_url_config;write_qemu_binary_manifest;write_qemu_pcbios_manifest | unit/qemu_manifest.sh | |
 | QEMU launch profile / QB 输入解析 | resolve_qemu_launch_profile | orchestration/qemu_launch_profile.sh;orchestration/resolve_qb_vars.sh;protocol/qemu_launch_profile_remedy.sh | exit 函数 |
 | 端口检查 | check_ports_available;get_port_occupants | unit/ports.sh | check_ports_available exit 函数 |
-| PID 校验 | qemu_instance_is_alive | unit/ports.sh | |
+| instance 存活状态 | qemu_instance_liveness | unit/qemu_instance.sh | running/exited/recycled/nopid; ADR-0024 |
 | 失效 host key 检测 | check_ssh_hostkey_conflict;_clear_stale_hostkey_menu | unit/hostkey_conflict.sh | Track A 删除菜单(确证失效);Track B sshd 未就绪仅提示不删 |
 | 取消 → exit 2 | cmd_start_qemu | protocol/manual_matrix.exp | TTY |
 | machine-selection 序言(empty/nontty/ok 走 guard) | cmd_start_qemu;machine_selection_guard | protocol/start_qemu_remedy.sh;protocol/qemu_commands_guard_surface.sh | empty 带子分类(先 build/先 init remedy 区分,留 cmd D2);与 cmd_build/cmd_dev 同构 |
@@ -78,7 +78,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | binary 下载链 | download_qemu_binary_core;ensure_qemu_binary_community | orchestration/qemu_binary_download.sh | flat-binary 路径;原 #1 盲区 |
 | binary 更新/URL 决策 | qemu_binary_update_decision;qemu_binary_resolve_url | unit/qemu_binary_decision.sh | 纯决策 |
 | 实例四行显示 | qemu_instance_summarize_full | unit/qemu_instance.sh | start↔stop 复用；status 走 summarize_brief |
-| instance module（list/load/summarize_brief/clean_stale） | qemu_instance_list;qemu_instance_load;qemu_instance_summarize_brief;qemu_instance_clean_stale | unit/qemu_instance.sh | start/stop/status 共用；caller 不碰 .pids 物理布局 |
+| instance module（list/load/liveness/summarize_brief/clean_stale） | qemu_instance_list;qemu_instance_load;qemu_instance_liveness;qemu_instance_summarize_brief;qemu_instance_clean_stale | unit/qemu_instance.sh | start/stop/status 共用；caller 不碰 .pids 物理布局 |
 | binary 更新(flock+回滚) | download_and_replace_community_qemu;_dlqbc_stage_binary;_replace_community_binary | orchestration/qemu_binary_replace.sh | acquire/commit 切面; flock 留 wrapper; swap-fail-rollback 不变量 stateful mv 锁 |
 | custom binary 配置 | ensure_qemu_binary_custom;resolve_custom_binary_candidate;resolve_custom_pcbios_candidate | unit/qemu_binary_resolve.sh | 路径解析 leaf-pure(outvar 编码); 交互循环留 wrapper; 非 TTY exit 3 仍靠 .exp |
 

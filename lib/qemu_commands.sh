@@ -68,13 +68,10 @@ cmd_start_qemu() {
     #     whose check_ports_available exits 3 on occupied ports; killing the old
     #     same-machine instance first avoids a spurious port-conflict exit) ──
     derive_qemu_paths
-    if qemu_instance_load "$MACHINE"; then
-        # if 包裹 is_alive: 明确意图(alive vs stale) + 必须 set -e 安全, 与 cmd_deploy_to_qemu 同款。
-        # 注: is_alive 是多态返回函数(0=running/1=exited/2=recycled), 裸调 + $? 读在 ob set -euo 下
-        # 死实例(return 1)与 PID recycled(return 2)都会 abort、clean_stale 走不到(bash 5.2.15 实测
-        # 顶层/嵌套/sourced/子shell 四上下文裸调 return 1 全部 abort, 见 start_qemu_stale_pid.sh);
-        # if 包裹消费 rc 才能落到 clean_stale, 是必需而非"无害防御"。
-        if qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
+    local _liv=""
+    qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
+    case "$_liv" in
+        running)
             # Instance is running and valid
             if [[ "$QEMU_FORCE" -eq 1 ]]; then
                 warn "Killing existing QEMU instance (PID $PIDFILE_PID)..."
@@ -102,11 +99,14 @@ cmd_start_qemu() {
                 error "Use --force to kill and restart, or 'ob stop-qemu $MACHINE' first."
                 exit 1
             fi
-        else
+            ;;
+        exited|recycled)
             # Stale PID file — clean up via module
             qemu_instance_clean_stale "$MACHINE"
-        fi
-    fi
+            ;;
+        nopid)
+            ;;
+    esac
 
     # ── Prepare launch (Shape 2 half 1: profile/binary/firmware/ports/build) ──
     qemu_prepare_launch "$MACHINE" "$image_file"
@@ -214,72 +214,73 @@ cmd_stop_qemu() {
         MACHINE="$target_machine"
 
         echo ""
-        if ! qemu_instance_load "$MACHINE"; then
-            info "No PID file for '$MACHINE' — not running."
-            continue
-        fi
+        local _liv=""
+        qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
+        case "$_liv" in
+            nopid)
+                info "No PID file for '$MACHINE' — not running."
+                continue
+                ;;
+            exited)
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    info "[DRY-RUN] Would clean stale PID file for '$MACHINE' (process exited)"
+                    continue
+                fi
+                info "QEMU process for '$MACHINE' (PID $PIDFILE_PID) has already exited."
+                qemu_instance_clean_stale "$MACHINE"
+                continue
+                ;;
+            recycled)
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    info "[DRY-RUN] Would clean stale PID file for '$MACHINE' (PID recycled)"
+                    continue
+                fi
+                warn "PID $PIDFILE_PID no longer belongs to QEMU (recycled). Cleaning stale PID file."
+                qemu_instance_clean_stale "$MACHINE"
+                continue
+                ;;
+            running)
+                if [[ "$DRY_RUN" -eq 1 ]]; then
+                    info "[DRY-RUN] Would stop QEMU for '$MACHINE' (PID $PIDFILE_PID)"
+                    continue
+                fi
+                # Process is running — show info and confirm
+                echo -e "Running QEMU instance for '${BOLD}$MACHINE${NC}':"
+                qemu_instance_summarize_full
+                echo ""
+                print_confirm_banner "stop QEMU for" "$MACHINE"
 
-        # || pid_status=$? 保留 0/1/2 区分(DRY_RUN case + exited/recycled 分支)且 set -e 安全
-        # (裸调 + $? 读在 set -euo 下死实例 return 1/2 会 abort — 既有债, 此处照 cmd_deploy_to_qemu:733 修)
-        local pid_status=0
-        qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE" || pid_status=$?
-
-        if [[ "$DRY_RUN" -eq 1 ]]; then
-            case "$pid_status" in
-                0) info "[DRY-RUN] Would stop QEMU for '$MACHINE' (PID $PIDFILE_PID)" ;;
-                1) info "[DRY-RUN] Would clean stale PID file for '$MACHINE' (process exited)" ;;
-                2) info "[DRY-RUN] Would clean stale PID file for '$MACHINE' (PID recycled)" ;;
-            esac
-            continue
-        fi
-
-        if [[ $pid_status -eq 1 ]]; then
-            info "QEMU process for '$MACHINE' (PID $PIDFILE_PID) has already exited."
-            qemu_instance_clean_stale "$MACHINE"
-            continue
-        fi
-
-        if [[ $pid_status -eq 2 ]]; then
-            warn "PID $PIDFILE_PID no longer belongs to QEMU (recycled). Cleaning stale PID file."
-            qemu_instance_clean_stale "$MACHINE"
-            continue
-        fi
-
-        # Process is running — show info and confirm
-        echo -e "Running QEMU instance for '${BOLD}$MACHINE${NC}':"
-        qemu_instance_summarize_full
-        echo ""
-        print_confirm_banner "stop QEMU for" "$MACHINE"
-
-        if [[ "$QEMU_FORCE" -ne 1 ]]; then
-            if [[ -t 0 ]]; then
-                while true; do
-                    local answer
-                    if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Stop this instance? [y/N]: ")" answer; then
+                if [[ "$QEMU_FORCE" -ne 1 ]]; then
+                    if [[ -t 0 ]]; then
+                        while true; do
+                            local answer
+                            if ! read -r -p "$(echo -e "${PROMPT_PREFIX} Stop this instance? [y/N]: ")" answer; then
+                                exit 1
+                            fi
+                            case "$answer" in
+                                [yY])
+                                    break
+                                    ;;
+                                [nN])
+                                    info "Skipped '$MACHINE'."
+                                    continue 2
+                                    ;;
+                                *)
+                                    warn "Invalid input. Please type Y or N."
+                                    ;;
+                            esac
+                        done
+                    else
+                        error "Non-interactive mode. Use --force to stop without confirmation."
                         exit 1
                     fi
-                    case "$answer" in
-                        [yY])
-                            break
-                            ;;
-                        [nN])
-                            info "Skipped '$MACHINE'."
-                            continue 2
-                            ;;
-                        *)
-                            warn "Invalid input. Please type Y or N."
-                            ;;
-                    esac
-                done
-            else
-                error "Non-interactive mode. Use --force to stop without confirmation."
-                exit 1
-            fi
-        fi
+                fi
 
-        # Kill and wait
-        qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
-        info "QEMU instance for '$MACHINE' stopped."
+                # Kill and wait
+                qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
+                info "QEMU instance for '$MACHINE' stopped."
+                ;;
+        esac
     done
 }
 
@@ -313,18 +314,22 @@ cmd_deploy_to_qemu() {
     # ── 探测 QEMU 在跑 + 预读旧端口(必须在 stop 前, 约束 2) ──
     local qemu_running=0
     local old_ssh_port="" old_redfish_port="" old_ipmi_port="" old_http_port=""
-    if qemu_instance_load "$MACHINE"; then
-        # if 包裹 is_alive 防御 set -e(计划伪代码裸调 + $? 在 ob 直接 set -e 下 return 1 会中止)
-        if qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
+    local _liv=""
+    qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
+    case "$_liv" in
+        running)
             qemu_running=1
             old_ssh_port="$PIDFILE_SSH_PORT"
             old_redfish_port="$PIDFILE_REDFISH_PORT"
             old_ipmi_port="$PIDFILE_IPMI_PORT"
             old_http_port="$PIDFILE_HTTP_PORT"
-        else
+            ;;
+        exited|recycled)
             qemu_instance_clean_stale "$MACHINE"
-        fi
-    fi
+            ;;
+        nopid)
+            ;;
+    esac
 
     # ── confirm: 仅 QEMU 在跑时 banner(约束 4, 路径风险原则) ──
     if [[ $qemu_running -eq 1 ]]; then
@@ -547,19 +552,23 @@ cmd_smoke() {
 
     # ── 前置 2: RUNNING QEMU instance(smoke 不 bring-up, 只探活实例——绝不探死端口, 防假"BMC 坏") ──
     derive_qemu_paths
-    if ! qemu_instance_load "$MACHINE"; then
-        error "No QEMU instance running for '$MACHINE' (no PID file)."
-        error "Run 'ob start-qemu $MACHINE' first."
-        exit 3
-    fi
-    # if 包裹 is_alive: 0=running/1=exited/2=recycled 多态返回在 set -euo 下裸调会 abort(同 cmd_start_qemu 注)。
-    # NOT alive → clean stale PID + exit 3 + 同 remedy(stale 也是"没在跑", 让 caller 先 start-qemu)。
-    if ! qemu_instance_is_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE"; then
-        qemu_instance_clean_stale "$MACHINE"
-        error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
-        error "Run 'ob start-qemu $MACHINE' first."
-        exit 3
-    fi
+    local _liv=""
+    qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
+    case "$_liv" in
+        nopid)
+            error "No QEMU instance running for '$MACHINE' (no PID file)."
+            error "Run 'ob start-qemu $MACHINE' first."
+            exit 3
+            ;;
+        exited|recycled)
+            qemu_instance_clean_stale "$MACHINE"
+            error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
+            error "Run 'ob start-qemu $MACHINE' first."
+            exit 3
+            ;;
+        running)
+            ;;
+    esac
 
     # ── 从实例 PID 文件读真实转发端口(不假设默认值, 命中真端口; smoke 不接受 port override) ──
     local s_ssh="$PIDFILE_SSH_PORT"

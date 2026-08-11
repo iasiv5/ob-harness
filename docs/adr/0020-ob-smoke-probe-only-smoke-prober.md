@@ -16,7 +16,7 @@ References: [ADR-0019](0019-command-machine-resolution-seam.md)（image-ready �
 
 ## Consequences
 
-- **scope**：`ob smoke <machine>` 单命令；machine arg required（MVP 无交互选号）。probe-only：`qemu_instance_load` → `qemu_instance_is_alive` → 读 PID file 端口 → 就绪门 → 3 断言 → verdict。无 bring-up / 无 teardown / 无 EXIT trap。
+- **scope**：`ob smoke <machine>` 单命令；machine arg required（MVP 无交互选号）。probe-only：`qemu_instance_liveness`（含 load+probe）→ 读 PID file 端口 → 就绪门 → 3 断言 → verdict。无 bring-up / 无 teardown / 无 EXIT trap。
 - **候选 A 消失**：不 boot 就不需要 image-ready machine 解析 / init+image 前置 / 既有实例冲突处理 / teardown——`cmd_verify` 与 `cmd_start_qemu` 的 ~50 行副本整块删除。这是比"抽 image-ready seam"更彻底的解：**删掉对耦合的需求**，而非把耦合抽出来。（candidate A 的真 seam 抽取仍可作为未来 start_qemu/deploy-to-qemu 的事，与 smoke 无关。）
 - **不触发 ADR-0019 重开**：ADR-0019 把 start_qemu 接 resolution seam 列为 future-candidate，重开触发 = "出现第二个 image-ready 命令"。smoke 因 probe-only **不** boot、**不**做 image-ready 解析 → 不是第二个 image-ready adapter → 不触发该重开条件。若将来 smoke 重扩为 own-lifecycle，则相反。
 - **verdict α 的代价（已接受）**：smoke exit code 在异质 image 上"严格但不直接可作 gate"——交互式跑 gb200nvl 永远 exit 1（breakdown 自解释：Redfish✓ IPMI✗ SSH✓ + raw）；CI 须 diff smoke 输出 vs baseline（baseline-diff 是 CI 的活，不是 smoke 的）。这是用"smoke 纯工具化"换"零 per-machine 知识 + 更深 module"的刻意 trade-off。

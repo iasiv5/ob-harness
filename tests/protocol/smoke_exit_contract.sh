@@ -7,7 +7,7 @@
 #   running instance + some assertion fails   → exit 1
 # Pure stub-based: NO real QEMU, NO network, fast (runs in default run_all .sh suite).
 #
-# How a "running instance" is faked (so qemu_instance_is_alive returns 0 without QEMU):
+# How a "running instance" is faked (so qemu_instance_liveness returns "running" without QEMU):
 #   - a long-lived process whose /proc/<pid>/cmdline contains BOTH the binary path and
 #     the machine name (via `exec -a "<binary> <machine>" sleep N`);
 #   - a local python TCP listener on the SSH port (so the system-ready probe connects);
