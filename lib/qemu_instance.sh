@@ -101,12 +101,6 @@ qemu_instance_liveness() {
     return 0
 }
 
-# qemu_instance_is_alive <pid> <binary> <machine> — 过渡 wrapper（保 0/1/2 供 Task 2/3 迁移期现有 caller 用）。
-# 公开名在所有 caller 迁完后删除（ADR-0024）。新代码用 qemu_instance_liveness。
-qemu_instance_is_alive() {
-    _qemu_instance_probe_alive "$@"
-}
-
 # qemu_instance_summarize_full — 读 PIDFILE_* 全局(qemu_instance_load 设置)echo 统一四行实例信息。
 # 供 cmd_start_qemu 冲突块与 cmd_stop_qemu 确认时复用(四行详情);cmd_status 走 summarize_brief(单行)。
 qemu_instance_summarize_full() {
