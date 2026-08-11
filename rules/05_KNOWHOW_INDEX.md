@@ -39,6 +39,7 @@
 - [深模块抽取族（收敛散落逻辑 + leaf-pure 静态门禁）](knowhow/bestpractice_10-deep_module_extraction.md) — 在 ob/lib 把散落 helper/决策/选择/实例逻辑收敛到一个深 module 时；含 god-function 拆解的副作用次序不变量 + leaf-pure 纯度门禁。
 - [CLI 交互 prompt 卡壳：读逃生路径，别逐行回答](knowhow/bestpractice_11-interactive_prompt_bypass.md) — ob 或其他 CLI 弹出交互菜单时，别用 send_to_terminal 逐行喂答案；先读 prompt/报错自带的逃生提示、查 --help 的 --flag/ENV_VAR，一步跳过。
 - [经验沉淀的分层判定](knowhow/bestpractice_12-knowledge_layering.md) — 踩坑后有了一条经验，先走"三问路由"判定它该进哪层：源于 ob-harness 自身且别人会同样复发的进仓库分发层（rules/knowhow），纯环境/个人健忘的只记会话记忆。落盘即收口（覆盖检查 + 写入 + 更新入口）。
+- [给 QEMU 模拟的 BMC EEPROM 注入 FRU 数据](knowhow/bestpractice_13-inject_fru_data_into_bmc_eeprom.md) — QEMU BMC 板载 EEPROM 空导致 set-hostname/inventory 等失败时；两个致命陷阱：entity-manager type 编码反常（字段用 `0xC0|len` 非 `0x80|len`）+ ob 用 custom binary 复制（重编后必须 cp）；四阶段（构造 blob→runtime dd 验证→固化 `at24c_eeprom_init_rom`→重编+cp+回归）。
 
 ---
 
