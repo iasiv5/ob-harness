@@ -85,7 +85,7 @@ _Avoid_: QEMU 配置, QEMU metadata
 _Avoid_: QEMU lock, QEMU state
 
 **QEMU instance**:
-workspace 里某个 machine 对应的、可能正在运行的 QEMU 进程的逻辑视图，由 `QEMU PID file` 记录。它回答"哪个 machine 的 QEMU 在跑 / 状态如何（存活、PID、转发端口）"，是 `ob status` 展示、`ob stop-qemu` 枚举、`ob start-qemu` 冲突检测共同关心的抽象；`QEMU PID file` 是它的物理载体，二者是实体与记录的关系。与 `machine lifecycle state` 正交：lifecycle state 回答 machine 处于 init/build 的哪个阶段，instance 回答 machine 的 QEMU 进程当前是否在跑——一个 `firmware-image-ready machine` 可以没有 QEMU instance（未 start-qemu），一个 stale QEMU instance 也不改 lifecycle state。instance 集合的增（start-qemu 写 PID file）删（stop-qemu / kill-restart 删 PID file）是 lifecycle 动作的副作用，不是 instance 视图自身的职责。
+workspace 里某个 machine 对应的、可能正在运行的 QEMU 进程的逻辑视图，由 `QEMU PID file` 记录。它回答"哪个 machine 的 QEMU 在跑 / 状态如何（存活、PID、转发端口）"，是 `ob status` 展示、`ob stop-qemu` 枚举、`ob start-qemu` 冲突检测共同关心的抽象；`QEMU PID file` 是它的物理载体，二者是实体与记录的关系。与 `machine lifecycle state` 正交：lifecycle state 回答 machine 处于 init/build 的哪个阶段，instance 回答 machine 的 QEMU 进程当前是否在跑——存活状态取 `running`（在跑且 cmdline 匹配）/ `exited`（进程已退）/ `recycled`（PID 被复用）/ `nopid`（无 PID 文件）四值；一个 `firmware-image-ready machine` 可以没有 QEMU instance（未 start-qemu），一个 stale QEMU instance 也不改 lifecycle state。instance 集合的增（start-qemu 写 PID file）删（stop-qemu / kill-restart 删 PID file）是 lifecycle 动作的副作用，不是 instance 视图自身的职责。
 _Avoid_: QEMU process（OS 进程，太底层）, QEMU runtime（与 qemu.sh runtime 模块撞名）, 把 QEMU PID file 当 instance（记录 ≠ 实体）
 
 **重启 (restart)**:
@@ -192,7 +192,7 @@ ob 对一个**已在跑**的 `QEMU instance` 做带外（OOB）接口可达性 s
 _Avoid_: ob verify（已改名；"verify" 过载——旧 `ob verify` 指 bring-up+teardown 的初版，已退役为 probe-only smoke）
 
 **modified recipe selection**:
-`ob dev` 的 reset/finish/build 三个 TTY 子命令共享的「先选一个 modified recipe 再动手」前置，由 `lib/devtool_pick.sh` 的 `devtool_pick_modified_recipe` 封装。它消费 `modified recipe` 列表（取自 `devtool status`），列表空则回传 `empty` 信号，非空则交互选号并把选中项 / 取消 / 读取失败经 outvar 回传。它是 leaf-pure（绝不 exit，恒返回码，exit-code 契约映射留在 `cmd_dev`）。与 `machine selection` 同构但协议不同：`machine selection` 选中设全局 `$MACHINE`、用多态返回码表达取消/失败（历史接口）；`modified recipe selection` 用 outvar 回传、恒返回码——recipe 不是全局概念（不该污染全局），且多态返回码在 strict mode 下有踩坑先例（`QEMU instance` 存活探测的 0/1/2）。两者今天不统一（`machine selection` 是稳定接口，统一超本次范围）。
+`ob dev` 的 reset/finish/build 三个 TTY 子命令共享的「先选一个 modified recipe 再动手」前置，由 `lib/devtool_pick.sh` 的 `devtool_pick_modified_recipe` 封装。它消费 `modified recipe` 列表（取自 `devtool status`），列表空则回传 `empty` 信号，非空则交互选号并把选中项 / 取消 / 读取失败经 outvar 回传。它是 leaf-pure（绝不 exit，恒返回码，exit-code 契约映射留在 `cmd_dev`）。与 `machine selection` 同构但协议不同：`machine selection` 选中设全局 `$MACHINE`、用多态返回码表达取消/失败（历史接口）；`modified recipe selection` 用 outvar 回传、恒返回码——recipe 不是全局概念（不该污染全局），且多态返回码在 strict mode 下有踩坑先例（`QEMU instance` 存活探测曾用 0/1/2 多态返回，已迁出为 outvar+恒返回码，见 [ADR-0024](docs/adr/0024-qemu-instance-liveness-outvar.md)）。两者今天不统一（`machine selection` 是稳定接口，统一超本次范围）。
 _Avoid_: recipe picker（口语化，术语用 selection）, 把 selection 当 modified recipe（前者是选号动作，后者是被选的 recipe 集合）, 在 selection module 内 exit 或用多态返回码回传结果
 
 **ob dev command intake**:
