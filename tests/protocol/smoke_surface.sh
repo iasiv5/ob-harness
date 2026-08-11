@@ -61,6 +61,8 @@ SMOKE_BODY="$(awk '/^cmd_smoke\(\)/{g=1} g{print; if($0=="}") exit}' "$QCMDS")"
 assert_false "cmd_smoke probe-only: 不引用 qemu_prepare_launch" grep -q 'qemu_prepare_launch' <<<"$SMOKE_BODY"
 assert_false "cmd_smoke probe-only: 不引用 qemu_execute_launch" grep -q 'qemu_execute_launch' <<<"$SMOKE_BODY"
 assert_false "cmd_smoke probe-only: 不装 EXIT trap"             grep -q 'trap ' <<<"$SMOKE_BODY"
+# liveness grep 锁: 原 is_alive + load 两锁合并为单 liveness 锁(ADR-0024: liveness 吸收 load+probe,
+# 原 load 断言不再单独需要; 探活不变量由此单锁覆盖, 锁数 2→1 是有意)。
 assert_true  "cmd_smoke 调 qemu_instance_liveness(只探活实例)"  grep -q 'qemu_instance_liveness' <<<"$SMOKE_BODY"
 assert_true  "cmd_smoke 读 PIDFILE_SSH_PORT(端口来自实例)"        grep -q 'PIDFILE_SSH_PORT' <<<"$SMOKE_BODY"
 
