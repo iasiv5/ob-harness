@@ -1,0 +1,87 @@
+# romulus baseline AR (需求条目) — spike 数据:5 条 redfish probe AR 覆盖五态。
+# Schema (per-machine, ADR-0025): auth + ars[]。每条 AR 字段顺序:
+#   ar / name / probe / suite / request{method,path,body} / assert[{type,...}] / depends_on / rationale
+# assert 原语 (tests/baseline/romulus/runner/probe_redfish.py):
+#   status_in        {value: [code,...]}
+#   json_path_exists {path: dotted}
+#   json_path_match  {path: dotted, value: expected}
+auth:
+  user: root
+  password: "0penBmc"
+
+ars:
+  - ar: BMC-2-2-1
+    name: Redfish service reachable
+    probe: redfish
+    suite: core
+    request:
+      method: GET
+      path: /redfish/v1
+    assert:
+      - type: status_in
+        value: [200]
+    depends_on: []
+    rationale: Redfish 根服务须可达 (HTTP 200)
+
+  - ar: BMC-3-15-1
+    name: BMC firmware version queryable
+    probe: redfish
+    suite: core
+    request:
+      method: GET
+      path: /redfish/v1/Managers/bmc
+    assert:
+      - type: json_path_exists
+        path: FirmwareVersion
+    depends_on: [BMC-2-2-1]
+    rationale: Managers/bmc 须暴露 FirmwareVersion 字段
+
+  - ar: BMC-3-1-2
+    name: Reject account create violating username rule
+    probe: redfish
+    suite: users
+    request:
+      method: POST
+      path: /redfish/v1/AccountService/Accounts
+      body:
+        UserName: "9bad"
+        Password: "Abcd1234!"
+        RoleId: ReadOnly
+    assert:
+      - type: status_in
+        value: [400, 403]
+    depends_on: [BMC-2-2-1]
+    rationale: >
+      用户名规则:无效用户名 (9bad) 应被拒绝 4xx。mutating negative —
+      若 BMC 违反 baseline 返回 2xx 创建账号,probe 引擎 (probe_redfish.py)
+      从 Location/@odata.id 抽 URI best-effort DELETE 清理,防污染复用实例
+      (评审六轮 黄2)。
+
+  - ar: BMC-7-7-1
+    name: Web UI banner customization
+    probe: redfish
+    suite: webui
+    request:
+      method: GET
+      path: /redfish/v1
+    assert:
+      - type: status_in
+        value: [200]
+    depends_on: []
+    rationale: Web banner 定制能力 (QEMU 不可仿真, applicability 标 skip)
+
+  - ar: BMC-XF-1
+    name: Accounts collection Description absent (xfail demo)
+    probe: redfish
+    suite: users
+    request:
+      method: GET
+      path: /redfish/v1/AccountService/Accounts
+    assert:
+      - type: json_path_exists
+        path: Description
+    depends_on: [BMC-2-2-1]
+    rationale: >
+      xfail 演示:romulus Accounts 集合顶层预期不填 Description,probe 预期
+      fail 记 xfail;若意外填了则 xpass (改善信号, 不影响 exit)。避开
+      @odata.count 等带点字段 (probe resolver 是 split('.'), 带点 key 会被拆错)。
