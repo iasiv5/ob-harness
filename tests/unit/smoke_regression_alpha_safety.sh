@@ -37,8 +37,10 @@ assert_false "无 \$machine 派生文件路径落盘(重定向)"       grep -qE 
 if git -C "$ROOT" rev-parse --verify HEAD >/dev/null 2>&1 \
    && git -C "$ROOT" rev-parse --verify main >/dev/null 2>&1; then
     tracked=$(git -C "$ROOT" diff --name-only main...HEAD || true)
-    violating=$(printf '%s\n' "$tracked" | grep -E '(^|/)(baselines?|profiles?|expected[_-])|\.baseline$|\.profile$' || true)
-    assert_eq "git diff main...HEAD 无受版本 baseline/profile 产物" "$violating" ""
+    # 排除 test-qemu 合法 per-machine baseline(ADR-0025: tests/baseline/ 社区机随上游 +
+    # contexts/baseline/ custom)——那是 test-qemu 命令的 AR 数据, 非 smoke 的 spatial 期望。
+    violating=$(printf '%s\n' "$tracked" | grep -E '(^|/)(baselines?|profiles?|expected[_-])|\.baseline$|\.profile$' | grep -vE '^(tests|contexts)/baseline/' || true)
+    assert_eq "git diff main...HEAD 无受版本 baseline/profile 产物(smoke α-safety; test-qemu tests/baseline 例外)" "$violating" ""
 else
     # 无 main ref(孤立分支/浅克隆)→ 跳过 git 侧实证, 仅源码 grep 守(上方已覆盖)
     echo "ok   git diff 守卫(SKIP — 无 main ref, 仅源码 grep 守 α-safety)"

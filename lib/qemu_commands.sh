@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu/cmd_smoke). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu / QEMU instance.
+# lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu/cmd_smoke/cmd_test_qemu). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu / ob smoke / ob test-qemu / QEMU instance.
 # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
 # 形态对照: L1 exit-seam 命令族(顶层命令直接 exit, 无 dispatcher 收口), 区别于 lib/devtool_subcmd.sh 的 L3 leaf-pure handler(return exit-code, 由 cmd_dev 收口 exit)。
 
@@ -653,4 +653,186 @@ cmd_smoke() {
         0) return 0 ;;            # smoke 不拥有 QEMU → 不 teardown, 直接 return
         *) exit 1 ;;              # smoke 不拥有 QEMU → 无 EXIT trap, 直接 exit 1
     esac
+}
+
+# ════════════════════════════════════════════════════════════════════════════
+# ob test-qemu — baseline AR probe runner (probe-only)。术语见 CONTEXT.md baseline / ob test-qemu / exit-code 契约.
+# 形态对照 cmd_smoke: probe-only (不 boot/teardown, 无 EXIT trap), 读 PID 文件真实 Redfish 端口。
+#   与 smoke 正交姊妹: smoke 浅冒烟 5 哨兵 + 零 per-machine 守 per-push 绿灯; test-qemu 逐条深测
+#   per-machine baseline 的 QEMU 可仿真 AR 子集, 产 pass/fail/skip/xfail/xpass, nightly/PR-to-main 频率。
+# per-machine 全栈独立 (ADR-0025): 每 machine baseline 目录自包含 AR 数据 + probe 引擎, 不共享。
+#   落点二分: 社区机 tests/baseline/<machine>/ (随上游); custom 机 contexts/baseline/<machine>/ (不随上游)。
+# ════════════════════════════════════════════════════════════════════════════
+
+# test_qemu_resolve_baseline_dir <machine> <outvar> — leaf-pure helper: 定位 machine 的 baseline 目录。
+# 序: contexts/baseline/<machine> (custom, 优先) > tests/baseline/<machine> (community) > MISSING。
+# 锚定 $HARNESS_ROOT (detect_harness_root 设置 = $OB_ENTRY_DIR; 从任意 cwd 调 ob 时相对路径会误报 MISSING)。
+# outvar 写命中目录绝对路径或 "MISSING"; 恒 return 0 (对齐 machine_selection_guard outvar+恒0 / ADR-0024)。
+# 抽出为独立 helper: 让 protocol 测目录优先级时不必构造 fake alive QEMU (cmd 层该 remedy 需先过 liveness)。
+test_qemu_resolve_baseline_dir() {
+    local machine="$1" outvar="$2"
+    local root="${HARNESS_ROOT:-$OB_ENTRY_DIR}"
+    if [[ -d "$root/contexts/baseline/$machine" ]]; then
+        printf -v "$outvar" '%s' "$root/contexts/baseline/$machine"
+    elif [[ -d "$root/tests/baseline/$machine" ]]; then
+        printf -v "$outvar" '%s' "$root/tests/baseline/$machine"
+    else
+        printf -v "$outvar" '%s' "MISSING"
+    fi
+    return 0
+}
+
+# test_qemu_usage — cmd_test_qemu 的 -h/--help 输出 (ob test-qemu --help)。自包含 test-qemu 专属说明。
+test_qemu_usage() {
+    cat <<EOF
+Usage: ob test-qemu <machine> [options]
+
+Run <machine>'s baseline AR probes on its RUNNING QEMU instance. Each AR
+(需求条目) is probed and verdicted pass/fail/skip/xfail/xpass.
+
+Options:
+  --suite <name>   Only run ARs in this suite
+  --ar <id>        Only run the named AR
+  --report <path>  Dump JSON report to PATH
+  -v, --verbose    Print per-AR status to stderr
+  -d, --dry-run    List ARs + applicability, no probe (runner-level)
+  -h, --help       Show this help
+
+Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish
+          port from the instance's PID file (no port overrides honored).
+          With no running instance it exits 3 and will NOT boot one — run
+          'ob start-qemu <machine>' first.
+
+baseline dir (per-machine, ADR-0025):
+          contexts/baseline/<machine>  (custom, preferred)
+          tests/baseline/<machine>     (community, ships with ob-harness)
+
+Verdict (per AR):
+  pass   applicable AR, probe matched the assert
+  fail   applicable AR, probe did NOT match (BMC misses baseline)
+  skip   not applicable / not QEMU-emulatable (no probe run)
+  xfail  expected fail: probe failed as expected
+  xpass  unexpected pass: an xfail AR surprisingly passed (improvement signal)
+  skip/xfail/xpass do NOT affect the exit-code — only an applicable AR that
+  actually fails causes exit-code 1.
+
+Exit codes (test-qemu-specific):
+  0   All applicable ARs passed (skip/xfail/xpass do not count).
+  1   One or more applicable ARs failed — α truth: the BMC does not meet its
+      baseline. This is NOT "test-qemu broken"; read the fail rows + report.
+  3   Precondition missing: no running instance, machine not resolved, or no
+      baseline dir for <machine> (see remedy line).
+EOF
+}
+
+cmd_test_qemu() {
+    detect_harness_root
+
+    # 先扫 -h/--help: parse_args 的 test-qemu) set -- 让 --help 进 TEST_QEMU_ARGS 而非全局 parser;
+    # 必须在 machine 必填/liveness 之前, 否则 './ob test-qemu --help' 因 MACHINE 空走 exit 3。
+    local _arg
+    for _arg in "$@"; do
+        case "$_arg" in
+            -h|--help) test_qemu_usage; return 0 ;;
+        esac
+    done
+
+    # 解析命令私有 flags (machine 由全局 $MACHINE 提供, parse_args 已设; argv 只含私有 flags)
+    local _suite="" _ar="" _report="" _verbose=0 _dry=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --suite) _suite="$2"; shift 2 ;;
+            --ar) _ar="$2"; shift 2 ;;
+            --report) _report="$2"; shift 2 ;;
+            -v|--verbose) _verbose=1; shift ;;
+            -d|--dry-run) _dry=1; shift ;;
+            -h|--help) test_qemu_usage; return 0 ;;
+            *) error "Unknown option: $1"; test_qemu_usage >&2; exit 1 ;;
+        esac
+    done
+
+    # ── 前置 1: machine 必填 (probe-only 命令不交互选号; 列 running candidates, 对齐 cmd_smoke) ──
+    if [[ -z "$MACHINE" ]]; then
+        error "No machine specified."
+        local -a _tq_targets=()
+        mapfile -t _tq_targets < <(qemu_instance_list)
+        if [[ ${#_tq_targets[@]} -eq 0 ]]; then
+            error "No QEMU instance is running. test-qemu probes a running instance — run 'ob start-qemu <machine>' first."
+        else
+            error "Running QEMU instances you can test:"
+            local _t
+            for _t in "${_tq_targets[@]}"; do
+                printf '  %-20s %s\n' "$_t" "$(qemu_instance_summarize_brief "$_t")" >&2
+            done
+        fi
+        error "Specify a machine: ob test-qemu <machine>"
+        exit 3
+    fi
+
+    # ── 前置 2: RUNNING QEMU instance (probe-only, 对齐 cmd_smoke; 绝不探死端口防假"BMC 坏") ──
+    derive_qemu_paths
+    local _liv=""
+    qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024)
+    case "$_liv" in
+        nopid)
+            error "No QEMU instance running for '$MACHINE' (no PID file)."
+            error "Run 'ob start-qemu $MACHINE' first."
+            exit 3
+            ;;
+        exited|recycled)
+            qemu_instance_clean_stale "$MACHINE"
+            error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
+            error "Run 'ob start-qemu $MACHINE' first."
+            exit 3
+            ;;
+        running)
+            ;;
+    esac
+
+    # ── 前置 3: baseline 目录定位 (custom 优先 > community; MISSING exit 3) ──
+    local _dir=""
+    test_qemu_resolve_baseline_dir "$MACHINE" _dir
+    if [[ "$_dir" == "MISSING" ]]; then
+        error "No baseline dir for '$MACHINE'."
+        error "Expected tests/baseline/$MACHINE/ (community) or contexts/baseline/$MACHINE/ (custom). See ADR-0025."
+        exit 3
+    fi
+
+    # ── 从 PID 文件读真实 Redfish 端口 (qemu_instance_liveness 已填 PIDFILE_*; 不假设默认值) ──
+    local _port="$PIDFILE_REDFISH_PORT"
+
+    # ── 从 ar_probes.yaml 顶层读 auth (PyYAML; cmd_test_qemu 不硬编码凭据) ──
+    local _auth_user="" _auth_pass=""
+    {
+        read -r _auth_user
+        read -r _auth_pass
+    } < <(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
+import yaml, os
+d = yaml.safe_load(open(os.environ["OB_TQ_YAML"])) or {}
+a = d.get("auth") or {}
+print(a.get("user") or "")
+print(a.get("password") or "")
+')
+    if [[ -z "$_auth_user" ]]; then
+        error "No auth.user found in $_dir/ar_probes.yaml (top-level 'auth:' with 'user' is required)."
+        exit 3
+    fi
+
+    # ── 调 per-machine runner (host/port/auth 注入; runner exit 0/1 透传为 ob exit 0/1) ──
+    info "test-qemu: probing '$MACHINE' baseline at $_dir (Redfish port $_port)."
+    local -a _run_args=(bash "$_dir/runner/run.sh" --host 127.0.0.1 --port "$_port" --user "$_auth_user" --password "$_auth_pass")
+    [[ -n "$_ar" ]] && _run_args+=(--ar "$_ar")
+    [[ -n "$_suite" ]] && _run_args+=(--suite "$_suite")
+    [[ -n "$_report" ]] && _run_args+=(--report "$_report")
+    [[ $_verbose -eq 1 ]] && _run_args+=(-v)
+    [[ $_dry -eq 1 ]] && _run_args+=(-d)
+
+    local _rrc=0
+    "${_run_args[@]}" || _rrc=$?
+    # runner 仅返 0(全 applicable pass)/1(有 applicable fail)。映射字面 exit(exit-contract X:
+    # exit 须字面 0/1/2/3, 禁 exit 变量)。exit 1 = α truth(BMC 不满足 baseline), 非 test-qemu broken。
+    if [[ $_rrc -eq 0 ]]; then
+        exit 0
+    fi
+    exit 1
 }
