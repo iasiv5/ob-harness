@@ -16,6 +16,10 @@ tmp_*/
 contexts/knowhow/*
 !contexts/knowhow/.gitkeep
 
+# custom-machine baseline data：本地定制基线，不回上游（ADR-0025）
+contexts/baseline/*
+!contexts/baseline/.gitkeep
+
 # Claude Code 插件运行产物（better-harness 的 durable reports，本机生成，不入库）
 .claude/better-harness/
 
