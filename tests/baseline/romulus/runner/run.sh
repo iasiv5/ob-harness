@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+# romulus baseline runner: 遍历 ar_probes.yaml × applicability → 逐条 probe →
+# 收 pass/fail/skip/xfail/xpass → report.py → exit 0/1。
+# per-machine (ADR-0025); host/port/auth 由调用方注入, 不硬编码。
+#
+# rc 纪律 (评审三轮 🔴1): set -euo pipefail 下 probe fail (exit 1) 不能裸调,
+# 否则 errexit 中止 runner、report.py 不执行。每条 probe 用 if/else 捕获 rc。
+set -euo pipefail
+
+HOST=""
+PORT=""
+USER_NAME=""
+PASSWORD=""
+AR_FILTER=""
+SUITE_FILTER=""
+REPORT_PATH=""
+VERBOSE=0
+DRY_RUN=0
+TIMEOUT="${TIMEOUT:-10}"
+
+usage() {
+  cat <<EOF
+Usage: run.sh --host H --port P --user U --password W [options]
+  --ar ID         only run AR with this id
+  --suite NAME    only run ARs in this suite
+  --report PATH   dump JSON report to PATH
+  -v, --verbose   print per-AR status to stderr
+  -d, --dry-run   list ARs + applicability, no probe, exit 0
+  --timeout SE    per-probe HTTP timeout (default 10)
+  -h, --help      show this help
+EOF
+}
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --host) HOST="$2"; shift 2 ;;
+    --port) PORT="$2"; shift 2 ;;
+    --user) USER_NAME="$2"; shift 2 ;;
+    --password) PASSWORD="$2"; shift 2 ;;
+    --ar) AR_FILTER="$2"; shift 2 ;;
+    --suite) SUITE_FILTER="$2"; shift 2 ;;
+    --report) REPORT_PATH="$2"; shift 2 ;;
+    --timeout) TIMEOUT="$2"; shift 2 ;;
+    -v|--verbose) VERBOSE=1; shift ;;
+    -d|--dry-run) DRY_RUN=1; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "run.sh: unknown argument: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+AR_PROBES="$SCRIPT_DIR/../ar_probes.yaml"
+APPL="$SCRIPT_DIR/../applicability.yaml"
+PROBE="$SCRIPT_DIR/probe_redfish.py"
+REPORT="$SCRIPT_DIR/report.py"
+
+if [[ $DRY_RUN -eq 0 ]]; then
+  if [[ -z "$HOST" || -z "$PORT" || -z "$USER_NAME" || -z "$PASSWORD" ]]; then
+    echo "run.sh: --host/--port/--user/--password required (or use --dry-run)" >&2
+    exit 2
+  fi
+fi
+
+# planner: 读 yaml × applicability, 应用 --ar/--suite 过滤 + cascade-skip 传播。
+# 产 \t 分隔行: ar \t status \t method \t path \t body_json \t asserts_json \t reason \t source
+plan=$(AR_FILTER="$AR_FILTER" SUITE_FILTER="$SUITE_FILTER" \
+       AR_PROBES="$AR_PROBES" APPL="$APPL" python3 -c '
+import yaml, json, os
+af = os.environ.get("AR_FILTER", "")
+sf = os.environ.get("SUITE_FILTER", "")
+d = yaml.safe_load(open(os.environ["AR_PROBES"]))
+appl = yaml.safe_load(open(os.environ["APPL"]))
+default = appl.get("default", "applicable")
+overrides = appl.get("overrides", {})
+ars = d["ars"]
+def meta(ar_id):
+    o = overrides.get(ar_id, {})
+    return (o.get("status", default), o.get("reason", ""), o.get("source", ""))
+stat = {a["ar"]: meta(a["ar"]) for a in ars}
+# cascade-skip: depends_on 命中 skip/cascade_skip 的 AR 级联为 skip
+changed = True
+while changed:
+    changed = False
+    for a in ars:
+        if stat[a["ar"]][0] == "applicable":
+            for dep in (a.get("depends_on") or []):
+                ds = stat.get(dep, ("applicable", "", ""))[0]
+                if ds in ("skip", "cascade_skip"):
+                    stat[a["ar"]] = ("cascade_skip", "depends_on " + dep + " skipped", "auto")
+                    changed = True
+for a in ars:
+    if af and a["ar"] != af:
+        continue
+    if sf and a.get("suite") != sf:
+        continue
+    req = a["request"]
+    body = req.get("body")
+    body_json = json.dumps(body) if body is not None else ""
+    asserts_json = json.dumps(a.get("assert", []))
+    s, r, src = stat[a["ar"]]
+    # \x1f (unit separator) not \t: bash read treats tab as IFS-whitespace and
+    # merges consecutive empty fields (body-less GET rows have \t\t), which
+    # shifts every later column. \x1f is non-whitespace, so empty fields stay.
+    print("\x1f".join([a["ar"], s, req.get("method", ""), req.get("path", ""),
+                     body_json, asserts_json, r, src]))
+')
+
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo "dry-run: AR list + applicability (no probe)"
+  while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
+    [[ -z "$ar" ]] && continue
+    printf '  %-14s %s\n' "$ar" "$status"
+  done <<< "$plan"
+  exit 0
+fi
+
+results_file="$(mktemp)"
+trap 'rm -f "$results_file"' EXIT
+
+while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
+  [[ -z "$ar" ]] && continue
+  case "$status" in
+    skip|cascade_skip)
+      python3 -c 'import json, sys
+print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": sys.argv[2],
+                  "source": sys.argv[3], "code": None, "actual": None}))' \
+        "$ar" "$reason" "$source" >> "$results_file"
+      [[ $VERBOSE -eq 1 ]] && printf '  %-14s skip\n' "$ar" >&2
+      ;;
+    xfail|applicable)
+      # probe rc 捕获 (绝不裸调): set -e 下 probe fail 在 if 条件里被吸收
+      probe_args=(python3 "$PROBE" --host "$HOST" --port "$PORT" \
+                  --user "$USER_NAME" --password "$PASSWORD" \
+                  --method "$method" --path "$path" \
+                  --asserts "$asserts" --timeout "$TIMEOUT")
+      [[ -n "$body" ]] && probe_args+=(--body "$body")
+      if out=$("${probe_args[@]}"); then rc=0; else rc=$?; fi
+      if [[ "$status" == "xfail" ]]; then
+        if [[ $rc -eq 0 ]]; then st="xpass"; else st="xfail"; fi
+      else
+        if [[ $rc -eq 0 ]]; then st="pass"; else st="fail"; fi
+      fi
+      printf '%s' "$out" | python3 -c 'import json, sys
+raw = sys.stdin.read()
+try:
+    d = json.loads(raw)
+except Exception:
+    d = {"pass": False, "code": None, "body": raw, "actual": None,
+         "reason": "probe output not JSON: " + raw[:200]}
+d["ar"] = sys.argv[1]
+d["status"] = sys.argv[2]
+d["source"] = sys.argv[3]
+# xfail/xpass: keep probe actual reason in probe_reason for debugging, but show
+# the applicability reason ("why expected to fail") in the report appendix.
+d["probe_reason"] = d.get("reason", "")
+if sys.argv[2] in ("xfail", "xpass") and sys.argv[4]:
+    d["reason"] = sys.argv[4]
+print(json.dumps(d, ensure_ascii=False))' "$ar" "$st" "$source" "$reason" >> "$results_file"
+      [[ $VERBOSE -eq 1 ]] && printf '  %-14s %s\n' "$ar" "$st" >&2
+      ;;
+    *)
+      echo "run.sh: unknown applicability status '$status' for $ar" >&2
+      exit 2
+      ;;
+  esac
+done <<< "$plan"
+
+report_args=(python3 "$REPORT" --results "$results_file")
+if [[ -n "$REPORT_PATH" ]]; then
+  report_args+=(--report "$REPORT_PATH")
+fi
+if "${report_args[@]}"; then rc=0; else rc=$?; fi
+exit "$rc"

@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""romulus baseline report: read JSONL results, emit VERDICT + appendix.
+
+Input: JSONL (one record per line) where each record carries at least
+  {"ar", "status" in {pass,fail,skip,xfail,xpass}, "reason", "source", ...}
+Output (stdout):
+  VERDICT: PASS|FAIL (N pass / N fail / N skip / N xfail / N xpass)
+  + appendix blocks for skip / xfail / xpass (reason + source)
+Optional --report PATH: dump full JSON report.
+
+exit: 0 if no applicable fail, else 1 (alpha truth: BMC misses baseline).
+"""
+import argparse
+import json
+import sys
+
+STATUSES = ("pass", "fail", "skip", "xfail", "xpass")
+
+
+def load_records(path):
+    if path == "-":
+        stream = sys.stdin
+        records = [json.loads(line) for line in stream if line.strip()]
+    else:
+        records = []
+        with open(path) as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    records.append(json.loads(line))
+    return records
+
+
+def main():
+    p = argparse.ArgumentParser(add_help=True)
+    p.add_argument("--results", required=True,
+                   help="JSONL results file (use '-' for stdin)")
+    p.add_argument("--report", default=None,
+                   help="optional path to dump full JSON report")
+    args = p.parse_args()
+
+    records = load_records(args.results)
+
+    counts = {s: 0 for s in STATUSES}
+    for r in records:
+        st = r.get("status", "fail")
+        if st in counts:
+            counts[st] += 1
+
+    verdict = "PASS" if counts["fail"] == 0 else "FAIL"
+    print("VERDICT: {} ({} pass / {} fail / {} skip / {} xfail / {} xpass)".format(
+        verdict, counts["pass"], counts["fail"], counts["skip"],
+        counts["xfail"], counts["xpass"]))
+
+    for st in ("skip", "xfail", "xpass"):
+        subset = [r for r in records if r.get("status") == st]
+        if subset:
+            print("\n{}:".format(st.upper()))
+            for r in subset:
+                reason = r.get("reason", "") or ""
+                source = r.get("source", "") or ""
+                print("  - {}: {} [{}]".format(r.get("ar", "?"), reason, source))
+
+    if args.report:
+        import io
+        blob = {"verdict": verdict, "counts": counts, "records": records}
+        with open(args.report, "w") as f:
+            json.dump(blob, f, ensure_ascii=False, indent=2)
+
+    return 1 if counts["fail"] > 0 else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
