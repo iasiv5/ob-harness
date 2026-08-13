@@ -813,6 +813,8 @@ Verdict (per AR):
   skip   not applicable / not QEMU-emulatable (no probe run)
   xfail  expected fail: probe failed as expected
   xpass  unexpected pass: an xfail AR surprisingly passed (improvement signal)
+  error  probe could not get a clean BMC answer (transport/timeout/schema) —
+         infra, NOT a baseline miss
   skip/xfail/xpass do NOT affect the exit-code — only an applicable AR that
   actually fails causes exit-code 1.
 
@@ -820,8 +822,10 @@ Exit codes (test-qemu-specific):
   0   All applicable ARs passed (skip/xfail/xpass do not count).
   1   One or more applicable ARs failed — α truth: the BMC does not meet its
       baseline. This is NOT "test-qemu broken"; read the fail rows + report.
-  3   Precondition missing: no running instance, machine not resolved, or no
-      baseline dir for <machine> (see remedy line).
+  3   Precondition missing (no running instance, machine not resolved, or no
+      baseline dir for <machine> — see remedy line), OR one or more probes hit
+      a transient infra error mid-run (VERDICT: ERROR) — the instance may be
+      fine; re-run / check connectivity rather than treat it as a baseline fail.
 EOF
 }
 

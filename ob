@@ -274,15 +274,19 @@ test-qemu Options:
             'ob start-qemu <machine>' first.
   baseline dir (per-machine, ADR-0025): contexts/baseline/<machine> (custom,
             preferred) > tests/baseline/<machine> (community).
-  Verdict (per AR): pass / fail / skip / xfail / xpass. skip/xfail/xpass do NOT
-            affect the exit-code; only an applicable AR that actually fails
-            causes exit-code 1.
+  Verdict (per AR): pass / fail / skip / xfail / xpass / error. skip/xfail/xpass
+            do NOT affect the exit-code. error = a probe could not get a clean
+            BMC answer (transport/timeout/schema) — infra, NOT a baseline miss.
+            Only an applicable AR that actually fails causes exit-code 1.
   Exit codes (test-qemu-specific — they OVERRIDE the global "1 = broken" line below):
             0   All applicable ARs passed.
             1   α truth: one or more applicable ARs failed — the BMC does not
                 meet its baseline. This is NOT "test-qemu broken"; read the
                 fail rows + report.
-            3   No running instance, or no baseline dir for <machine>.
+            3   Precondition missing (no running instance / no baseline dir), OR
+                a probe hit a transient infra error mid-run (VERDICT: ERROR) —
+                the instance may be fine; re-run / check connectivity, do NOT
+                treat it as a baseline failure.
 
 Exit Codes:
   0   Success (or benign no-op)
