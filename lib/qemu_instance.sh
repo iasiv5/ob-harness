@@ -121,10 +121,14 @@ qemu_instance_load() {
     return 0
 }
 
-# _qemu_process_start_ticks <pid> — Linux process generation identifier.
+# _qemu_process_start_ticks <pid> — Linux process generation identifier。
+# /proc/<pid>/stat 字段 2 (comm, 带括号) 可含空格/括号, 直接按空白取 field 22 会错位
+# (comm 含空格时返回垃圾值)。先 sub 到最后一个 ')' (comm 收括号; 字段 3+ 无括号故贪心
+# 匹配即 comm 闭合括号), 之后从 state (field 3) 起算, starttime (field 22) = 第 20 个字段
+# —— comm 无空格时与朴素 $22 等价 (实测 /proc/self/stat 两者同值)。
 _qemu_process_start_ticks() {
     local pid="$1"
-    awk '{print $22}' "/proc/$pid/stat" 2>/dev/null || true
+    awk '{sub(/.*\)/, ""); print $20}' "/proc/$pid/stat" 2>/dev/null || true
     return 0
 }
 
