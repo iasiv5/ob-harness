@@ -262,6 +262,16 @@ def main(argv=None):
         return run_selftest()
 
     asserts = json.loads(args.asserts) if args.asserts else []
+    # schema 校验(评审二轮 🟡): 未知 assert type = baseline 数据错, 输出 error + exit 3(不判 fail)。
+    # 兜底 planner(方案 A): 直接调 probe 绕过 runner 时也防 unknown type 折叠成 BMC fail。
+    _allowed = ("status_in", "json_path_exists", "json_path_match")
+    for a in asserts:
+        if a.get("type") not in _allowed:
+            print(json.dumps({"pass": False, "error": True, "code": None, "body": "",
+                              "actual": None,
+                              "reason": "unknown assert type '%s'; allowed: %s" %
+                              (a.get("type"), ", ".join(_allowed))}, ensure_ascii=False))
+            return 3
     result = probe(args.host, args.port, args.user, args.password,
                    args.method, args.path, args.body, asserts, args.timeout)
     print(json.dumps(result, ensure_ascii=False))

@@ -49,8 +49,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-AR_PROBES="$SCRIPT_DIR/../ar_probes.yaml"
-APPL="$SCRIPT_DIR/../applicability.yaml"
+AR_PROBES="${OB_TQ_AR_PROBES:-$SCRIPT_DIR/../ar_probes.yaml}"
+APPL="${OB_TQ_APPL:-$SCRIPT_DIR/../applicability.yaml}"
 PROBE="$SCRIPT_DIR/probe_redfish.py"
 REPORT="$SCRIPT_DIR/report.py"
 
@@ -99,11 +99,18 @@ while changed:
                 if ds in ("skip", "cascade_skip"):
                     stat[a["ar"]] = ("cascade_skip", "depends_on " + dep + " skipped", "auto")
                     changed = True
+_ALLOWED_ASSERT = ("status_in", "json_path_exists", "json_path_match")
 for a in ars:
     if af and a["ar"] != af:
         continue
     if sf and a.get("suite") != sf:
         continue
+    # schema 校验(评审二轮 🟡): 未知 assert type = baseline 数据错, exit 3(不当 BMC fail)
+    for x in a.get("assert", []):
+        if x.get("type") not in _ALLOWED_ASSERT:
+            sys.stderr.write("run.sh: AR '%s' unknown assert type '%s'; allowed: %s\n" %
+                             (a["ar"], x.get("type"), ", ".join(_ALLOWED_ASSERT)))
+            sys.exit(3)
     req = a["request"]
     body = req.get("body")
     body_json = json.dumps(body) if body is not None else ""
@@ -115,7 +122,7 @@ for a in ars:
     print("\x1f".join([a["ar"], s, req.get("method", ""), req.get("path", ""),
                      body_json, asserts_json, r, src]))
 '); then
-    echo "run.sh: baseline YAML parse failed (see above). Check $AR_PROBES / $APPL." >&2
+    echo "run.sh: baseline parse/validate failed (see above — YAML syntax error or unknown assert type)." >&2
     exit 3
 fi
 
@@ -163,9 +170,11 @@ print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": sys.argv[2],
                   --asserts "$asserts" --timeout "$TIMEOUT")
       [[ -n "$body" ]] && probe_args+=(--body "$body")
       if out=$("${probe_args[@]}"); then rc=0; else rc=$?; fi
-      # probe 合法 JSON → 按 rc+applicability 判 pass/fail/xfail/xpass;
-      # 非 JSON → error(infra: probe 崩/参数错, 不进 fail/xfail 的 BMC-truth 统计, 评审 🔴2)
-      if [[ -n "$out" ]] && printf '%s' "$out" | python3 -c "import json,sys; json.loads(sys.stdin.read())" 2>/dev/null; then
+      # probe rc=3 = schema/infra error(unknown assert type 等, 评审二轮 🟡) → error, 不进 fail/xfail;
+      # 合法 JSON + rc 0/1 → 按 applicability 判 pass/fail/xfail/xpass; 非 JSON → error(评审 🔴2)
+      if [[ $rc -eq 3 ]]; then
+          _st="error"
+      elif [[ -n "$out" ]] && printf '%s' "$out" | python3 -c "import json,sys; json.loads(sys.stdin.read())" 2>/dev/null; then
           if [[ "$status" == "xfail" ]]; then
               if [[ $rc -eq 0 ]]; then _st="xpass"; else _st="xfail"; fi
           else
