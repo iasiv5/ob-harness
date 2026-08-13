@@ -146,7 +146,7 @@ for a in ars:
     s, r, src = stat[a["ar"]]
     # framing(评审 🟡3): r/src/path json.dumps 转义 \n(多行字段), 防 bash read 行拆成伪 AR;
     # run.sh record 构造时 json.loads 还原(reason/source); probe --path 用时还原。
-    print("\x1f".join([a["ar"], s, req.get("method", ""), json.dumps(req.get("path", "")),
+    print("\x1f".join([a["ar"], s, json.dumps(req.get("method", "")), json.dumps(req.get("path", "")),
                      body_json, asserts_json, json.dumps(r), json.dumps(src)]))
 '); then
     echo "run.sh: baseline parse/validate failed (see stderr above: YAML syntax / unknown assert type / bad applicability status / unknown depends_on)." >&2
@@ -192,12 +192,15 @@ print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": r,
       [[ $VERBOSE -eq 1 ]] && printf '  %-14s skip\n' "$ar" >&2
       ;;
     xfail|applicable)
-      # path json.loads 还原(framing: planner json.dumps 转义多行 path, 评审 🟡2)
-      _path=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]))' "$path")
+      # method/path json.loads 还原(framing: planner json.dumps 转义多行字段, 评审 🟡2/🟡5)
+      _restored=$(python3 -c 'import json,sys
+print(json.loads(sys.argv[1]))
+print(json.loads(sys.argv[2]))' "$method" "$path")
+      _method="${_restored%%$'\n'*}"; _path="${_restored#*$'\n'}"
       # probe rc 捕获 (绝不裸调): set -e 下 probe fail 在 if 条件里被吸收
       probe_args=(python3 "$PROBE" --host "$HOST" --port "$PORT" \
                   --user "$USER_NAME" --password "$PASSWORD" \
-                  --method "$method" --path "$_path" \
+                  --method "$_method" --path "$_path" \
                   --asserts "$asserts" --timeout "$TIMEOUT")
       [[ -n "$body" ]] && probe_args+=(--body "$body")
       if out=$("${probe_args[@]}"); then rc=0; else rc=$?; fi

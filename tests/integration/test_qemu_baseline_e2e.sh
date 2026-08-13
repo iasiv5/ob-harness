@@ -77,10 +77,18 @@ else
     echo "[integration] reusing running instance for '$MACHINE'"
 fi
 
+# start/reuse 后重新 liveness 拿当前端口 + 确认 running(评审 🟡2: start 子进程不更新父 PIDFILE_*)
+qemu_instance_liveness "$MACHINE" _liv_post
+if [[ "$_liv_post" != "running" || -z "$PIDFILE_REDFISH_PORT" ]]; then
+    echo "FAIL: '$MACHINE' not running or no Redfish port after start/reuse"
+    _stop_if_started
+    exit 1
+fi
+
 # Redfish readiness gate(连续 N 次 200, 对齐 smoke_e2e.sh Step 1b): 闭合 bmcweb boot flap race。
 # 端口事实源 = qemu_instance_liveness 填的 PIDFILE_REDFISH_PORT(评审 🟡4: 不 grep PID file);
 # 绝对 deadline(评审 🟡4: 不 attempts×(curl+sleep) 双倍预算)。
-REDFISH_PORT="${PIDFILE_REDFISH_PORT:-2443}"
+REDFISH_PORT="$PIDFILE_REDFISH_PORT"
 _rb_budget="${OB_INTEG_REDFISH_BUDGET:-450}"
 _rb_needed="${OB_INTEG_REDFISH_DEBOUNCE:-2}"
 _rb_start=$(date +%s)
@@ -130,6 +138,8 @@ import json, yaml, sys
 report = json.load(open(sys.argv[1]))
 recs_list = report['records']
 recs = {r['ar']: r['status'] for r in recs_list}
+# records 唯一(评审 🟡1: 重复 AR 折叠丢, 防漏集/假绿)
+assert len(recs_list) == len(recs), 'duplicate AR in records: %d records vs %d unique' % (len(recs_list), len(recs))
 d = yaml.safe_load(open(sys.argv[2]))
 appl = yaml.safe_load(open(sys.argv[3]))
 tq_rc = int(sys.argv[4])
@@ -151,10 +161,16 @@ for ar, status in recs.items():
             assert status == 'pass', '%s core+applicable must pass, got %s' % (ar, status)
         else:
             assert status in ('pass', 'fail'), '%s applicable but got %s (must actually execute)' % (ar, status)
-# 独立重算 verdict/counts(评审 🔴2: 不同源 report, 防报告 bug) + tq_rc 一致
-recounts = {}
+# 独立重算 verdict/counts(评审 🔴2/🟡1: 不同源 report, 防报告 bug + counts 精确比 report)
+_STATUSES = ('pass', 'fail', 'skip', 'xfail', 'xpass', 'error')
+recounts = {s: 0 for s in _STATUSES}
 for r in recs_list:
-    recounts[r['status']] = recounts.get(r['status'], 0) + 1
+    st = r.get('status') if isinstance(r, dict) else None
+    if st in _STATUSES:
+        recounts[st] += 1
+    else:
+        recounts['error'] += 1
+assert report['counts'] == recounts, 'counts mismatch: report %s != recomputed %s' % (report['counts'], recounts)
 if recounts.get('error', 0) > 0:
     re_verdict, exp_rc = 'ERROR', 3
 elif recounts.get('fail', 0) > 0:

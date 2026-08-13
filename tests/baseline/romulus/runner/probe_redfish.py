@@ -163,13 +163,18 @@ def _resolve_cleanup_url(uri, host, port):
     Location/@odata.id from leaking Basic Auth to an arbitrary host, and rejects
     HTTP credential downgrade.
     """
-    if uri.startswith("/"):
-        return "https://{}:{}{}".format(host, port, uri)
-    if uri.startswith("https://"):
-        from urllib.parse import urlsplit
-        p = urlsplit(uri)
-        if p.hostname == host and str(p.port or 443) == str(port):
-            return uri
+    if not isinstance(uri, str):
+        return None  # @odata.id 非 str(int 等), 评审 🟡3
+    try:
+        if uri.startswith("/"):
+            return "https://{}:{}{}".format(host, port, uri)
+        if uri.startswith("https://"):
+            from urllib.parse import urlsplit
+            p = urlsplit(uri)
+            if p.hostname == host and str(p.port or 443) == str(port):
+                return uri
+    except ValueError:
+        return None  # 非法 port 等解析异常, 评审 🟡3
     return None
 
 
@@ -272,6 +277,9 @@ def run_selftest():
         "https://127.0.0.1:2443/redfish/v1/Accounts/9")
     chk("cleanup cross-origin rejected", _resolve_cleanup_url("https://evil.invalid/collect", "127.0.0.1", 2443), None)
     chk("cleanup http rejected", _resolve_cleanup_url("http://127.0.0.1:2443/x", "127.0.0.1", 2443), None)
+    # cleanup 非 str / 非法 port 不破坏 best-effort(评审 🟡3: 不 AttributeError/ValueError)
+    chk("cleanup non-str rejected", _resolve_cleanup_url(42, "127.0.0.1", 2443), None)
+    chk("cleanup bad-port rejected", _resolve_cleanup_url("https://127.0.0.1:not-a-port/x", "127.0.0.1", 2443), None)
     # probe 禁 redirect(评审 🔴1): 30x 不跟随, 防跨 origin/HTTP 泄露 Basic Auth
     chk("no-redirect handler", _NoRedirect().redirect_request(), None)
 

@@ -53,12 +53,12 @@ def main():
             counts["error"] += 1
             continue
         st = r.get("status")
-        if st in counts:
-            counts[st] += 1
-        else:
-            # 未知 status = 数据错 → error(评审 🟡2: 不静默, 否则 {"status":"typo"} 假 PASS)
-            sys.stderr.write("report: AR {} unknown status {!r} -> error\n".format(r.get("ar", "?"), st))
+        # status 非 str 或未知 = 数据错 → error(评审 🟡4: list/int status 不 TypeError 冒充 rc=1)
+        if not isinstance(st, str) or st not in counts:
+            sys.stderr.write("report: AR {} bad status {!r} -> error\n".format(r.get("ar", "?"), st))
             counts["error"] += 1
+        else:
+            counts[st] += 1
 
     if counts["error"] > 0:
         verdict = "ERROR"
@@ -78,11 +78,13 @@ def main():
             continue
         st = r.get("status", "?")
         ar = r.get("ar", "?")
-        reason = (r.get("reason", "") or "").replace("\n", " ")[:120]
+        # 字段 coerce 到 str(评审 🟡4: reason/source 非 str 不 AttributeError; 仅显示用)
+        reason = str(r.get("reason", "") or "").replace("\n", " ")[:120]
+        src = str(r.get("source", "") or "")
         if st in ("fail", "error"):
             print("  {:<14} {} | code={} | {}".format(ar, st, r.get("code"), reason))
         elif st in ("skip", "xfail", "xpass"):
-            print("  {:<14} {} | {} [{}]".format(ar, st, reason, r.get("source", "") or ""))
+            print("  {:<14} {} | {} [{}]".format(ar, st, reason, src))
         else:
             print("  {:<14} {}".format(ar, st))
 
