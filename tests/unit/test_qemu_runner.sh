@@ -6,7 +6,10 @@ set -uo pipefail
 source "$(dirname "$0")/../lib/assert.sh"
 assert_reset
 
-RUNNER="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/tests/baseline/romulus/runner/run.sh"
+# 锚定 romulus runner(ADR-0025 per-machine: 每 machine baseline 自带 runner, 测试跟着 baseline 走)。
+# OB_TQ_RUNNER env 可指向其它 machine 的 runner(未来 custom 机 runner 复用本测试时用);
+# PROBE_BIN 从 RUNNER 目录派生, 切 runner 时跟着切。
+RUNNER="${OB_TQ_RUNNER:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/tests/baseline/romulus/runner/run.sh}"
 
 # no-match --ar (dry-run) → exit 3 + remedy
 rc=0; bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --ar NOPE --dry-run >/dev/null 2>&1 || rc=$?

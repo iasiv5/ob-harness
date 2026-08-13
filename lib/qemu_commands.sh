@@ -822,8 +822,9 @@ except Exception as e:
     sys.stderr.write("cmd_test_qemu: cannot parse %s: %s\n" % (os.environ["OB_TQ_YAML"], e))
     sys.exit(3)
 a = d.get("auth") or {}
-print(a.get("user") or "")
-print(a.get("password") or "")
+rf = a.get("redfish") if isinstance(a.get("redfish"), dict) else None
+print((rf or {}).get("user") or a.get("user") or "")
+print((rf or {}).get("password") or a.get("password") or "")
 ')
     if [[ -z "$_auth_user" ]]; then
         error "Cannot read auth.user from $_dir/ar_probes.yaml (missing top-level auth:/user, or YAML malformed — see any parse error above)."

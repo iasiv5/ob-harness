@@ -5,9 +5,17 @@
 #   status_in        {value: [code,...]}
 #   json_path_exists {path: dotted}
 #   json_path_match  {path: dotted, value: expected}
+# auth: per-interface 凭据(ADR-0025 per-machine; 各接口凭据可不同, 某些 custom 平台的
+#   console/WEB/IPMI/REDFISH/SSH 各异)。redfish = Redfish probe 用(本 spike 唯一 probe 类型);
+#   ipmi/ssh/console 预留给后续 probe 类型扩展。cmd_test_qemu 读 auth.redfish, 缺则 fallback
+#   auth 顶层 user/password(向后兼容)。
 auth:
-  user: root
-  password: "0penBmc"
+  redfish:
+    user: root
+    password: "0penBmc"
+  # ipmi:    {user: ..., password: ...}   # 后续 ipmi probe 扩展
+  # ssh:     {user: ..., password: ...}   # 后续 ssh probe 扩展
+  # console: {user: ..., password: ...}   # 后续 console probe 扩展
 
 ars:
   - ar: BMC-2-2-1
@@ -70,8 +78,8 @@ ars:
     depends_on: []
     rationale: Web banner 定制能力 (QEMU 不可仿真, applicability 标 skip)
 
-  - ar: BMC-XF-1
-    name: Accounts collection Description absent (xfail demo)
+  - ar: BMC-9-1-1
+    name: Accounts collection Description absent
     probe: redfish
     suite: users
     request:
@@ -82,6 +90,6 @@ ars:
         path: Description
     depends_on: [BMC-2-2-1]
     rationale: >
-      xfail 演示:romulus Accounts 集合顶层预期不填 Description,probe 预期
-      fail 记 xfail;若意外填了则 xpass (改善信号, 不影响 exit)。避开
-      @odata.count 等带点字段 (probe resolver 是 split('.'), 带点 key 会被拆错)。
+      romulus Accounts 集合顶层预期不填 Description(applicability 标 xfail:
+      预期 fail → xfail, 意外 pass → xpass 改善信号, 不影响 exit)。避开
+      @odata.count 等带点字段(probe resolver 是 split('.'), 带点 key 会被拆错)。

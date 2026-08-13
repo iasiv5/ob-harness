@@ -7,7 +7,7 @@ overrides:
     status: skip
     reason: romulus 未启用 banner 定制 (QEMU 不可仿真)
     source: manual
-  BMC-XF-1:
+  BMC-9-1-1:
     status: xfail
     reason: romulus 预期不填 Accounts.Description, 跟踪中
     source: manual

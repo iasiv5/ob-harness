@@ -9,7 +9,8 @@
 #   SSH 不等 Redfish, bmcweb boot 窗口会 flap 200↔500, 5 条 Redfish probe 必踩 race —— 故测试层
 #   轮询 Redfish root 连续 N 次 200 才放行 test-qemu。
 # 断言: ob test-qemu rc ∈ {0,1}(α truth: 0 全 applicable pass / 1 有 fail = BMC 不满足 baseline);
-#   report JSON: skip>=1(BMC-7-7-1)、xfail+xpass>=1(BMC-XF-1, 不强求 xfail>=1 否则 xpass 改善信号误判)。
+#   report JSON: records AR 集合 == 该 machine baseline 全集(锁跑全, 防漏集) + per-AR 状态
+#   匹配 applicability 期望(动态读 baseline, 不硬编码 AR ID → 对任何 machine 通用)。
 set -uo pipefail
 
 root_dir="${OB_INTEGRATION_ROOT:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
@@ -32,6 +33,14 @@ if [[ -z "$img" ]]; then
     exit 77
 fi
 echo "[integration] test-qemu machine=$MACHINE image=$img"
+
+# baseline 目录门(与 cmd_test_qemu 同序: custom 优先 > community; MISSING → SKIP 77)
+_baseline_dir=""
+test_qemu_resolve_baseline_dir "$MACHINE" _baseline_dir
+if [[ "$_baseline_dir" == "MISSING" ]]; then
+    echo "SKIP: no baseline dir for '$MACHINE' (expected tests/baseline/$MACHINE/ or contexts/baseline/$MACHINE/)"
+    exit 77
+fi
 
 # 实例生命周期: 复用 running / 否则自起(started_by_test 标记收尾只清自己的)。
 derive_qemu_paths
@@ -101,39 +110,29 @@ if [[ "$tq_rc" != "0" && "$tq_rc" != "1" ]]; then
     exit 1
 fi
 
-# 断言 2: report JSON 五态计数(skip>=1, xfail+xpass>=1)
-_skip=$(python3 -c "import json; print(json.load(open('$report_json'))['counts'].get('skip',0))" 2>/dev/null || echo "?")
-_xfp=$(python3 -c "import json; c=json.load(open('$report_json'))['counts']; print(c.get('xfail',0)+c.get('xpass',0))" 2>/dev/null || echo "?")
-echo "report counts: skip=$_skip xfail+xpass=$_xfp"
+# 断言 2 (通用化, 评审 🟡3 + 用户问题3): records AR 集合 == 该 machine baseline 全集
+# (锁跑全, 防漏集/空集 PASS) + per-AR 状态匹配 applicability 期望。动态读 $_baseline_dir,
+# 不硬编码 AR ID → 对任何 machine 通用(romulus / custom 机都行)。
 rm -f "$tq_out"
-if [[ "$_skip" == "?" || "$_skip" -lt 1 ]]; then
-    echo "FAIL: expected skip>=1 (BMC-7-7-1 applicability), got skip=$_skip"
-    rm -f "$report_json"
-    _stop_if_started
-    exit 1
-fi
-if [[ "$_xfp" == "?" || "$_xfp" -lt 1 ]]; then
-    echo "FAIL: expected xfail+xpass>=1 (BMC-XF-1 verdict ∈ {xfail,xpass}), got xfail+xpass=$_xfp"
-    rm -f "$report_json"
-    _stop_if_started
-    exit 1
-fi
-
-# 断言 3 (评审 🟡3): records AR 集合精确 == 5 ID + 各状态约束。
-# 锁"确实跑了 5 条 AR"(非只聚合计数, 防漏集/空集 PASS); BMC-3-1-2 锁"实际执行 pass|fail",
-# 不锁具体 α 结果(它依赖 romulus 真实行为)。
 if ! python3 -c "
-import json, sys
-d = json.load(open(sys.argv[1]))
-recs = {r['ar']: r['status'] for r in d['records']}
-expected = {'BMC-2-2-1', 'BMC-3-15-1', 'BMC-3-1-2', 'BMC-7-7-1', 'BMC-XF-1'}
-assert set(recs) == expected, 'AR set mismatch: got %s want %s' % (sorted(recs), sorted(expected))
-assert recs['BMC-7-7-1'] == 'skip', 'BMC-7-7-1 not skip: %s' % recs['BMC-7-7-1']
-assert recs['BMC-XF-1'] in ('xfail', 'xpass'), 'BMC-XF-1 not xfail/xpass: %s' % recs['BMC-XF-1']
-for ar in ('BMC-2-2-1', 'BMC-3-15-1', 'BMC-3-1-2'):
-    assert recs[ar] in ('pass', 'fail'), '%s not pass/fail (must actually execute): %s' % (ar, recs[ar])
-print('AR set + per-status ok')
-" "$report_json" 2>&1; then
+import json, yaml, sys
+recs = {r['ar']: r['status'] for r in json.load(open(sys.argv[1]))['records']}
+d = yaml.safe_load(open(sys.argv[2]))
+appl = yaml.safe_load(open(sys.argv[3]))
+default = appl.get('default', 'applicable')
+overrides = appl.get('overrides', {})
+expected_ars = {a['ar'] for a in d['ars']}
+assert set(recs) == expected_ars, 'AR set mismatch: got %s want %s' % (sorted(recs), sorted(expected_ars))
+for ar, status in recs.items():
+    appl_st = overrides.get(ar, {}).get('status', default)
+    if appl_st == 'skip':
+        assert status == 'skip', '%s applicability=skip but got %s' % (ar, status)
+    elif appl_st == 'xfail':
+        assert status in ('xfail', 'xpass'), '%s applicability=xfail but got %s' % (ar, status)
+    else:
+        assert status in ('pass', 'fail'), '%s applicability=applicable but got %s (must actually execute)' % (ar, status)
+print('AR set + per-status (from baseline) ok')
+" "$report_json" "$_baseline_dir/ar_probes.yaml" "$_baseline_dir/applicability.yaml" 2>&1; then
     rm -f "$report_json"
     _stop_if_started
     exit 1
@@ -142,5 +141,5 @@ fi
 rm -f "$report_json"
 # 收尾: 只 stop 测试自起的实例, 不动复用的既有实例(评审 🟡7: 不误伤环境里其他 running instance)
 _stop_if_started
-echo "[integration] OK (test-qemu: $MACHINE rc=$tq_rc, skip=$_skip xfail+xpass=$_xfp)"
+echo "[integration] OK (test-qemu: $MACHINE rc=$tq_rc, AR set + per-status matched baseline)"
 exit 0
