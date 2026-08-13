@@ -769,6 +769,13 @@ cmd_test_qemu() {
         exit 3
     fi
 
+    # PyYAML 前置(runner/report/auth 解析 YAML; 缺失 → exit 3 + remedy, 计划全局约束 + 评审 🔴2)
+    if ! python3 -c "import yaml" 2>/dev/null; then
+        error "PyYAML not installed (test-qemu runner needs 'import yaml')."
+        error "Install: pip install pyyaml  (or your distro's python3-yaml)"
+        exit 3
+    fi
+
     # ── 前置 2: RUNNING QEMU instance (probe-only, 对齐 cmd_smoke; 绝不探死端口防假"BMC 坏") ──
     derive_qemu_paths
     local _liv=""
@@ -802,19 +809,24 @@ cmd_test_qemu() {
     local _port="$PIDFILE_REDFISH_PORT"
 
     # ── 从 ar_probes.yaml 顶层读 auth (PyYAML; cmd_test_qemu 不硬编码凭据) ──
+    # YAML malformed → python stderr 报错 + 无 stdout → _auth_user 空 → exit 3(评审 🔴2)
     local _auth_user="" _auth_pass=""
     {
         read -r _auth_user
         read -r _auth_pass
     } < <(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
-import yaml, os
-d = yaml.safe_load(open(os.environ["OB_TQ_YAML"])) or {}
+import yaml, os, sys
+try:
+    d = yaml.safe_load(open(os.environ["OB_TQ_YAML"])) or {}
+except Exception as e:
+    sys.stderr.write("cmd_test_qemu: cannot parse %s: %s\n" % (os.environ["OB_TQ_YAML"], e))
+    sys.exit(3)
 a = d.get("auth") or {}
 print(a.get("user") or "")
 print(a.get("password") or "")
 ')
     if [[ -z "$_auth_user" ]]; then
-        error "No auth.user found in $_dir/ar_probes.yaml (top-level 'auth:' with 'user' is required)."
+        error "Cannot read auth.user from $_dir/ar_probes.yaml (missing top-level auth:/user, or YAML malformed — see any parse error above)."
         exit 3
     fi
 
@@ -829,10 +841,17 @@ print(a.get("password") or "")
 
     local _rrc=0
     "${_run_args[@]}" || _rrc=$?
-    # runner 仅返 0(全 applicable pass)/1(有 applicable fail)。映射字面 exit(exit-contract X:
-    # exit 须字面 0/1/2/3, 禁 exit 变量)。exit 1 = α truth(BMC 不满足 baseline), 非 test-qemu broken。
-    if [[ $_rrc -eq 0 ]]; then
-        exit 0
-    fi
-    exit 1
+    # runner exit taxonomy(评审 🔴2): 0=无 applicable fail / 1=α truth(BMC fail) / 3=infra-config-data 前置缺失。
+    # 映射字面 exit(exit-contract X: 须字面 0/1/2/3)。unknown rc → exit 3(runner internal error),
+    # 不用 exit 1——test-qemu 的 exit 1 专属 α truth, 不混 broken。
+    case "$_rrc" in
+        0) exit 0 ;;
+        1) exit 1 ;;    # α truth: BMC 不满足 baseline(runner 的 fail 行已说明哪条 AR)
+        3) exit 3 ;;    # infra/config/data 前置缺失(runner 已输出 remedy: no-instance/YAML/0-AR 等)
+        *)
+            error "runner returned unexpected exit-code $_rrc (runner internal error)."
+            error "This is NOT a BMC baseline failure — report with the output above."
+            exit 3
+            ;;
+    esac
 }

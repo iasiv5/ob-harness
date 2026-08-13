@@ -8,13 +8,14 @@ Output (stdout):
   + appendix blocks for skip / xfail / xpass (reason + source)
 Optional --report PATH: dump full JSON report.
 
-exit: 0 if no applicable fail, else 1 (alpha truth: BMC misses baseline).
+exit: 0 no applicable fail; 1 alpha-truth fail (BMC misses baseline);
+     3 infra/config error (probe crash / non-JSON, NOT a BMC failure — review 🔴2).
 """
 import argparse
 import json
 import sys
 
-STATUSES = ("pass", "fail", "skip", "xfail", "xpass")
+STATUSES = ("pass", "fail", "skip", "xfail", "xpass", "error")
 
 
 def load_records(path):
@@ -47,12 +48,19 @@ def main():
         if st in counts:
             counts[st] += 1
 
-    verdict = "PASS" if counts["fail"] == 0 else "FAIL"
-    print("VERDICT: {} ({} pass / {} fail / {} skip / {} xfail / {} xpass)".format(
+    # verdict 优先级: ERROR(infra) > FAIL(α truth) > PASS。infra 错误混淆同期 fail 的
+    # α truth 语义, 故 error 优先(exit 3 先暴露 infra, 不混 exit 1 BMC fail)。评审 🔴2。
+    if counts["error"] > 0:
+        verdict = "ERROR"
+    elif counts["fail"] > 0:
+        verdict = "FAIL"
+    else:
+        verdict = "PASS"
+    print("VERDICT: {} ({} pass / {} fail / {} skip / {} xfail / {} xpass / {} error)".format(
         verdict, counts["pass"], counts["fail"], counts["skip"],
-        counts["xfail"], counts["xpass"]))
+        counts["xfail"], counts["xpass"], counts["error"]))
 
-    for st in ("skip", "xfail", "xpass"):
+    for st in ("skip", "xfail", "xpass", "error"):
         subset = [r for r in records if r.get("status") == st]
         if subset:
             print("\n{}:".format(st.upper()))
@@ -62,12 +70,15 @@ def main():
                 print("  - {}: {} [{}]".format(r.get("ar", "?"), reason, source))
 
     if args.report:
-        import io
         blob = {"verdict": verdict, "counts": counts, "records": records}
         with open(args.report, "w") as f:
             json.dump(blob, f, ensure_ascii=False, indent=2)
 
-    return 1 if counts["fail"] > 0 else 0
+    if counts["error"] > 0:
+        return 3
+    if counts["fail"] > 0:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":

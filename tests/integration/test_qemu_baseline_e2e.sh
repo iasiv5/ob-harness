@@ -119,6 +119,26 @@ if [[ "$_xfp" == "?" || "$_xfp" -lt 1 ]]; then
     exit 1
 fi
 
+# 断言 3 (评审 🟡3): records AR 集合精确 == 5 ID + 各状态约束。
+# 锁"确实跑了 5 条 AR"(非只聚合计数, 防漏集/空集 PASS); BMC-3-1-2 锁"实际执行 pass|fail",
+# 不锁具体 α 结果(它依赖 romulus 真实行为)。
+if ! python3 -c "
+import json, sys
+d = json.load(open(sys.argv[1]))
+recs = {r['ar']: r['status'] for r in d['records']}
+expected = {'BMC-2-2-1', 'BMC-3-15-1', 'BMC-3-1-2', 'BMC-7-7-1', 'BMC-XF-1'}
+assert set(recs) == expected, 'AR set mismatch: got %s want %s' % (sorted(recs), sorted(expected))
+assert recs['BMC-7-7-1'] == 'skip', 'BMC-7-7-1 not skip: %s' % recs['BMC-7-7-1']
+assert recs['BMC-XF-1'] in ('xfail', 'xpass'), 'BMC-XF-1 not xfail/xpass: %s' % recs['BMC-XF-1']
+for ar in ('BMC-2-2-1', 'BMC-3-15-1', 'BMC-3-1-2'):
+    assert recs[ar] in ('pass', 'fail'), '%s not pass/fail (must actually execute): %s' % (ar, recs[ar])
+print('AR set + per-status ok')
+" "$report_json" 2>&1; then
+    rm -f "$report_json"
+    _stop_if_started
+    exit 1
+fi
+
 rm -f "$report_json"
 # 收尾: 只 stop 测试自起的实例, 不动复用的既有实例(评审 🟡7: 不误伤环境里其他 running instance)
 _stop_if_started

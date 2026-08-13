@@ -61,15 +61,26 @@ if [[ $DRY_RUN -eq 0 ]]; then
   fi
 fi
 
+# PyYAML 前置(计划全局约束): 缺失 → exit 3 + remedy, 不让 planner traceback 污染 α truth(评审 🔴2)
+if ! python3 -c "import yaml" 2>/dev/null; then
+    echo "run.sh: PyYAML not installed (runner needs 'import yaml')." >&2
+    echo "  Install: pip install pyyaml  (or your distro's python3-yaml)" >&2
+    exit 3
+fi
+
 # planner: 读 yaml × applicability, 应用 --ar/--suite 过滤 + cascade-skip 传播。
-# 产 \t 分隔行: ar \t status \t method \t path \t body_json \t asserts_json \t reason \t source
-plan=$(AR_FILTER="$AR_FILTER" SUITE_FILTER="$SUITE_FILTER" \
+# 产 \x1f 分隔行; YAML 解析失败 → exit 3 + remedy(不 traceback, 不污染 α truth, 评审 🔴2)
+if ! plan=$(AR_FILTER="$AR_FILTER" SUITE_FILTER="$SUITE_FILTER" \
        AR_PROBES="$AR_PROBES" APPL="$APPL" python3 -c '
-import yaml, json, os
+import yaml, json, os, sys
 af = os.environ.get("AR_FILTER", "")
 sf = os.environ.get("SUITE_FILTER", "")
-d = yaml.safe_load(open(os.environ["AR_PROBES"]))
-appl = yaml.safe_load(open(os.environ["APPL"]))
+try:
+    d = yaml.safe_load(open(os.environ["AR_PROBES"]))
+    appl = yaml.safe_load(open(os.environ["APPL"]))
+except Exception as e:
+    sys.stderr.write("run.sh: cannot parse baseline YAML: %s\n" % e)
+    sys.exit(3)
 default = appl.get("default", "applicable")
 overrides = appl.get("overrides", {})
 ars = d["ars"]
@@ -103,7 +114,24 @@ for a in ars:
     # shifts every later column. \x1f is non-whitespace, so empty fields stay.
     print("\x1f".join([a["ar"], s, req.get("method", ""), req.get("path", ""),
                      body_json, asserts_json, r, src]))
-')
+'); then
+    echo "run.sh: baseline YAML parse failed (see above). Check $AR_PROBES / $APPL." >&2
+    exit 3
+fi
+
+# 0 条 AR = 筛选/配置前置错误(非"全通过", 评审 🔴1): exit 3 + remedy
+_ar_count=$(printf '%s\n' "$plan" | grep -c . 2>/dev/null || true)
+if [[ "$_ar_count" -eq 0 ]]; then
+    echo "run.sh: no AR selected." >&2
+    if [[ -n "$AR_FILTER" ]]; then
+        echo "  No AR matched --ar '$AR_FILTER' in $AR_PROBES." >&2
+    elif [[ -n "$SUITE_FILTER" ]]; then
+        echo "  No AR matched --suite '$SUITE_FILTER' in $AR_PROBES." >&2
+    else
+        echo "  baseline '$AR_PROBES' has no AR (empty 'ars:' list?)." >&2
+    fi
+    exit 3
+fi
 
 if [[ $DRY_RUN -eq 1 ]]; then
   echo "dry-run: AR list + applicability (no probe)"
@@ -135,10 +163,16 @@ print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": sys.argv[2],
                   --asserts "$asserts" --timeout "$TIMEOUT")
       [[ -n "$body" ]] && probe_args+=(--body "$body")
       if out=$("${probe_args[@]}"); then rc=0; else rc=$?; fi
-      if [[ "$status" == "xfail" ]]; then
-        if [[ $rc -eq 0 ]]; then st="xpass"; else st="xfail"; fi
+      # probe 合法 JSON → 按 rc+applicability 判 pass/fail/xfail/xpass;
+      # 非 JSON → error(infra: probe 崩/参数错, 不进 fail/xfail 的 BMC-truth 统计, 评审 🔴2)
+      if [[ -n "$out" ]] && printf '%s' "$out" | python3 -c "import json,sys; json.loads(sys.stdin.read())" 2>/dev/null; then
+          if [[ "$status" == "xfail" ]]; then
+              if [[ $rc -eq 0 ]]; then _st="xpass"; else _st="xfail"; fi
+          else
+              if [[ $rc -eq 0 ]]; then _st="pass"; else _st="fail"; fi
+          fi
       else
-        if [[ $rc -eq 0 ]]; then st="pass"; else st="fail"; fi
+          _st="error"
       fi
       printf '%s' "$out" | python3 -c 'import json, sys
 raw = sys.stdin.read()
@@ -146,7 +180,7 @@ try:
     d = json.loads(raw)
 except Exception:
     d = {"pass": False, "code": None, "body": raw, "actual": None,
-         "reason": "probe output not JSON: " + raw[:200]}
+         "reason": "probe output not JSON (infra): " + raw[:200]}
 d["ar"] = sys.argv[1]
 d["status"] = sys.argv[2]
 d["source"] = sys.argv[3]
@@ -155,8 +189,8 @@ d["source"] = sys.argv[3]
 d["probe_reason"] = d.get("reason", "")
 if sys.argv[2] in ("xfail", "xpass") and sys.argv[4]:
     d["reason"] = sys.argv[4]
-print(json.dumps(d, ensure_ascii=False))' "$ar" "$st" "$source" "$reason" >> "$results_file"
-      [[ $VERBOSE -eq 1 ]] && printf '  %-14s %s\n' "$ar" "$st" >&2
+print(json.dumps(d, ensure_ascii=False))' "$ar" "$_st" "$source" "$reason" >> "$results_file"
+      [[ $VERBOSE -eq 1 ]] && printf '  %-14s %s\n' "$ar" "$_st" >&2
       ;;
     *)
       echo "run.sh: unknown applicability status '$status' for $ar" >&2
