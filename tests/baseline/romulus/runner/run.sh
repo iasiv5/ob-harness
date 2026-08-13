@@ -51,7 +51,7 @@ done
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AR_PROBES="${OB_TQ_AR_PROBES:-$SCRIPT_DIR/../ar_probes.yaml}"
 APPL="${OB_TQ_APPL:-$SCRIPT_DIR/../applicability.yaml}"
-PROBE="$SCRIPT_DIR/probe_redfish.py"
+PROBE="${OB_TQ_PROBE:-$SCRIPT_DIR/probe_redfish.py}"
 REPORT="$SCRIPT_DIR/report.py"
 
 if [[ $DRY_RUN -eq 0 ]]; then
@@ -128,6 +128,7 @@ while changed:
                     stat[a["ar"]] = ("cascade_skip", "depends_on " + dep + " skipped", "auto")
                     changed = True
 _ALLOWED_ASSERT = ("status_in", "json_path_exists", "json_path_match")
+_ALLOWED_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")
 for a in ars:
     if af and a["ar"] != af:
         continue
@@ -140,13 +141,21 @@ for a in ars:
                              (a["ar"], x.get("type"), ", ".join(_ALLOWED_ASSERT)))
             sys.exit(3)
     req = a["request"]
+    # method 白名单 + path 拒控制字符(评审 🟡1: framing 不用换行承载, 校验保证 method/path 无 \n)
+    _m = req.get("method", "")
+    _p = req.get("path", "")
+    if not isinstance(_m, str) or _m.upper() not in _ALLOWED_METHODS:
+        sys.stderr.write("run.sh: AR '%s' bad HTTP method '%s'; allowed: %s\n" % (a["ar"], _m, ", ".join(_ALLOWED_METHODS)))
+        sys.exit(3)
+    if not isinstance(_p, str) or any(c in _p for c in ("\n", "\r", "\t")):
+        sys.stderr.write("run.sh: AR '%s' request.path has control chars or non-str\n" % a["ar"])
+        sys.exit(3)
     body = req.get("body")
     body_json = json.dumps(body) if body is not None else ""
     asserts_json = json.dumps(a.get("assert", []))
     s, r, src = stat[a["ar"]]
-    # framing(评审 🟡3): r/src/path json.dumps 转义 \n(多行字段), 防 bash read 行拆成伪 AR;
-    # run.sh record 构造时 json.loads 还原(reason/source); probe --path 用时还原。
-    print("\x1f".join([a["ar"], s, json.dumps(req.get("method", "")), json.dumps(req.get("path", "")),
+    # framing: method/path 原字符串(白名单/控制字符校验保证无 \n); reason/src json.dumps(多行允许)
+    print("\x1f".join([a["ar"], s, _m, _p,
                      body_json, asserts_json, json.dumps(r), json.dumps(src)]))
 '); then
     echo "run.sh: baseline parse/validate failed (see stderr above: YAML syntax / unknown assert type / bad applicability status / unknown depends_on)." >&2
@@ -192,50 +201,58 @@ print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": r,
       [[ $VERBOSE -eq 1 ]] && printf '  %-14s skip\n' "$ar" >&2
       ;;
     xfail|applicable)
-      # method/path json.loads 还原(framing: planner json.dumps 转义多行字段, 评审 🟡2/🟡5)
-      _restored=$(python3 -c 'import json,sys
-print(json.loads(sys.argv[1]))
-print(json.loads(sys.argv[2]))' "$method" "$path")
-      _method="${_restored%%$'\n'*}"; _path="${_restored#*$'\n'}"
-      # probe rc 捕获 (绝不裸调): set -e 下 probe fail 在 if 条件里被吸收
+      # method/path 原字符串(planner 白名单/控制字符校验保证无 \n, 评审 🟡1)
       probe_args=(python3 "$PROBE" --host "$HOST" --port "$PORT" \
                   --user "$USER_NAME" --password "$PASSWORD" \
-                  --method "$_method" --path "$_path" \
+                  --method "$method" --path "$path" \
                   --asserts "$asserts" --timeout "$TIMEOUT")
       [[ -n "$body" ]] && probe_args+=(--body "$body")
       if out=$("${probe_args[@]}"); then rc=0; else rc=$?; fi
-      # probe rc=3 = schema/infra error(unknown assert type 等, 评审二轮 🟡) → error, 不进 fail/xfail;
-      # 合法 JSON + rc 0/1 → 按 applicability 判 pass/fail/xfail/xpass; 非 JSON → error(评审 🔴2)
-      if [[ $rc -eq 3 ]]; then
-          _st="error"
-      elif [[ -n "$out" ]] && printf '%s' "$out" | python3 -c "import json,sys; json.loads(sys.stdin.read())" 2>/dev/null; then
-          if [[ "$status" == "xfail" ]]; then
-              if [[ $rc -eq 0 ]]; then _st="xpass"; else _st="xfail"; fi
-          else
-              if [[ $rc -eq 0 ]]; then _st="pass"; else _st="fail"; fi
-          fi
-      else
-          _st="error"
-      fi
-      printf '%s' "$out" | python3 -c 'import json, sys
+      # probe 协议校验 + status(评审 🔴1): rc 限于 0/1/3; 输出必须 dict + pass/error/rc 一致;
+      # 不一致({}+rc0/[]+rc0/rc2/rc3无error) → error record, 不假 PASS/冒充 BMC fail。
+      _rec=$(printf '%s' "$out" | python3 -c 'import json, sys
 raw = sys.stdin.read()
+appl = sys.argv[2]
+src = json.loads(sys.argv[3]) if sys.argv[3] else ""
+appl_reason = json.loads(sys.argv[4]) if sys.argv[4] else ""
+rc = int(sys.argv[5])
 try:
     d = json.loads(raw)
 except Exception:
-    d = {"pass": False, "code": None, "body": raw, "actual": None,
-         "reason": "probe output not JSON (infra): " + raw[:200]}
-src = json.loads(sys.argv[3]) if sys.argv[3] else ""
-appl_reason = json.loads(sys.argv[4]) if sys.argv[4] else ""
+    d = None
+proto = None
+if not isinstance(d, dict):
+    d = {"pass": False, "code": None, "body": raw, "actual": None}
+    proto = "probe output not dict (infra): " + str(raw)[:200]
+elif rc not in (0, 1, 3):
+    proto = "probe rc %d outside 0/1/3 (infra)" % rc
+elif rc == 3 and not d.get("error"):
+    proto = "probe rc=3 but no error flag (infra)"
+elif rc in (0, 1) and d.get("error"):
+    proto = "probe rc=%d but error flag set (infra)" % rc
+elif rc == 0 and d.get("pass") is not True:
+    proto = "probe rc=0 but pass is not True (infra)"
+elif rc == 1 and d.get("pass") is not False:
+    proto = "probe rc=1 but pass is not False (infra)"
+if proto:
+    st = "error"
+elif appl == "xfail":
+    st = "xpass" if rc == 0 else "xfail"
+else:
+    st = "pass" if rc == 0 else "fail"
 d["ar"] = sys.argv[1]
-d["status"] = sys.argv[2]
+d["status"] = st
 d["source"] = src
-# xfail/xpass: keep probe actual reason in probe_reason for debugging, but show
-# the applicability reason ("why expected to fail") in the report appendix.
-d["probe_reason"] = d.get("reason", "")
-if sys.argv[2] in ("xfail", "xpass") and appl_reason:
+d["probe_reason"] = d.get("reason", "") or proto or ""
+if st in ("xfail", "xpass") and appl_reason:
     d["reason"] = appl_reason
-print(json.dumps(d, ensure_ascii=False))' "$ar" "$_st" "$source" "$reason" >> "$results_file"
-      [[ $VERBOSE -eq 1 ]] && printf '  %-14s %s\n' "$ar" "$_st" >&2
+elif proto:
+    d["reason"] = proto
+print(json.dumps(d, ensure_ascii=False))' "$ar" "$status" "$source" "$reason" "$rc")
+      echo "$_rec" >> "$results_file"
+      if [[ $VERBOSE -eq 1 ]]; then
+          printf '  %-14s %s\n' "$ar" "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("status","?"))' "$_rec")" >&2
+      fi
       ;;
     *)
       echo "run.sh: unknown applicability status '$status' for $ar" >&2

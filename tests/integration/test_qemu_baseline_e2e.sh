@@ -47,10 +47,14 @@ derive_qemu_paths
 _liv=""
 qemu_instance_liveness "$MACHINE" _liv
 started_by_test=0
-# 收尾 helper(评审 🟡4: 中断/退出时清自起实例, 不遗留)
+# 收尾 helper(评审 🔴2: PID 身份校验 — 仅 PID file PID == 自起 PID 才 stop, 避免误杀竞态另一用户实例)
+_started_pid=""
 _stop_if_started() {
     [[ "$started_by_test" == "1" ]] || return 0
-    ./ob stop-qemu "$MACHINE" --force >/dev/null 2>&1 || true
+    qemu_instance_liveness "$MACHINE" _cur
+    if [[ "$_cur" == "running" && -n "$_started_pid" && "$PIDFILE_PID" == "$_started_pid" ]]; then
+        ./ob stop-qemu "$MACHINE" --force >/dev/null 2>&1 || true
+    fi
 }
 # EXIT 清理(正常退出); INT/TERM/HUP 清理后显式退出(评审 🟡3: signal handler 不退出会继续执行)
 trap '_stop_if_started' EXIT
@@ -58,15 +62,16 @@ trap '_stop_if_started; exit 130' INT TERM HUP
 if [[ "$_liv" != "running" ]]; then
     # ownership 前置(评审 🟡3): start-qemu 写 PID 后、等 SSH 期间收到信号也能清(started_by_test 已 1)
     started_by_test=1
-    echo "[integration] starting QEMU for '$MACHINE' (start-qemu --force)..."
+    echo "[integration] starting QEMU for '$MACHINE' (start-qemu, 不 --force 避误杀竞态实例, 评审 🔴2)..."
     start_out="$(mktemp "${TMPDIR:-/tmp}/ob-tq-integ-start-XXXXXX")"
     start_rc=0
-    # </dev/null 关 stdin(评审 🟡4: 避免端口冲突/首启 prompt 在继承 TTY 时交互挂起);
-    # OB_INTEG_*_PORT 注入空闲端口(多用户环境避默认端口冲突; CI 单用户可不设)。
-    _start_args=(start-qemu "$MACHINE" --force)
+    # </dev/null 关 stdin; 不 --force(遇冲突 exit 不杀对方, 评审 🔴2); --no-wait(E2E 自己 readiness gate, 评审 🟡3);
+    # OB_INTEG_*_PORT 注入空闲端口(多用户避默认冲突)。
+    _start_args=(start-qemu "$MACHINE")
     [[ -n "${OB_INTEG_SSH_PORT:-}" ]] && _start_args+=(--ssh-port "$OB_INTEG_SSH_PORT")
     [[ -n "${OB_INTEG_REDFISH_PORT:-}" ]] && _start_args+=(--redfish-port "$OB_INTEG_REDFISH_PORT")
     [[ -n "${OB_INTEG_IPMI_PORT:-}" ]] && _start_args+=(--ipmi-port "$OB_INTEG_IPMI_PORT")
+    _start_args+=(--no-wait)
     ./ob "${_start_args[@]}" </dev/null >"$start_out" 2>&1 || start_rc=$?
     if [[ "$start_rc" -ne 0 ]]; then
         echo "FAIL: ob start-qemu rc=$start_rc (test-qemu needs a running instance)"
@@ -84,6 +89,7 @@ if [[ "$_liv_post" != "running" || -z "$PIDFILE_REDFISH_PORT" ]]; then
     _stop_if_started
     exit 1
 fi
+[[ "$started_by_test" == "1" ]] && _started_pid="$PIDFILE_PID"   # 记录自起 PID(cleanup 身份校验, 评审 🔴2)
 
 # Redfish readiness gate(连续 N 次 200, 对齐 smoke_e2e.sh Step 1b): 闭合 bmcweb boot flap race。
 # 端口事实源 = qemu_instance_liveness 填的 PIDFILE_REDFISH_PORT(评审 🟡4: 不 grep PID file);
@@ -95,7 +101,9 @@ _rb_start=$(date +%s)
 _rb_consec=0; _rb_ready=0; _rb_code="000"
 echo "[integration] waiting for Redfish root HTTP 200 ×${_rb_needed} consecutive (port ${REDFISH_PORT}, budget ${_rb_budget}s)..."
 while [[ $(( $(date +%s) - _rb_start )) -lt $_rb_budget ]]; do
-    _rb_code="$(curl -ks -o /dev/null -w '%{http_code}' --max-time 5 "https://localhost:${REDFISH_PORT}/redfish/v1" 2>/dev/null || echo 000)"
+    _remain=$(( _rb_budget - $(date +%s) + _rb_start ))
+    _ct=5; (( _remain < _ct )) && _ct=$_remain   # curl 按剩余截断(评审 🟡3: 配置 2s 不实际跑 5s)
+    _rb_code="$(curl -ks -o /dev/null -w '%{http_code}' --max-time "$_ct" "https://localhost:${REDFISH_PORT}/redfish/v1" 2>/dev/null || echo 000)"
     if [[ "$_rb_code" == "200" ]]; then
         _rb_consec=$((_rb_consec + 1))
         [[ $_rb_consec -ge $_rb_needed ]] && { _rb_ready=1; break; }
@@ -104,7 +112,8 @@ while [[ $(( $(date +%s) - _rb_start )) -lt $_rb_budget ]]; do
         _rb_consec=0
         printf "\r  Redfish not ready... %ss elapsed (HTTP %s)   " "$(( $(date +%s) - _rb_start ))" "$_rb_code"
     fi
-    sleep 5
+    _remain=$(( _rb_budget - $(date +%s) + _rb_start ))
+    _st=5; (( _remain < _st )) && _st=$_remain; (( _st > 0 )) && sleep "$_st"
 done
 echo ""
 if [[ "$_rb_ready" -ne 1 ]]; then

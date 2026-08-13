@@ -53,9 +53,13 @@ def main():
             counts["error"] += 1
             continue
         st = r.get("status")
-        # status 非 str 或未知 = 数据错 → error(评审 🟡4: list/int status 不 TypeError 冒充 rc=1)
+        ar = r.get("ar")
+        # status/ar 类型校验(评审 🟡2/🟡4: 非 str → error rc3, 不 TypeError 冒充 rc=1)
         if not isinstance(st, str) or st not in counts:
-            sys.stderr.write("report: AR {} bad status {!r} -> error\n".format(r.get("ar", "?"), st))
+            sys.stderr.write("report: AR {} bad status {!r} -> error\n".format(ar, st))
+            counts["error"] += 1
+        elif not isinstance(ar, str) or not ar:
+            sys.stderr.write("report: bad AR id {!r} (status {}) -> error\n".format(ar, st))
             counts["error"] += 1
         else:
             counts[st] += 1
@@ -77,7 +81,7 @@ def main():
             print("  <non-dict>    error | {!r}".format(r))
             continue
         st = r.get("status", "?")
-        ar = r.get("ar", "?")
+        ar = str(r.get("ar", "?"))   # coerce(评审 🟡2: ar 非 str 不 format 崩)
         # 字段 coerce 到 str(评审 🟡4: reason/source 非 str 不 AttributeError; 仅显示用)
         reason = str(r.get("reason", "") or "").replace("\n", " ")[:120]
         src = str(r.get("source", "") or "")
