@@ -85,10 +85,18 @@ default = appl.get("default", "applicable")
 overrides = appl.get("overrides", {})
 ars = d["ars"]
 _ALLOWED_APPL = ("applicable", "skip", "xfail")
+def has_control_chars(value):
+    return any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in value)
 # schema 校验(评审 🟡3): default status 白名单(非法 → exit 3, 不 exit 2)
 if default not in _ALLOWED_APPL:
     sys.stderr.write("run.sh: applicability default '%s' not in %s\n" % (default, ", ".join(_ALLOWED_APPL)))
     sys.exit(3)
+# schema 校验: AR ID 是 framing + report identity, 须非空且不含控制字符。
+for a in ars:
+    ar_id = a.get("ar") if isinstance(a, dict) else None
+    if not isinstance(ar_id, str) or not ar_id or has_control_chars(ar_id):
+        sys.stderr.write("run.sh: bad AR ID %r (want non-empty string without control chars)\n" % ar_id)
+        sys.exit(3)
 # schema 校验(评审 🟡3): depends_on 引用完整性(未知 dependency 不默认 applicable)
 ar_ids = {a["ar"] for a in ars}
 for a in ars:
@@ -141,13 +149,13 @@ for a in ars:
                              (a["ar"], x.get("type"), ", ".join(_ALLOWED_ASSERT)))
             sys.exit(3)
     req = a["request"]
-    # method 白名单 + path 拒控制字符(评审 🟡1: framing 不用换行承载, 校验保证 method/path 无 \n)
+    # method 白名单 + path 拒控制字符: 两者直接进入 framing/HTTP argv。
     _m = req.get("method", "")
     _p = req.get("path", "")
-    if not isinstance(_m, str) or _m.upper() not in _ALLOWED_METHODS:
+    if not isinstance(_m, str) or _m not in _ALLOWED_METHODS:
         sys.stderr.write("run.sh: AR '%s' bad HTTP method '%s'; allowed: %s\n" % (a["ar"], _m, ", ".join(_ALLOWED_METHODS)))
         sys.exit(3)
-    if not isinstance(_p, str) or any(c in _p for c in ("\n", "\r", "\t")):
+    if not isinstance(_p, str) or has_control_chars(_p):
         sys.stderr.write("run.sh: AR '%s' request.path has control chars or non-str\n" % a["ar"])
         sys.exit(3)
     body = req.get("body")
@@ -222,19 +230,30 @@ except Exception:
     d = None
 proto = None
 if not isinstance(d, dict):
-    d = {"pass": False, "code": None, "body": raw, "actual": None}
     proto = "probe output not dict (infra): " + str(raw)[:200]
 elif rc not in (0, 1, 3):
     proto = "probe rc %d outside 0/1/3 (infra)" % rc
-elif rc == 3 and not d.get("error"):
-    proto = "probe rc=3 but no error flag (infra)"
-elif rc in (0, 1) and d.get("error"):
-    proto = "probe rc=%d but error flag set (infra)" % rc
-elif rc == 0 and d.get("pass") is not True:
-    proto = "probe rc=0 but pass is not True (infra)"
-elif rc == 1 and d.get("pass") is not False:
-    proto = "probe rc=1 but pass is not False (infra)"
+elif any(k not in d for k in ("pass", "code", "body", "actual", "reason")):
+    proto = "probe output missing required field (infra)"
+elif type(d.get("pass")) is not bool:
+    proto = "probe pass is not bool (infra)"
+elif "error" in d and type(d.get("error")) is not bool:
+    proto = "probe error is not bool (infra)"
+elif d.get("code") is not None and type(d.get("code")) is not int:
+    proto = "probe code is not int/null (infra)"
+elif not isinstance(d.get("body"), str) or not isinstance(d.get("reason"), str):
+    proto = "probe body/reason is not string (infra)"
+elif rc == 3 and not (d.get("pass") is False and d.get("error") is True):
+    proto = "probe rc=3 requires pass=false,error=true (infra)"
+elif rc == 0 and not (d.get("pass") is True and d.get("error", False) is False):
+    proto = "probe rc=0 requires pass=true,error=false (infra)"
+elif rc == 1 and not (d.get("pass") is False and d.get("error", False) is False):
+    proto = "probe rc=1 requires pass=false,error=false (infra)"
 if proto:
+    d = {"pass": False, "error": True, "code": None, "body": raw,
+         "actual": None, "reason": proto}
+    st = "error"
+elif rc == 3:
     st = "error"
 elif appl == "xfail":
     st = "xpass" if rc == 0 else "xfail"

@@ -3,6 +3,41 @@
 # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
 # 形态对照: L1 exit-seam 命令族(顶层命令直接 exit, 无 dispatcher 收口), 区别于 lib/devtool_subcmd.sh 的 L3 leaf-pure handler(return exit-code, 由 cmd_dev 收口 exit)。
 
+_qemu_lifecycle_lock_or_exit() {
+    local machine="$1" fd_out="$2" owned_out="$3"
+    local _qll_fd="" _qll_owned="" _qll_status=""
+    qemu_instance_lifecycle_lock_enter "$machine" _qll_fd _qll_owned _qll_status
+    case "$_qll_status" in
+        ok)
+            printf -v "$fd_out" '%s' "$_qll_fd"
+            printf -v "$owned_out" '%s' "$_qll_owned"
+            ;;
+        busy)
+            error "Another QEMU lifecycle operation is active for '$machine'."
+            error "Wait for it to finish, then retry."
+            exit 3
+            ;;
+        *)
+            error "Cannot acquire QEMU lifecycle lock for '$machine'."
+            exit 1
+            ;;
+    esac
+}
+
+_qemu_lifecycle_lock_export_if_owned() {
+    local machine="$1" lock_fd="$2" lock_owned="$3"
+    [[ "$lock_owned" == "1" ]] || return 0
+    export OB_QEMU_LIFECYCLE_LOCK_FD="$lock_fd"
+    export OB_QEMU_LIFECYCLE_LOCK_MACHINE="$machine"
+}
+
+_qemu_lifecycle_lock_release_if_owned() {
+    local lock_fd="$1" lock_owned="$2"
+    [[ "$lock_owned" == "1" ]] || return 0
+    qemu_instance_lifecycle_lock_release "$lock_fd"
+    unset OB_QEMU_LIFECYCLE_LOCK_FD OB_QEMU_LIFECYCLE_LOCK_MACHINE
+}
+
 cmd_start_qemu() {
     detect_harness_root
 
@@ -68,6 +103,9 @@ cmd_start_qemu() {
     #     whose check_ports_available exits 3 on occupied ports; killing the old
     #     same-machine instance first avoids a spurious port-conflict exit) ──
     derive_qemu_paths
+    local _start_lock_fd="" _start_lock_owned=""
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _start_lock_fd _start_lock_owned
+    _qemu_lifecycle_lock_export_if_owned "$MACHINE" "$_start_lock_fd" "$_start_lock_owned"
     local _liv=""
     qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
     case "$_liv" in
@@ -154,6 +192,7 @@ cmd_start_qemu() {
 
     # ── Execute launch (Shape 2 half 2: setsid + PID write + BMC wait + summary) ──
     qemu_execute_launch
+    _qemu_lifecycle_lock_release_if_owned "$_start_lock_fd" "$_start_lock_owned"
 }
 
 cmd_stop_qemu() {
@@ -208,6 +247,17 @@ cmd_stop_qemu() {
         info "No QEMU instances to stop."
         exit 0
     fi
+
+    # Acquire every target before modifying any instance, so --all cannot stop a
+    # partial set before discovering a busy lifecycle writer.
+    local -a _stop_lock_fds=() _stop_lock_owned=()
+    local _stop_lock_fd _stop_owned
+    for target_machine in "${targets[@]}"; do
+        _stop_lock_fd=""; _stop_owned=""
+        _qemu_lifecycle_lock_or_exit "$target_machine" _stop_lock_fd _stop_owned
+        _stop_lock_fds+=("$_stop_lock_fd")
+        _stop_lock_owned+=("$_stop_owned")
+    done
 
     # ── Stop each target ──
     for target_machine in "${targets[@]}"; do
@@ -282,6 +332,12 @@ cmd_stop_qemu() {
                 ;;
         esac
     done
+
+    local _stop_lock_i
+    for (( _stop_lock_i=0; _stop_lock_i<${#_stop_lock_fds[@]}; _stop_lock_i++ )); do
+        _qemu_lifecycle_lock_release_if_owned \
+            "${_stop_lock_fds[$_stop_lock_i]}" "${_stop_lock_owned[$_stop_lock_i]}"
+    done
 }
 
 cmd_deploy_to_qemu() {
@@ -310,15 +366,23 @@ cmd_deploy_to_qemu() {
     fi
 
     derive_qemu_paths   # 算 QEMU_PID_FILE 等(qemu.sh:6)
+    local _deploy_lock_fd="" _deploy_lock_owned=""
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _deploy_lock_fd _deploy_lock_owned
+    _qemu_lifecycle_lock_export_if_owned "$MACHINE" "$_deploy_lock_fd" "$_deploy_lock_owned"
 
     # ── 探测 QEMU 在跑 + 预读旧端口(必须在 stop 前, 约束 2) ──
     local qemu_running=0
+    local old_qemu_pid="" old_qemu_started_at="" old_qemu_start_ticks="" old_qemu_serial_sock=""
     local old_ssh_port="" old_redfish_port="" old_ipmi_port="" old_http_port=""
     local _liv=""
     qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
     case "$_liv" in
         running)
             qemu_running=1
+            old_qemu_pid="$PIDFILE_PID"
+            old_qemu_started_at="$PIDFILE_STARTED_AT"
+            old_qemu_start_ticks="$PIDFILE_PROCESS_START_TICKS"
+            old_qemu_serial_sock="$PIDFILE_SERIAL_SOCK"
             old_ssh_port="$PIDFILE_SSH_PORT"
             old_redfish_port="$PIDFILE_REDFISH_PORT"
             old_ipmi_port="$PIDFILE_IPMI_PORT"
@@ -344,6 +408,12 @@ cmd_deploy_to_qemu() {
         [[ "$answer" == [yY] ]] || { info "Aborted."; exit 2; }
     fi
 
+    # Image build does not mutate QEMU lifecycle state and may take hours. Do
+    # not block other start/stop operations for the whole build; re-acquire and
+    # verify the snapshot before touching the instance.
+    _qemu_lifecycle_lock_release_if_owned "$_deploy_lock_fd" "$_deploy_lock_owned"
+    _deploy_lock_fd=""; _deploy_lock_owned=""
+
     # ── Step 1: build(build-first, 约束 3 — QEMU 在跑也不停) ──
     echo ""
     step_header "Building $MACHINE (image rebuild)"
@@ -365,6 +435,32 @@ cmd_deploy_to_qemu() {
     step_header "Image Rebuilt"
     echo "  Machine: $MACHINE"
     echo "  Image  : ${image_file:-<not found>}"
+
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _deploy_lock_fd _deploy_lock_owned
+    _qemu_lifecycle_lock_export_if_owned "$MACHINE" "$_deploy_lock_fd" "$_deploy_lock_owned"
+    local _deploy_liv_now=""
+    qemu_instance_liveness "$MACHINE" _deploy_liv_now
+    if [[ $qemu_running -eq 1 ]]; then
+          if [[ "$_deploy_liv_now" != "running" || "$PIDFILE_PID" != "$old_qemu_pid" || \
+              "$PIDFILE_STARTED_AT" != "$old_qemu_started_at" || \
+              "$PIDFILE_PROCESS_START_TICKS" != "$old_qemu_start_ticks" || \
+              "$PIDFILE_SERIAL_SOCK" != "$old_qemu_serial_sock" ]]; then
+            error "QEMU instance for '$MACHINE' changed while the image was building."
+            error "Review the current instance, then retry 'ob deploy-to-qemu $MACHINE'."
+            exit 3
+        fi
+    else
+        case "$_deploy_liv_now" in
+            running)
+                error "A QEMU instance for '$MACHINE' appeared while the image was building."
+                error "Review the current instance, then retry 'ob deploy-to-qemu $MACHINE'."
+                exit 3
+                ;;
+            exited|recycled)
+                qemu_instance_clean_stale "$MACHINE"
+                ;;
+        esac
+    fi
 
     # ── Step 2: stop 旧 QEMU(若在跑) + 端口复用注入(约束 2) ──
     if [[ $qemu_running -eq 1 ]]; then
@@ -389,6 +485,7 @@ cmd_deploy_to_qemu() {
     echo ""
 
     qemu_execute_launch        # setsid + PID 写 + BMC-ready 等待(超时仅 warn 不中止) + hostkey + summary
+    _qemu_lifecycle_lock_release_if_owned "$_deploy_lock_fd" "$_deploy_lock_owned"
     # 到此返回 0(QEMU 启动即成功, 约束 5); setsid 失败时 execute_launch 自己退出 1
 }
 
@@ -552,6 +649,8 @@ cmd_smoke() {
 
     # ── 前置 2: RUNNING QEMU instance(smoke 不 bring-up, 只探活实例——绝不探死端口, 防假"BMC 坏") ──
     derive_qemu_paths
+    local _smoke_lock_fd="" _smoke_lock_owned=""
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _smoke_lock_fd _smoke_lock_owned
     local _liv=""
     qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
     case "$_liv" in
@@ -649,6 +748,7 @@ cmd_smoke() {
     # 无 --allow-fail / 无 per-machine expected-profile / 无 baseline: 回归检测是 caller 的事(零 per-machine 知识)。
     local _vrc=0
     _smoke_render_verdict "$total" "$passed" failed_names failed_raws "$MACHINE" || _vrc=$?
+    _qemu_lifecycle_lock_release_if_owned "$_smoke_lock_fd" "$_smoke_lock_owned"
     case "$_vrc" in
         0) return 0 ;;            # smoke 不拥有 QEMU → 不 teardown, 直接 return
         *) exit 1 ;;              # smoke 不拥有 QEMU → 无 EXIT trap, 直接 exit 1
@@ -778,6 +878,8 @@ cmd_test_qemu() {
 
     # ── 前置 2: RUNNING QEMU instance (probe-only, 对齐 cmd_smoke; 绝不探死端口防假"BMC 坏") ──
     derive_qemu_paths
+    local _test_lock_fd="" _test_lock_owned=""
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _test_lock_fd _test_lock_owned
     local _liv=""
     qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024)
     case "$_liv" in
@@ -847,6 +949,7 @@ print((rf or {}).get("password") or a.get("password") or "")
 
     local _rrc=0
     "${_run_args[@]}" || _rrc=$?
+    _qemu_lifecycle_lock_release_if_owned "$_test_lock_fd" "$_test_lock_owned"
     # runner exit taxonomy(评审 🔴2): 0=无 applicable fail / 1=α truth(BMC fail) / 3=infra-config-data 前置缺失。
     # 映射字面 exit(exit-contract X: 须字面 0/1/2/3)。unknown rc → exit 3(runner internal error),
     # 不用 exit 1——test-qemu 的 exit 1 专属 α truth, 不混 broken。

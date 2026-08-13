@@ -60,6 +60,117 @@ rc=0; out=$(python3 "$PROBE_BIN" --host 127.0.0.1 --port 1 --user r --password x
     --method GET --path /p --asserts '[{"type":"typo_assert"}]' --timeout 2 2>/dev/null) || rc=$?
 assert_eq "probe unknown type → exit 3" "$rc" "3"
 assert_true "probe unknown type → error JSON" grep -q '"error": true' <<<"$out"
+
+# probe protocol matrix: infra rc3 must stay error for applicable/xfail; malformed
+# output and unexpected rc must never become PASS or alpha FAIL.
+cat > "$_tmp/probe-stub.py" <<'PY'
+#!/usr/bin/env python3
+import json
+import os
+import sys
+
+mode = os.environ["OB_TQ_STUB_MODE"]
+cases = {
+  "transport": ({"pass": False, "error": True, "code": None, "body": "",
+           "actual": None, "reason": "connection refused"}, 3),
+  "empty": ({}, 0),
+  "unexpected-rc": ({"pass": False, "code": None, "body": "",
+             "actual": None, "reason": "internal"}, 2),
+  "bad-types": ({"pass": True, "error": 0, "code": [], "body": {},
+           "actual": None, "reason": 7}, 0),
+  "good-pass": ({"pass": True, "code": 200, "body": "{}",
+           "actual": None, "reason": "ok"}, 0),
+  "good-fail": ({"pass": False, "code": 500, "body": "{}",
+           "actual": 500, "reason": "bad"}, 1),
+}
+payload, rc = cases[mode]
+print(json.dumps(payload))
+sys.exit(rc)
+PY
+chmod +x "$_tmp/probe-stub.py"
+cat > "$_tmp/one.yaml" <<'YAML'
+auth: {user: r, password: x}
+ars:
+  - ar: TEST-A
+    name: protocol fixture
+    probe: redfish
+    suite: fixture
+    request: {method: GET, path: /redfish/v1}
+    assert: [{type: status_in, value: [200]}]
+    depends_on: []
+    rationale: fixture
+YAML
+cat > "$_tmp/applicable.yaml" <<'YAML'
+default: applicable
+overrides: {}
+YAML
+cat > "$_tmp/xfail.yaml" <<'YAML'
+default: applicable
+overrides:
+  TEST-A: {status: xfail, reason: expected, source: unit}
+YAML
+
+_run_protocol_case() {
+  local mode="$1" appl="$2"
+  OB_TQ_STUB_MODE="$mode" OB_TQ_PROBE="$_tmp/probe-stub.py" \
+    OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$appl" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x \
+    >/dev/null 2>&1
+}
+assert_rc 3 "transport rc3 stays error for applicable AR" \
+  _run_protocol_case transport "$_tmp/applicable.yaml"
+assert_rc 3 "transport rc3 stays error for xfail AR" \
+  _run_protocol_case transport "$_tmp/xfail.yaml"
+assert_rc 3 "empty object + rc0 is infra error" \
+  _run_protocol_case empty "$_tmp/applicable.yaml"
+assert_rc 3 "unexpected probe rc is infra error" \
+  _run_protocol_case unexpected-rc "$_tmp/applicable.yaml"
+assert_rc 3 "malformed probe field types are infra error" \
+  _run_protocol_case bad-types "$_tmp/applicable.yaml"
+assert_rc 0 "valid probe pass remains pass" \
+  _run_protocol_case good-pass "$_tmp/applicable.yaml"
+assert_rc 1 "valid probe fail remains alpha fail" \
+  _run_protocol_case good-fail "$_tmp/applicable.yaml"
+
+# Planner framing inputs: method is canonical uppercase; AR/path reject every
+# ASCII control character, including the unit-separator used by the planner.
+python3 - "$_tmp/lower-method.yaml" "$_tmp/control-path.yaml" <<'PY'
+import sys
+import yaml
+
+base = {
+  "auth": {"user": "r", "password": "x"},
+  "ars": [{
+    "ar": "TEST-A", "name": "fixture", "probe": "redfish", "suite": "fixture",
+    "request": {"method": "get", "path": "/redfish/v1"},
+    "assert": [{"type": "status_in", "value": [200]}],
+    "depends_on": [], "rationale": "fixture",
+  }],
+}
+with open(sys.argv[1], "w") as stream:
+  yaml.safe_dump(base, stream)
+base["ars"][0]["request"] = {"method": "GET", "path": "/redfish/v1\x1fManagers"}
+with open(sys.argv[2], "w") as stream:
+  yaml.safe_dump(base, stream)
+PY
+_planner_fixture() {
+  local ar_file="$1"
+  OB_TQ_AR_PROBES="$ar_file" OB_TQ_APPL="$_tmp/applicable.yaml" \
+    bash "$RUNNER" --dry-run >/dev/null 2>&1
+}
+assert_rc 3 "lowercase HTTP method rejected as config error" \
+  _planner_fixture "$_tmp/lower-method.yaml"
+assert_rc 3 "planner unit-separator path rejected as config error" \
+  _planner_fixture "$_tmp/control-path.yaml"
+
+REPORT_BIN="$(dirname "$RUNNER")/report.py"
+_report_stdin_case() {
+  local payload="$1"
+  printf '%s' "$payload" | python3 "$REPORT_BIN" --results - >/dev/null 2>&1
+}
+assert_rc 3 "report empty results are infra error" _report_stdin_case ""
+assert_rc 3 "report duplicate AR results are infra error" _report_stdin_case \
+  $'{"ar":"A","status":"pass"}\n{"ar":"A","status":"pass"}\n'
 rm -rf "$_tmp"
 
 assert_summary

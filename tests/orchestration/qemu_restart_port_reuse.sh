@@ -22,6 +22,7 @@ MACHINE="romulus"
 QEMU_PIDS_DIR="$WS/qemu-bin/.pids"
 DEPLOY_DIR="$WS/openbmc/build/$MACHINE/tmp/deploy/images/$MACHINE"
 fake_pid=""
+launch_fake_pid=""
 sentinel="$TMP/setsid.sentinel"
 
 # ── stage helper: initialized machine(复制自 deploy_to_qemu.sh L27, 不共用 lib — YAGNI) ──
@@ -83,9 +84,24 @@ stage_running_qemu                # ipmi_port=2624 模拟痛点场景
 #        setsid 写 sentinel(不真启); dynamic ss(按 staged 存活报占用/空闲)。
 make_qemu_curl_fake "$DB"
 make_bitbake_env_fake "$DB"
-make_pgrep_fake "$DB" 12345
 mkfake_bin "$DB" ssh-keygen
 make_setsid_sentinel "$DB" "$sentinel"
+QEMU_SERIAL_LOG="$TMP/launch-serial.log"
+launch_serial_sock="${QEMU_SERIAL_LOG%.log}.sock"
+launch_fake="$TMP/launch-fake"
+cat > "$launch_fake" <<'SH'
+#!/usr/bin/env bash
+exec -a "$1" sleep 300
+SH
+chmod +x "$launch_fake"
+"$launch_fake" "$WS/qemu-bin/community/qemu-system-arm -machine romulus -machine romulus-bmc $launch_serial_sock" &
+launch_fake_pid=$!
+for _ in $(seq 1 50); do
+    launch_cmdline="$(tr '\0' ' ' < "/proc/$launch_fake_pid/cmdline" 2>/dev/null || true)"
+    [[ "$launch_cmdline" == *"$launch_serial_sock"* ]] && break
+    sleep 0.1
+done
+make_pgrep_fake "$DB" "$launch_fake_pid"
 mkfake_bin "$DB" ss
 cat > "$DB/.ss.sh" <<SS
 [[ -d "/proc/$fake_pid" ]] && echo "occupied by staged instance"
@@ -110,5 +126,6 @@ assert_eq "scenario B: --force does NOT reuse old 2624 (uses default 2623)" "$ne
 
 # ── 清理 ──
 [[ -n "$fake_pid" ]] && kill "$fake_pid" 2>/dev/null
+[[ -n "$launch_fake_pid" ]] && kill "$launch_fake_pid" 2>/dev/null
 rm -rf "$TMP" "$DB"
 assert_summary

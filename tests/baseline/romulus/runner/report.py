@@ -46,6 +46,10 @@ def main():
     records = load_records(args.results)
 
     counts = {s: 0 for s in STATUSES}
+    if not records:
+        sys.stderr.write("report: empty results -> error\n")
+        counts["error"] += 1
+    seen_ars = set()
     for r in records:
         if not isinstance(r, dict):
             # 非 dict record = infra/数据错 → error(评审 🟡1: 不 AttributeError 冒充 rc=1)
@@ -61,7 +65,11 @@ def main():
         elif not isinstance(ar, str) or not ar:
             sys.stderr.write("report: bad AR id {!r} (status {}) -> error\n".format(ar, st))
             counts["error"] += 1
+        elif ar in seen_ars:
+            sys.stderr.write("report: duplicate AR id {!r} -> error\n".format(ar))
+            counts["error"] += 1
         else:
+            seen_ars.add(ar)
             counts[st] += 1
 
     if counts["error"] > 0:

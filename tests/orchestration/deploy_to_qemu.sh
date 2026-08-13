@@ -22,6 +22,7 @@ MACHINE="romulus"
 QEMU_PIDS_DIR="$WS/qemu-bin/.pids"
 DEPLOY_DIR="$WS/openbmc/build/$MACHINE/tmp/deploy/images/$MACHINE"
 fake_pid=""
+launch_fake_pid=""
 sentinel="$TMP/setsid.sentinel"
 
 # ── stage helper: initialized machine(build + qemu 环境;场景①②③④⑤⑦ 必备, ⑥ 不调) ──
@@ -73,15 +74,33 @@ PF
 # ── common stubs(7 场景共享; .calls/.rc 由 reset_between 清) ──
 make_qemu_curl_fake "$DB"                 # ensure_qemu_binary 下载兜底(binary 已 staged 不触发)
 mkfake_bin "$DB" ss                       # check_ports_available: 默认 exit 0 无 stdout = 端口空闲
-make_pgrep_fake "$DB" 12345               # qemu_execute_launch PID 发现 → 新 .pid pid=12345
 mkfake_bin "$DB" ssh-keygen               # check_ssh_hostkey_conflict: -F 无输出 → 早退 return 0
 make_setsid_sentinel "$DB" "$sentinel"    # fake setsid 写 sentinel(不真启); 场景⑤ stub_exit 改 rc
+QEMU_SERIAL_LOG="$TMP/launch-serial.log"
+launch_serial_sock="${QEMU_SERIAL_LOG%.log}.sock"
+launch_fake="$TMP/launch-fake"
+cat > "$launch_fake" <<'SH'
+#!/usr/bin/env bash
+exec -a "$1" sleep 300
+SH
+chmod +x "$launch_fake"
+"$launch_fake" "$WS/qemu-bin/community/qemu-system-arm -machine romulus -machine romulus-bmc $launch_serial_sock" &
+launch_fake_pid=$!
+for _ in $(seq 1 50); do
+    launch_fake_cmdline="$(tr '\0' ' ' < "/proc/$launch_fake_pid/cmdline" 2>/dev/null || true)"
+    [[ "$launch_fake_cmdline" == *"$launch_serial_sock"* ]] && break
+    sleep 0.1
+done
+make_pgrep_fake "$DB" "$launch_fake_pid"   # qemu_execute_launch PID 发现
 # bitbake: 按参数分支(-e 兜底吐 QB_*; obmc-phosphor-image build 记录调用 + rc 控制)
 mkfake_bin "$DB" bitbake
 cat > "$DB/.bitbake.sh" <<'BB_SH'
 case "$1" in
     -e)  # resolve_qemu_launch_profile fallback(qemuboot.conf 已 staged 不触发; 兜底)
         printf 'QB_MACHINE="-machine romulus"\nQB_MEM="-m 512"\nQB_SYSTEM_NAME="qemu-system-arm"\n'
+        ;;
+    *)
+        [[ -n "${DEPLOY_BUILD_HOOK:-}" ]] && "$DEPLOY_BUILD_HOOK"
         ;;
 esac
 BB_SH
@@ -137,10 +156,10 @@ if kill -0 "$fake_pid" 2>/dev/null; then
 else
     assert_true "② old fake_qemu killed (stop invoked)" true
 fi
-# 新 .pid 由 qemu_execute_launch 写: pid=pgrep fake(12345) + ssh_port=注入的旧端口(29222)。
-# 空壳不 start → .pid 还是 stage 旧 .pid(pid=$fake_pid) → pid=12345 断言 FAIL(红灯);
+# 新 .pid 由 qemu_execute_launch 写: pid=真实 fake daemon + ssh_port=注入的旧端口(29222)。
+# 空壳不 start → .pid 还是 stage 旧 .pid(pid=$fake_pid) → daemon PID 断言 FAIL(红灯);
 # ssh_port=29222 非默认(默认 2222), 锁"端口复用注入"(T3 忘注入会落默认 2222 → FAIL)。
-assert_true "② new .pid by start (pid=12345, not stale fake_pid)" grep -q '^pid=12345$' "$QEMU_PIDS_DIR/$MACHINE.pid"
+assert_true "② new .pid by start (owned daemon pid)" grep -q "^pid=$launch_fake_pid$" "$QEMU_PIDS_DIR/$MACHINE.pid"
 assert_true "② port reuse: new .pid ssh_port=29222 (injected from old)" grep -q '^ssh_port=29222$' "$QEMU_PIDS_DIR/$MACHINE.pid"
 
 # ============================================================================
@@ -236,7 +255,49 @@ assert_eq "⑧ rc=0 (qemu running + confirm y + build ok + CLI port)" "$rc" "0"
 assert_true "⑧ deploy honors CLI: new .pid ssh_port=40022 (not old 29222)" grep -q '^ssh_port=40022$' "$QEMU_PIDS_DIR/$MACHINE.pid"
 QEMU_SSH_PORT=""                             # 清全局端口变量(防泄漏; deploy-honor 限于本场景)
 
+# ============================================================================
+# 场景 ⑨ build 期间出现外部实例 → exit 3，不 stop 外部实例，不启动新 QEMU。
+# 锁 lifecycle lock 在长 build 期间释放、build 后重获并校验 snapshot。
+# ============================================================================
+reset_between
+stage_initialized_machine
+DRY_RUN=0
+concurrent_qemu="$TMP/concurrent-qemu"
+printf '#!/usr/bin/env bash\nsleep 300\n' > "$concurrent_qemu"; chmod +x "$concurrent_qemu"
+cat > "$TMP/build-hook.sh" <<HOOK
+#!/usr/bin/env bash
+"$concurrent_qemu" romulus qemu-system-arm >/dev/null 2>&1 &
+pid=\$!
+printf '%s\n' "\$pid" > "$TMP/concurrent.pid"
+cat > "$QEMU_PIDS_DIR/$MACHINE.pid" <<PF
+pid=\$pid
+user=$(whoami)
+machine=$MACHINE
+binary=qemu-system-arm
+started_at=2026-07-04T00:00:00Z
+ssh_port=29222
+redfish_port=2443
+ipmi_port=2623
+serial_log=$TMP/concurrent.log
+PF
+HOOK
+chmod +x "$TMP/build-hook.sh"
+export DEPLOY_BUILD_HOOK="$TMP/build-hook.sh"
+run_deploy </dev/null; rc=$?
+unset DEPLOY_BUILD_HOOK
+concurrent_pid="$(cat "$TMP/concurrent.pid")"
+assert_eq "⑨ instance appeared during build → exit 3" "$rc" "3"
+assert_contains "⑨ changed-instance diagnostic" "$(cat "$TMP/out")" "appeared while the image was building"
+assert_false "⑨ new QEMU launch not invoked" test -s "$sentinel"
+if kill -0 "$concurrent_pid" 2>/dev/null; then
+    assert_true "⑨ external instance left running" true
+    kill "$concurrent_pid" 2>/dev/null || true
+else
+    assert_true "⑨ external instance left running" false
+fi
+
 # ── 清理 ──
 [[ -n "$fake_pid" ]] && kill "$fake_pid" 2>/dev/null
+[[ -n "$launch_fake_pid" ]] && kill "$launch_fake_pid" 2>/dev/null
 rm -rf "$TMP" "$DB"
 assert_summary

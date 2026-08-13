@@ -29,7 +29,7 @@ _Avoid_: 依赖文件, dependency list
 _Avoid_: lockfile, machine lock, state lock, 把 snapshot 当完成标记
 
 **source manifest**:
-harness 绑定的 OpenBMC 主仓库 source 的归属记录与漂移校验基准。物理文件为 `workspace/configs/openbmc-source.manifest`（kv 文本），由 `ob init` 写入，记录 normalized_source / origin_url / source_label / created_at。它表达"一个 harness 只绑定一个主仓库 source"这条 invariant，`verify_source` 据其检测 origin 是否被手动漂移。它是归属记录而非互斥锁（项目里真正的文件锁是 qemu 的 `.update.lock`，用 flock）；也非 per-machine（区别于现行 `machine snapshot`，旧的 `<machine>.lock` 已废弃）。
+harness 绑定的 OpenBMC 主仓库 source 的归属记录与漂移校验基准。物理文件为 `workspace/configs/openbmc-source.manifest`（kv 文本），由 `ob init` 写入，记录 normalized_source / origin_url / source_label / created_at。它表达"一个 harness 只绑定一个主仓库 source"这条 invariant，`verify_source` 据其检测 origin 是否被手动漂移。它是归属记录而非互斥锁（项目里的真实文件锁包括 QEMU binary `.update.lock` 与 per-machine `QEMU lifecycle lock`，均用 flock）；也非 per-machine（区别于现行 `machine snapshot`，旧的 `<machine>.lock` 已废弃）。
 _Avoid_: source lock, source pin, source binding, 把它当文件互斥锁
 
 **runtime Git mirror host**:
@@ -81,11 +81,15 @@ _Avoid_: QEMU 版本, QEMU flavor
 _Avoid_: QEMU 配置, QEMU metadata
 
 **QEMU PID file**:
-`workspace/qemu-bin/.pids/<machine>.pid` 文件，记录 QEMU 实例的 PID、启动用户、machine 名、binary 路径和启动时间。`ob stop-qemu` 通过此文件精确 kill，防止多用户共享环境下误杀。
+`workspace/qemu-bin/.pids/<machine>.pid` 文件，记录 QEMU 实例的 PID、启动用户、machine 名、binary 路径和启动时间。由 `qemu_execute_launch` 按 binary / machine / 唯一 serial socket 严格认领 daemon PID，记录 `/proc` process start ticks 后以 tempfile + rename 原子发布；解析不到 PID 或进程代际时启动失败且不发布。`ob stop-qemu` 通过此文件精确 kill，防止多用户共享环境下误杀。
 _Avoid_: QEMU lock, QEMU state
 
+**QEMU lifecycle lock**:
+`workspace/qemu-bin/.locks/<machine>.lock` 上的 per-machine flock，串行化同一 machine 的 QEMU instance writer（`ob start-qemu` / `ob stop-qemu` / `ob deploy-to-qemu` 与拥有测试生命周期的 integration），并在 `ob smoke` / `ob test-qemu` 探测期间 pin 住目标实例。它覆盖 instance 检查、启动/停止和 PID manifest 发布，防止多用户同时看到 `nopid` 后双启动、覆盖 PID manifest、check→stop 间误杀替换实例，或 probe 报告混入重启前后两个实例的响应。锁文件本身不承载状态；状态事实仍只来自 `QEMU PID file` 与进程。父编排可持锁并把 FD 继承给 child ob，child 验证 lock path 后在命令期间继续持有；仅 QEMU daemon-side copy 在 setsid 前关闭，避免 daemon 延长锁生命周期。
+_Avoid_: 把 lock file 当 QEMU state, 用 PID file 充当互斥锁, 只让单个 writer 使用的半锁
+
 **QEMU instance**:
-workspace 里某个 machine 对应的、可能正在运行的 QEMU 进程的逻辑视图，由 `QEMU PID file` 记录。它回答"哪个 machine 的 QEMU 在跑 / 状态如何（存活、PID、转发端口）"，是 `ob status` 展示、`ob stop-qemu` 枚举、`ob start-qemu` 冲突检测共同关心的抽象；`QEMU PID file` 是它的物理载体，二者是实体与记录的关系。与 `machine lifecycle state` 正交：lifecycle state 回答 machine 处于 init/build 的哪个阶段，instance 回答 machine 的 QEMU 进程当前是否在跑——存活状态取 `running`（在跑且 cmdline 匹配）/ `exited`（进程已退）/ `recycled`（PID 被复用）/ `nopid`（无 PID 文件）四值；一个 `firmware-image-ready machine` 可以没有 QEMU instance（未 start-qemu），一个 stale QEMU instance 也不改 lifecycle state。instance 集合的增（start-qemu 写 PID file）删（stop-qemu / kill-restart 删 PID file）是 lifecycle 动作的副作用，不是 instance 视图自身的职责。
+workspace 里某个 machine 对应的、可能正在运行的 QEMU 进程的逻辑视图，由 `QEMU PID file` 记录。它回答"哪个 machine 的 QEMU 在跑 / 状态如何（存活、PID、转发端口）"，是 `ob status` 展示、`ob stop-qemu` 枚举、`ob start-qemu` 冲突检测共同关心的抽象；`QEMU PID file` 是它的物理载体，二者是实体与记录的关系。与 `machine lifecycle state` 正交：lifecycle state 回答 machine 处于 init/build 的哪个阶段，instance 回答 machine 的 QEMU 进程当前是否在跑——存活状态取 `running`（在跑且 cmdline 匹配）/ `exited`（进程已退）/ `recycled`（PID 被复用）/ `nopid`（无 PID 文件）四值；一个 `firmware-image-ready machine` 可以没有 QEMU instance（未 start-qemu），一个 stale QEMU instance 也不改 lifecycle state。instance 集合的增（start-qemu 写 PID file）删（stop-qemu / kill-restart 删 PID file）是 lifecycle 动作的副作用，不是 instance 视图自身的职责；同 machine 的 writer 副作用由 `QEMU lifecycle lock` 串行化。
 _Avoid_: QEMU process（OS 进程，太底层）, QEMU runtime（与 qemu.sh runtime 模块撞名）, 把 QEMU PID file 当 instance（记录 ≠ 实体）
 
 **重启 (restart)**:

@@ -44,21 +44,66 @@ fi
 
 # 实例生命周期: 复用 running / 否则自起(started_by_test 标记收尾只清自己的)。
 derive_qemu_paths
+_lifecycle_lock_fd=""; _lifecycle_lock_status=""
+qemu_instance_lifecycle_lock_acquire "$MACHINE" _lifecycle_lock_fd _lifecycle_lock_status
+case "$_lifecycle_lock_status" in
+    ok)
+        export OB_QEMU_LIFECYCLE_LOCK_FD="$_lifecycle_lock_fd"
+        export OB_QEMU_LIFECYCLE_LOCK_MACHINE="$MACHINE"
+        ;;
+    busy)
+        echo "SKIP: another QEMU lifecycle operation is active for '$MACHINE'"
+        exit 77
+        ;;
+    *)
+        echo "FAIL: cannot acquire QEMU lifecycle lock for '$MACHINE'"
+        exit 1
+        ;;
+esac
 _liv=""
 qemu_instance_liveness "$MACHINE" _liv
 started_by_test=0
-# 收尾 helper(评审 🔴2: PID 身份校验 — 仅 PID file PID == 自起 PID 才 stop, 避免误杀竞态另一用户实例)
 _started_pid=""
+_integ_serial_log="${OB_INTEG_SERIAL_LOG:-${TMPDIR:-/tmp}/ob-tq-${MACHINE}-$$.serial.log}"
+_integ_serial_sock="${_integ_serial_log%.log}.sock"
+start_out=""; report_json=""; tq_out=""
 _stop_if_started() {
     [[ "$started_by_test" == "1" ]] || return 0
+    local _cur=""
     qemu_instance_liveness "$MACHINE" _cur
-    if [[ "$_cur" == "running" && -n "$_started_pid" && "$PIDFILE_PID" == "$_started_pid" ]]; then
-        ./ob stop-qemu "$MACHINE" --force >/dev/null 2>&1 || true
-    fi
+    case "$_cur" in
+        running)
+            # The parent holds the machine lifecycle lock. Before PID capture,
+            # any running instance created after the initial nopid check is ours.
+            if [[ -z "$_started_pid" || "$PIDFILE_PID" == "$_started_pid" ]]; then
+                qemu_instance_stop "$PIDFILE_PID" "$QEMU_PID_FILE"
+            fi
+            ;;
+        exited|recycled)
+            if [[ -z "$_started_pid" || "$PIDFILE_PID" == "$_started_pid" ]]; then
+                qemu_instance_clean_stale "$MACHINE"
+            fi
+            ;;
+        nopid)
+            # Covers SIGTERM after QEMU daemonized but before manifest publish.
+            local pending_pid=""
+            pending_pid=$(pgrep -u "$(whoami)" -f "$_integ_serial_sock" 2>/dev/null | head -1 || true)
+            if [[ "$pending_pid" =~ ^[0-9]+$ ]]; then
+                qemu_instance_stop "$pending_pid" "$QEMU_PID_FILE"
+            fi
+            ;;
+    esac
 }
-# EXIT 清理(正常退出); INT/TERM/HUP 清理后显式退出(评审 🟡3: signal handler 不退出会继续执行)
-trap '_stop_if_started' EXIT
-trap '_stop_if_started; exit 130' INT TERM HUP
+_cleanup_integration() {
+    _stop_if_started
+    [[ -n "$start_out" ]] && rm -f "$start_out"
+    [[ -n "$report_json" ]] && rm -f "$report_json"
+    [[ -n "$tq_out" ]] && rm -f "$tq_out"
+    qemu_instance_lifecycle_lock_release "$_lifecycle_lock_fd"
+    unset OB_QEMU_LIFECYCLE_LOCK_FD OB_QEMU_LIFECYCLE_LOCK_MACHINE
+}
+trap '_cleanup_integration' EXIT
+trap 'exit 130' INT TERM HUP
 if [[ "$_liv" != "running" ]]; then
     # ownership 前置(评审 🟡3): start-qemu 写 PID 后、等 SSH 期间收到信号也能清(started_by_test 已 1)
     started_by_test=1
@@ -71,6 +116,7 @@ if [[ "$_liv" != "running" ]]; then
     [[ -n "${OB_INTEG_SSH_PORT:-}" ]] && _start_args+=(--ssh-port "$OB_INTEG_SSH_PORT")
     [[ -n "${OB_INTEG_REDFISH_PORT:-}" ]] && _start_args+=(--redfish-port "$OB_INTEG_REDFISH_PORT")
     [[ -n "${OB_INTEG_IPMI_PORT:-}" ]] && _start_args+=(--ipmi-port "$OB_INTEG_IPMI_PORT")
+    _start_args+=(--serial-log "$_integ_serial_log")
     _start_args+=(--no-wait)
     ./ob "${_start_args[@]}" </dev/null >"$start_out" 2>&1 || start_rc=$?
     if [[ "$start_rc" -ne 0 ]]; then
@@ -83,6 +129,7 @@ else
 fi
 
 # start/reuse 后重新 liveness 拿当前端口 + 确认 running(评审 🟡2: start 子进程不更新父 PIDFILE_*)
+_liv_post=""
 qemu_instance_liveness "$MACHINE" _liv_post
 if [[ "$_liv_post" != "running" || -z "$PIDFILE_REDFISH_PORT" ]]; then
     echo "FAIL: '$MACHINE' not running or no Redfish port after start/reuse"
@@ -102,8 +149,9 @@ _rb_consec=0; _rb_ready=0; _rb_code="000"
 echo "[integration] waiting for Redfish root HTTP 200 ×${_rb_needed} consecutive (port ${REDFISH_PORT}, budget ${_rb_budget}s)..."
 while [[ $(( $(date +%s) - _rb_start )) -lt $_rb_budget ]]; do
     _remain=$(( _rb_budget - $(date +%s) + _rb_start ))
+    (( _remain > 0 )) || break
     _ct=5; (( _remain < _ct )) && _ct=$_remain   # curl 按剩余截断(评审 🟡3: 配置 2s 不实际跑 5s)
-    _rb_code="$(curl -ks -o /dev/null -w '%{http_code}' --max-time "$_ct" "https://localhost:${REDFISH_PORT}/redfish/v1" 2>/dev/null || echo 000)"
+    _rb_code=$(curl -ks -o /dev/null -w '%{http_code}' --max-time "$_ct" "https://localhost:${REDFISH_PORT}/redfish/v1" 2>/dev/null) || _rb_code="${_rb_code:-000}"
     if [[ "$_rb_code" == "200" ]]; then
         _rb_consec=$((_rb_consec + 1))
         [[ $_rb_consec -ge $_rb_needed ]] && { _rb_ready=1; break; }
@@ -122,11 +170,21 @@ if [[ "$_rb_ready" -ne 1 ]]; then
     exit 1
 fi
 
-# ob test-qemu + JSON report
+# ob test-qemu + JSON report. Retry only infra rc3: rc0/1 are deterministic
+# baseline truth and must never be retried into a different verdict.
 report_json="$(mktemp "${TMPDIR:-/tmp}/ob-tq-integ-report-XXXXXX.json")"
 tq_out="$(mktemp "${TMPDIR:-/tmp}/ob-tq-integ-out-XXXXXX")"
-tq_rc=0
-./ob test-qemu "$MACHINE" --report "$report_json" >"$tq_out" 2>&1 || tq_rc=$?
+tq_rc=3
+_tq_attempt=0; _tq_max="${OB_INTEG_TEST_QEMU_ATTEMPTS:-3}"
+while [[ "$_tq_attempt" -lt "$_tq_max" ]]; do
+    _tq_attempt=$((_tq_attempt + 1))
+    : > "$tq_out"
+    tq_rc=0
+    ./ob test-qemu "$MACHINE" --report "$report_json" >"$tq_out" 2>&1 || tq_rc=$?
+    [[ "$tq_rc" != "3" ]] && break
+    echo "[integration] test-qemu infra rc=3 (attempt $_tq_attempt/$_tq_max); retrying after 5s..."
+    [[ "$_tq_attempt" -lt "$_tq_max" ]] && sleep 5
+done
 echo "test-qemu rc=$tq_rc"
 sed 's/^/  | /' "$tq_out"
 

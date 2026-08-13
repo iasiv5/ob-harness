@@ -61,6 +61,7 @@ trap 'rm -rf "$RUN_TMP"' EXIT
     # Stub the launch pipeline so cmd_start_qemu reaches the confirmation block and
     # proceeds without starting QEMU or needing a real workspace/image.
     detect_harness_root() { :; }
+    WORKSPACE_DIR="$RUN_TMP/workspace"
     machine_state_is_initialized() { return 0; }
     machine_state_deploy_dir() { echo "/tmp/fake-deploy"; }
     machine_state_firmware_image_path() { echo "/tmp/fake/image.mtd"; }
