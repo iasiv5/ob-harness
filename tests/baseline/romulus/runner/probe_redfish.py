@@ -20,6 +20,11 @@ CLI (normal probe):
   stdout: one-line JSON {"pass","code","body","actual","reason"}
   exit:   0=pass / 1=fail
 
+Creds (user/password): explicit --user/--password win; else fall back to env
+  OB_TQ_USER / OB_TQ_PASSWORD. Paving for custom-machine real creds on shared
+  hosts (env /proc/<pid>/environ is owner-only vs --password in `ps` world-
+  readable). Default cmd flow still passes --user/--password, so unchanged.
+
 CLI (selftest, no network):
   probe_redfish.py --selftest   -> exit 0 iff all primitive checks pass
 """
@@ -27,6 +32,7 @@ CLI (selftest, no network):
 import argparse
 import base64
 import json
+import os
 import ssl
 import sys
 import urllib.error
@@ -137,6 +143,15 @@ def run_asserts(asserts, code, body):
 
 
 # --- probe ------------------------------------------------------------------
+
+def _resolve_auth(arg_user, arg_password, env):
+    """Resolve Redfish creds: explicit CLI args win, else OB_TQ_USER /
+    OB_TQ_PASSWORD env (🟢6 预埋: custom-machine real creds without argv leak).
+    Returns (user, password) — each None if neither CLI nor env supplies it."""
+    user = arg_user or env.get("OB_TQ_USER")
+    password = arg_password or env.get("OB_TQ_PASSWORD")
+    return user, password
+
 
 def _basic_auth(user, password):
     raw = "{}:{}".format(user, password).encode("utf-8")
@@ -282,6 +297,11 @@ def run_selftest():
     chk("cleanup bad-port rejected", _resolve_cleanup_url("https://127.0.0.1:not-a-port/x", "127.0.0.1", 2443), None)
     # probe 禁 redirect(评审 🔴1): 30x 不跟随, 防跨 origin/HTTP 泄露 Basic Auth
     chk("no-redirect handler", _NoRedirect().redirect_request(), None)
+    # 凭据 env fallback (🟢6 预埋): CLI --user/--password 优先, 否则 OB_TQ_USER/OB_TQ_PASSWORD
+    chk("cred cli wins", _resolve_auth("a", "b", {"OB_TQ_USER": "x", "OB_TQ_PASSWORD": "y"}), ("a", "b"))
+    chk("cred env fallback", _resolve_auth(None, None, {"OB_TQ_USER": "x", "OB_TQ_PASSWORD": "y"}), ("x", "y"))
+    chk("cred env partial", _resolve_auth("a", None, {"OB_TQ_PASSWORD": "y"}), ("a", "y"))
+    chk("cred none", _resolve_auth(None, None, {}), (None, None))
 
     all_ok = True
     for name, ok, got, want in checks:
@@ -322,7 +342,8 @@ def main(argv=None):
                               "reason": "unknown assert type '%s'; allowed: %s" %
                               (a.get("type"), ", ".join(_allowed))}, ensure_ascii=False))
             return 3
-    result = probe(args.host, args.port, args.user, args.password,
+    user, password = _resolve_auth(args.user, args.password, os.environ)
+    result = probe(args.host, args.port, user, password,
                    args.method, args.path, args.body, asserts, args.timeout)
     print(json.dumps(result, ensure_ascii=False))
     if result.get("error"):
