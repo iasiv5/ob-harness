@@ -47,13 +47,17 @@ derive_qemu_paths
 _liv=""
 qemu_instance_liveness "$MACHINE" _liv
 started_by_test=0
-# 收尾 helper + trap(评审 🟡4: 中断/退出时清自起实例, 不遗留) — 注册在 start-qemu 前, 覆盖自起后任何 exit。
+# 收尾 helper(评审 🟡4: 中断/退出时清自起实例, 不遗留)
 _stop_if_started() {
     [[ "$started_by_test" == "1" ]] || return 0
     ./ob stop-qemu "$MACHINE" --force >/dev/null 2>&1 || true
 }
-trap '_stop_if_started' EXIT INT TERM HUP
+# EXIT 清理(正常退出); INT/TERM/HUP 清理后显式退出(评审 🟡3: signal handler 不退出会继续执行)
+trap '_stop_if_started' EXIT
+trap '_stop_if_started; exit 130' INT TERM HUP
 if [[ "$_liv" != "running" ]]; then
+    # ownership 前置(评审 🟡3): start-qemu 写 PID 后、等 SSH 期间收到信号也能清(started_by_test 已 1)
+    started_by_test=1
     echo "[integration] starting QEMU for '$MACHINE' (start-qemu --force)..."
     start_out="$(mktemp "${TMPDIR:-/tmp}/ob-tq-integ-start-XXXXXX")"
     start_rc=0
@@ -69,33 +73,34 @@ if [[ "$_liv" != "running" ]]; then
         sed 's/^/  | /' "$start_out"; rm -f "$start_out"; exit 1
     fi
     rm -f "$start_out"
-    started_by_test=1
 else
     echo "[integration] reusing running instance for '$MACHINE'"
 fi
 
 # Redfish readiness gate(连续 N 次 200, 对齐 smoke_e2e.sh Step 1b): 闭合 bmcweb boot flap race。
-REDFISH_PORT="$(grep '^redfish_port=' "workspace/qemu-bin/.pids/${MACHINE}.pid" 2>/dev/null | cut -d= -f2)"
-REDFISH_PORT="${REDFISH_PORT:-2443}"
-_rb_attempts=0; _rb_max="${OB_INTEG_REDFISH_ATTEMPTS:-90}"; _rb_needed="${OB_INTEG_REDFISH_DEBOUNCE:-2}"
+# 端口事实源 = qemu_instance_liveness 填的 PIDFILE_REDFISH_PORT(评审 🟡4: 不 grep PID file);
+# 绝对 deadline(评审 🟡4: 不 attempts×(curl+sleep) 双倍预算)。
+REDFISH_PORT="${PIDFILE_REDFISH_PORT:-2443}"
+_rb_budget="${OB_INTEG_REDFISH_BUDGET:-450}"
+_rb_needed="${OB_INTEG_REDFISH_DEBOUNCE:-2}"
+_rb_start=$(date +%s)
 _rb_consec=0; _rb_ready=0; _rb_code="000"
-echo "[integration] waiting for Redfish root HTTP 200 ×${_rb_needed} consecutive (port ${REDFISH_PORT}, up to $((_rb_max*5))s)..."
-while [[ $_rb_attempts -lt $_rb_max ]]; do
-    _rb_attempts=$((_rb_attempts + 1))
+echo "[integration] waiting for Redfish root HTTP 200 ×${_rb_needed} consecutive (port ${REDFISH_PORT}, budget ${_rb_budget}s)..."
+while [[ $(( $(date +%s) - _rb_start )) -lt $_rb_budget ]]; do
     _rb_code="$(curl -ks -o /dev/null -w '%{http_code}' --max-time 5 "https://localhost:${REDFISH_PORT}/redfish/v1" 2>/dev/null || echo 000)"
     if [[ "$_rb_code" == "200" ]]; then
         _rb_consec=$((_rb_consec + 1))
         [[ $_rb_consec -ge $_rb_needed ]] && { _rb_ready=1; break; }
-        printf "\r  Redfish 200... confirming %d/%d (attempt %d)   " "$_rb_consec" "$_rb_needed" "$_rb_attempts"
+        printf "\r  Redfish 200... confirming %d/%d (%ss elapsed)   " "$_rb_consec" "$_rb_needed" "$(( $(date +%s) - _rb_start ))"
     else
         _rb_consec=0
-        printf "\r  Redfish not ready... attempt %d/%d (HTTP %s)   " "$_rb_attempts" "$_rb_max" "$_rb_code"
+        printf "\r  Redfish not ready... %ss elapsed (HTTP %s)   " "$(( $(date +%s) - _rb_start ))" "$_rb_code"
     fi
     sleep 5
 done
 echo ""
 if [[ "$_rb_ready" -ne 1 ]]; then
-    echo "FAIL: '$MACHINE' Redfish not stable-200 within $((_rb_max*5))s budget (last code=$_rb_code; may still be booting — raise OB_INTEG_REDFISH_ATTEMPTS to extend, not necessarily a real outage)"
+    echo "FAIL: '$MACHINE' Redfish not stable-200 within ${_rb_budget}s budget (last code=$_rb_code; may still be booting — raise OB_INTEG_REDFISH_BUDGET to extend, not necessarily a real outage)"
     _stop_if_started
     exit 1
 fi
@@ -122,13 +127,19 @@ fi
 rm -f "$tq_out"
 if ! python3 -c "
 import json, yaml, sys
-recs = {r['ar']: r['status'] for r in json.load(open(sys.argv[1]))['records']}
+report = json.load(open(sys.argv[1]))
+recs_list = report['records']
+recs = {r['ar']: r['status'] for r in recs_list}
 d = yaml.safe_load(open(sys.argv[2]))
 appl = yaml.safe_load(open(sys.argv[3]))
+tq_rc = int(sys.argv[4])
 default = appl.get('default', 'applicable')
 overrides = appl.get('overrides', {})
+# AR 集合 == baseline 全集(锁跑全, 防漏集)
 expected_ars = {a['ar'] for a in d['ars']}
 assert set(recs) == expected_ars, 'AR set mismatch: got %s want %s' % (sorted(recs), sorted(expected_ars))
+# per-AR 状态匹配 applicability + core-suite applicable 必须 pass(评审 🔴2: core fail 不该绿)
+ar_suite = {a['ar']: a.get('suite', '') for a in d['ars']}
 for ar, status in recs.items():
     appl_st = overrides.get(ar, {}).get('status', default)
     if appl_st == 'skip':
@@ -136,9 +147,24 @@ for ar, status in recs.items():
     elif appl_st == 'xfail':
         assert status in ('xfail', 'xpass'), '%s applicability=xfail but got %s' % (ar, status)
     else:
-        assert status in ('pass', 'fail'), '%s applicability=applicable but got %s (must actually execute)' % (ar, status)
-print('AR set + per-status (from baseline) ok')
-" "$report_json" "$_baseline_dir/ar_probes.yaml" "$_baseline_dir/applicability.yaml" 2>&1; then
+        if ar_suite.get(ar) == 'core':
+            assert status == 'pass', '%s core+applicable must pass, got %s' % (ar, status)
+        else:
+            assert status in ('pass', 'fail'), '%s applicable but got %s (must actually execute)' % (ar, status)
+# 独立重算 verdict/counts(评审 🔴2: 不同源 report, 防报告 bug) + tq_rc 一致
+recounts = {}
+for r in recs_list:
+    recounts[r['status']] = recounts.get(r['status'], 0) + 1
+if recounts.get('error', 0) > 0:
+    re_verdict, exp_rc = 'ERROR', 3
+elif recounts.get('fail', 0) > 0:
+    re_verdict, exp_rc = 'FAIL', 1
+else:
+    re_verdict, exp_rc = 'PASS', 0
+assert report['verdict'] == re_verdict, 'report verdict %s != recomputed %s' % (report['verdict'], re_verdict)
+assert tq_rc == exp_rc, 'tq_rc %s != expected %s (verdict %s)' % (tq_rc, exp_rc, re_verdict)
+print('AR set + per-status + verdict recompute + tq_rc consistency ok')
+" "$report_json" "$_baseline_dir/ar_probes.yaml" "$_baseline_dir/applicability.yaml" "$tq_rc" 2>&1; then
     rm -f "$report_json"
     _stop_if_started
     exit 1

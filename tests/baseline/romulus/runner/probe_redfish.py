@@ -37,6 +37,20 @@ import urllib.request
 _SSL_CTX = ssl._create_unverified_context()
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Disable automatic redirect following (评审 🔴1): a 30x Location to a
+    cross-origin or HTTP URL would otherwise leak the Basic Auth header. 30x is
+    returned as the response code (let asserts judge), never followed.
+    """
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+# probe/cleanup opener: no redirect + unverified SSL (bmcweb self-signed).
+_OPENER = urllib.request.build_opener(_NoRedirect,
+                                      urllib.request.HTTPSHandler(context=_SSL_CTX))
+
+
 # --- assert primitives ------------------------------------------------------
 
 def status_in(code, value_list):
@@ -175,7 +189,7 @@ def _cleanup_delete(host, port, user, password, headers, body, timeout):
     req = urllib.request.Request(url, method="DELETE")
     req.add_header("Authorization", _basic_auth(user, password))
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
+        with _OPENER.open(req, timeout=timeout) as resp:
             return "cleanup DELETE {} -> {}".format(url, resp.getcode())
     except urllib.error.HTTPError as e:
         return "cleanup DELETE {} -> HTTP {}".format(url, e.code)
@@ -196,7 +210,7 @@ def probe(host, port, user, password, method, path, body, asserts, timeout=10.0)
     resp_headers = None
     conn_error = None
     try:
-        with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
+        with _OPENER.open(req, timeout=timeout) as resp:
             code = resp.getcode()
             resp_headers = resp.headers
             resp_body = resp.read().decode("utf-8", "replace")
@@ -258,6 +272,8 @@ def run_selftest():
         "https://127.0.0.1:2443/redfish/v1/Accounts/9")
     chk("cleanup cross-origin rejected", _resolve_cleanup_url("https://evil.invalid/collect", "127.0.0.1", 2443), None)
     chk("cleanup http rejected", _resolve_cleanup_url("http://127.0.0.1:2443/x", "127.0.0.1", 2443), None)
+    # probe 禁 redirect(评审 🔴1): 30x 不跟随, 防跨 origin/HTTP 泄露 Basic Auth
+    chk("no-redirect handler", _NoRedirect().redirect_request(), None)
 
     all_ok = True
     for name, ok, got, want in checks:

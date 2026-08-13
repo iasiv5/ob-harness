@@ -96,6 +96,18 @@ for a in ars:
         if dep not in ar_ids:
             sys.stderr.write("run.sh: AR '%s' depends_on unknown AR '%s'\n" % (a["ar"], dep))
             sys.exit(3)
+# schema 校验(评审 🟡2): AR ID 唯一(重复 → exit 3, 否则同 AR 跑两次)
+_seen = set()
+for a in ars:
+    if a["ar"] in _seen:
+        sys.stderr.write("run.sh: duplicate AR ID '%s'\n" % a["ar"])
+        sys.exit(3)
+    _seen.add(a["ar"])
+# schema 校验(评审 🟡2): orphan override(指向不存在 AR → exit 3)
+for _o_id in overrides:
+    if _o_id not in ar_ids:
+        sys.stderr.write("run.sh: applicability override '%s' references unknown AR\n" % _o_id)
+        sys.exit(3)
 def meta(ar_id):
     o = overrides.get(ar_id, {})
     st = o.get("status", default)
@@ -132,9 +144,9 @@ for a in ars:
     body_json = json.dumps(body) if body is not None else ""
     asserts_json = json.dumps(a.get("assert", []))
     s, r, src = stat[a["ar"]]
-    # framing(评审 🟡3): r/src json.dumps 转义 \n(多行 reason), 防 bash read 行拆成伪 AR;
-    # run.sh record 构造时 json.loads 还原。method/path 已无 \n, body/asserts 已 json.dumps。
-    print("\x1f".join([a["ar"], s, req.get("method", ""), req.get("path", ""),
+    # framing(评审 🟡3): r/src/path json.dumps 转义 \n(多行字段), 防 bash read 行拆成伪 AR;
+    # run.sh record 构造时 json.loads 还原(reason/source); probe --path 用时还原。
+    print("\x1f".join([a["ar"], s, req.get("method", ""), json.dumps(req.get("path", "")),
                      body_json, asserts_json, json.dumps(r), json.dumps(src)]))
 '); then
     echo "run.sh: baseline parse/validate failed (see stderr above: YAML syntax / unknown assert type / bad applicability status / unknown depends_on)." >&2
@@ -180,10 +192,12 @@ print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": r,
       [[ $VERBOSE -eq 1 ]] && printf '  %-14s skip\n' "$ar" >&2
       ;;
     xfail|applicable)
+      # path json.loads 还原(framing: planner json.dumps 转义多行 path, 评审 🟡2)
+      _path=$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]))' "$path")
       # probe rc 捕获 (绝不裸调): set -e 下 probe fail 在 if 条件里被吸收
       probe_args=(python3 "$PROBE" --host "$HOST" --port "$PORT" \
                   --user "$USER_NAME" --password "$PASSWORD" \
-                  --method "$method" --path "$path" \
+                  --method "$method" --path "$_path" \
                   --asserts "$asserts" --timeout "$TIMEOUT")
       [[ -n "$body" ]] && probe_args+=(--body "$body")
       if out=$("${probe_args[@]}"); then rc=0; else rc=$?; fi
