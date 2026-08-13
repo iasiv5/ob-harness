@@ -47,11 +47,23 @@ derive_qemu_paths
 _liv=""
 qemu_instance_liveness "$MACHINE" _liv
 started_by_test=0
+# 收尾 helper + trap(评审 🟡4: 中断/退出时清自起实例, 不遗留) — 注册在 start-qemu 前, 覆盖自起后任何 exit。
+_stop_if_started() {
+    [[ "$started_by_test" == "1" ]] || return 0
+    ./ob stop-qemu "$MACHINE" --force >/dev/null 2>&1 || true
+}
+trap '_stop_if_started' EXIT INT TERM HUP
 if [[ "$_liv" != "running" ]]; then
     echo "[integration] starting QEMU for '$MACHINE' (start-qemu --force)..."
     start_out="$(mktemp "${TMPDIR:-/tmp}/ob-tq-integ-start-XXXXXX")"
     start_rc=0
-    ./ob start-qemu "$MACHINE" --force >"$start_out" 2>&1 || start_rc=$?
+    # </dev/null 关 stdin(评审 🟡4: 避免端口冲突/首启 prompt 在继承 TTY 时交互挂起);
+    # OB_INTEG_*_PORT 注入空闲端口(多用户环境避默认端口冲突; CI 单用户可不设)。
+    _start_args=(start-qemu "$MACHINE" --force)
+    [[ -n "${OB_INTEG_SSH_PORT:-}" ]] && _start_args+=(--ssh-port "$OB_INTEG_SSH_PORT")
+    [[ -n "${OB_INTEG_REDFISH_PORT:-}" ]] && _start_args+=(--redfish-port "$OB_INTEG_REDFISH_PORT")
+    [[ -n "${OB_INTEG_IPMI_PORT:-}" ]] && _start_args+=(--ipmi-port "$OB_INTEG_IPMI_PORT")
+    ./ob "${_start_args[@]}" </dev/null >"$start_out" 2>&1 || start_rc=$?
     if [[ "$start_rc" -ne 0 ]]; then
         echo "FAIL: ob start-qemu rc=$start_rc (test-qemu needs a running instance)"
         sed 's/^/  | /' "$start_out"; rm -f "$start_out"; exit 1
@@ -62,16 +74,10 @@ else
     echo "[integration] reusing running instance for '$MACHINE'"
 fi
 
-# 收尾 helper: 只 stop 测试自起的实例(started_by_test==1), best-effort; 不动复用的既有实例。
-_stop_if_started() {
-    [[ "$started_by_test" == "1" ]] || return 0
-    ./ob stop-qemu "$MACHINE" --force >/dev/null 2>&1 || true
-}
-
 # Redfish readiness gate(连续 N 次 200, 对齐 smoke_e2e.sh Step 1b): 闭合 bmcweb boot flap race。
 REDFISH_PORT="$(grep '^redfish_port=' "workspace/qemu-bin/.pids/${MACHINE}.pid" 2>/dev/null | cut -d= -f2)"
 REDFISH_PORT="${REDFISH_PORT:-2443}"
-_rb_attempts=0; _rb_max="${OB_INTEG_REDFISH_ATTEMPTS:-30}"; _rb_needed="${OB_INTEG_REDFISH_DEBOUNCE:-2}"
+_rb_attempts=0; _rb_max="${OB_INTEG_REDFISH_ATTEMPTS:-90}"; _rb_needed="${OB_INTEG_REDFISH_DEBOUNCE:-2}"
 _rb_consec=0; _rb_ready=0; _rb_code="000"
 echo "[integration] waiting for Redfish root HTTP 200 ×${_rb_needed} consecutive (port ${REDFISH_PORT}, up to $((_rb_max*5))s)..."
 while [[ $_rb_attempts -lt $_rb_max ]]; do
@@ -89,7 +95,7 @@ while [[ $_rb_attempts -lt $_rb_max ]]; do
 done
 echo ""
 if [[ "$_rb_ready" -ne 1 ]]; then
-    echo "FAIL: Redfish root never stable 200 within $((_rb_max*5))s (last code=$_rb_code) — real Redfish outage"
+    echo "FAIL: '$MACHINE' Redfish not stable-200 within $((_rb_max*5))s budget (last code=$_rb_code; may still be booting — raise OB_INTEG_REDFISH_ATTEMPTS to extend, not necessarily a real outage)"
     _stop_if_started
     exit 1
 fi

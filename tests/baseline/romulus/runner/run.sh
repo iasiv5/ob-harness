@@ -84,9 +84,25 @@ except Exception as e:
 default = appl.get("default", "applicable")
 overrides = appl.get("overrides", {})
 ars = d["ars"]
+_ALLOWED_APPL = ("applicable", "skip", "xfail")
+# schema 校验(评审 🟡3): default status 白名单(非法 → exit 3, 不 exit 2)
+if default not in _ALLOWED_APPL:
+    sys.stderr.write("run.sh: applicability default '%s' not in %s\n" % (default, ", ".join(_ALLOWED_APPL)))
+    sys.exit(3)
+# schema 校验(评审 🟡3): depends_on 引用完整性(未知 dependency 不默认 applicable)
+ar_ids = {a["ar"] for a in ars}
+for a in ars:
+    for dep in (a.get("depends_on") or []):
+        if dep not in ar_ids:
+            sys.stderr.write("run.sh: AR '%s' depends_on unknown AR '%s'\n" % (a["ar"], dep))
+            sys.exit(3)
 def meta(ar_id):
     o = overrides.get(ar_id, {})
-    return (o.get("status", default), o.get("reason", ""), o.get("source", ""))
+    st = o.get("status", default)
+    if st not in _ALLOWED_APPL:
+        sys.stderr.write("run.sh: AR '%s' applicability status '%s' not in %s\n" % (ar_id, st, ", ".join(_ALLOWED_APPL)))
+        sys.exit(3)
+    return (st, o.get("reason", ""), o.get("source", ""))
 stat = {a["ar"]: meta(a["ar"]) for a in ars}
 # cascade-skip: depends_on 命中 skip/cascade_skip 的 AR 级联为 skip
 changed = True
@@ -116,13 +132,12 @@ for a in ars:
     body_json = json.dumps(body) if body is not None else ""
     asserts_json = json.dumps(a.get("assert", []))
     s, r, src = stat[a["ar"]]
-    # \x1f (unit separator) not \t: bash read treats tab as IFS-whitespace and
-    # merges consecutive empty fields (body-less GET rows have \t\t), which
-    # shifts every later column. \x1f is non-whitespace, so empty fields stay.
+    # framing(评审 🟡3): r/src json.dumps 转义 \n(多行 reason), 防 bash read 行拆成伪 AR;
+    # run.sh record 构造时 json.loads 还原。method/path 已无 \n, body/asserts 已 json.dumps。
     print("\x1f".join([a["ar"], s, req.get("method", ""), req.get("path", ""),
-                     body_json, asserts_json, r, src]))
+                     body_json, asserts_json, json.dumps(r), json.dumps(src)]))
 '); then
-    echo "run.sh: baseline parse/validate failed (see above — YAML syntax error or unknown assert type)." >&2
+    echo "run.sh: baseline parse/validate failed (see stderr above: YAML syntax / unknown assert type / bad applicability status / unknown depends_on)." >&2
     exit 3
 fi
 
@@ -157,8 +172,10 @@ while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
   case "$status" in
     skip|cascade_skip)
       python3 -c 'import json, sys
-print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": sys.argv[2],
-                  "source": sys.argv[3], "code": None, "actual": None}))' \
+r = json.loads(sys.argv[2]) if sys.argv[2] else ""
+src = json.loads(sys.argv[3]) if sys.argv[3] else ""
+print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": r,
+                  "source": src, "code": None, "actual": None}))' \
         "$ar" "$reason" "$source" >> "$results_file"
       [[ $VERBOSE -eq 1 ]] && printf '  %-14s skip\n' "$ar" >&2
       ;;
@@ -190,20 +207,22 @@ try:
 except Exception:
     d = {"pass": False, "code": None, "body": raw, "actual": None,
          "reason": "probe output not JSON (infra): " + raw[:200]}
+src = json.loads(sys.argv[3]) if sys.argv[3] else ""
+appl_reason = json.loads(sys.argv[4]) if sys.argv[4] else ""
 d["ar"] = sys.argv[1]
 d["status"] = sys.argv[2]
-d["source"] = sys.argv[3]
+d["source"] = src
 # xfail/xpass: keep probe actual reason in probe_reason for debugging, but show
 # the applicability reason ("why expected to fail") in the report appendix.
 d["probe_reason"] = d.get("reason", "")
-if sys.argv[2] in ("xfail", "xpass") and sys.argv[4]:
-    d["reason"] = sys.argv[4]
+if sys.argv[2] in ("xfail", "xpass") and appl_reason:
+    d["reason"] = appl_reason
 print(json.dumps(d, ensure_ascii=False))' "$ar" "$_st" "$source" "$reason" >> "$results_file"
       [[ $VERBOSE -eq 1 ]] && printf '  %-14s %s\n' "$ar" "$_st" >&2
       ;;
     *)
       echo "run.sh: unknown applicability status '$status' for $ar" >&2
-      exit 2
+      exit 3
       ;;
   esac
 done <<< "$plan"

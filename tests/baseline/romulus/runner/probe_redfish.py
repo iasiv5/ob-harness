@@ -141,6 +141,24 @@ def _extract_created_uri(headers, body):
     return None
 
 
+def _resolve_cleanup_url(uri, host, port):
+    """Resolve a cleanup URI to a same-origin URL, or None if unsafe.
+
+    Security (评审 🔴1): only relative URIs or https absolute whose host:port
+    matches the original Redfish origin are allowed — prevents a malicious
+    Location/@odata.id from leaking Basic Auth to an arbitrary host, and rejects
+    HTTP credential downgrade.
+    """
+    if uri.startswith("/"):
+        return "https://{}:{}{}".format(host, port, uri)
+    if uri.startswith("https://"):
+        from urllib.parse import urlsplit
+        p = urlsplit(uri)
+        if p.hostname == host and str(p.port or 443) == str(port):
+            return uri
+    return None
+
+
 def _cleanup_delete(host, port, user, password, headers, body, timeout):
     """Best-effort DELETE of a resource a mutating probe should not have created.
 
@@ -151,10 +169,9 @@ def _cleanup_delete(host, port, user, password, headers, body, timeout):
     uri = _extract_created_uri(headers, body)
     if not uri:
         return None
-    if uri.startswith("http://") or uri.startswith("https://"):
-        url = uri
-    else:
-        url = "https://{}:{}{}".format(host, port, uri)
+    url = _resolve_cleanup_url(uri, host, port)
+    if url is None:
+        return "cleanup skipped: uri {!r} not same-origin (want relative or https://{}:{})".format(uri, host, port)
     req = urllib.request.Request(url, method="DELETE")
     req.add_header("Authorization", _basic_auth(user, password))
     try:
@@ -196,8 +213,10 @@ def probe(host, port, user, password, method, path, body, asserts, timeout=10.0)
         conn_error = "request error: {}".format(e)
 
     if conn_error is not None:
-        return {"pass": False, "code": None, "body": "", "actual": None,
-                "reason": conn_error}
+        # transport/timeout/request error = infra(评审 🔴2), 非 BMC 不满足 assert → error 态(rc=3),
+        # 不进 fail/xfail 的 BMC-truth 统计。
+        return {"pass": False, "error": True, "code": None, "body": "",
+                "actual": None, "reason": conn_error}
 
     all_pass, reason, actual = run_asserts(asserts, code, resp_body)
     result = {"pass": all_pass, "code": code, "body": resp_body,
@@ -232,6 +251,13 @@ def run_selftest():
                                           "Managers.0.FirmwareVersion", "x"), True)
     chk("deep list oob", json_path_exists('{"Managers":[{"FirmwareVersion":"x"}]}',
                                           "Managers.5.FirmwareVersion"), False)
+    # cleanup 同 origin 安全(评审 🔴1): 相对 URI 用原 origin; https 同 origin 放行; http/跨 origin 拒
+    chk("cleanup relative", _resolve_cleanup_url("/redfish/v1/Accounts/9", "127.0.0.1", 2443),
+        "https://127.0.0.1:2443/redfish/v1/Accounts/9")
+    chk("cleanup same-origin https", _resolve_cleanup_url("https://127.0.0.1:2443/redfish/v1/Accounts/9", "127.0.0.1", 2443),
+        "https://127.0.0.1:2443/redfish/v1/Accounts/9")
+    chk("cleanup cross-origin rejected", _resolve_cleanup_url("https://evil.invalid/collect", "127.0.0.1", 2443), None)
+    chk("cleanup http rejected", _resolve_cleanup_url("http://127.0.0.1:2443/x", "127.0.0.1", 2443), None)
 
     all_ok = True
     for name, ok, got, want in checks:
@@ -275,6 +301,8 @@ def main(argv=None):
     result = probe(args.host, args.port, args.user, args.password,
                    args.method, args.path, args.body, asserts, args.timeout)
     print(json.dumps(result, ensure_ascii=False))
+    if result.get("error"):
+        return 3
     return 0 if result.get("pass") else 1
 
 

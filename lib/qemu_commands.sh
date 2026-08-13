@@ -809,12 +809,10 @@ cmd_test_qemu() {
     local _port="$PIDFILE_REDFISH_PORT"
 
     # ── 从 ar_probes.yaml 顶层读 auth (PyYAML; cmd_test_qemu 不硬编码凭据) ──
-    # YAML malformed → python stderr 报错 + 无 stdout → _auth_user 空 → exit 3(评审 🔴2)
-    local _auth_user="" _auth_pass=""
-    {
-        read -r _auth_user
-        read -r _auth_pass
-    } < <(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
+    # $() 捕获 + || _arc=$? 显式判 rc(评审 🟡1): process substitution 的 read 在 set -e 下 EOF
+    # exit 1 会先于显式 exit 3 触发 errexit, 把 malformed YAML 误报成 exit 1(α truth 污染)。
+    local _auth_user="" _auth_pass="" _auth_out="" _arc=0
+    _auth_out=$(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
 import yaml, os, sys
 try:
     d = yaml.safe_load(open(os.environ["OB_TQ_YAML"])) or {}
@@ -825,9 +823,16 @@ a = d.get("auth") or {}
 rf = a.get("redfish") if isinstance(a.get("redfish"), dict) else None
 print((rf or {}).get("user") or a.get("user") or "")
 print((rf or {}).get("password") or a.get("password") or "")
-')
+') || _arc=$?
+    if [[ $_arc -ne 0 ]]; then
+        error "Cannot parse $_dir/ar_probes.yaml auth (YAML malformed — see parse error above)."
+        exit 3
+    fi
+    _auth_user="${_auth_out%%$'\n'*}"
+    _auth_pass="${_auth_out#*$'\n'}"
+    [[ "$_auth_pass" == "$_auth_out" ]] && _auth_pass=""   # 单行兜底(无第二行)
     if [[ -z "$_auth_user" ]]; then
-        error "Cannot read auth.user from $_dir/ar_probes.yaml (missing top-level auth:/user, or YAML malformed — see any parse error above)."
+        error "Cannot read auth.redfish.user (or fallback auth.user) from $_dir/ar_probes.yaml."
         exit 3
     fi
 
