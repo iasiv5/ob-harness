@@ -27,9 +27,14 @@ CLI (selftest, no network):
 import argparse
 import base64
 import json
+import ssl
 import sys
 import urllib.error
 import urllib.request
+
+# bmcweb ships a self-signed cert; mirror `ob smoke`'s `curl -sk` (no cert verify).
+# Spike scope: test-qemu talks to a local QEMU BMC the operator trusts.
+_SSL_CTX = ssl._create_unverified_context()
 
 
 # --- assert primitives ------------------------------------------------------
@@ -153,7 +158,7 @@ def _cleanup_delete(host, port, user, password, headers, body, timeout):
     req = urllib.request.Request(url, method="DELETE")
     req.add_header("Authorization", _basic_auth(user, password))
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
             return "cleanup DELETE {} -> {}".format(url, resp.getcode())
     except urllib.error.HTTPError as e:
         return "cleanup DELETE {} -> HTTP {}".format(url, e.code)
@@ -174,7 +179,7 @@ def probe(host, port, user, password, method, path, body, asserts, timeout=10.0)
     resp_headers = None
     conn_error = None
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with urllib.request.urlopen(req, timeout=timeout, context=_SSL_CTX) as resp:
             code = resp.getcode()
             resp_headers = resp.headers
             resp_body = resp.read().decode("utf-8", "replace")
