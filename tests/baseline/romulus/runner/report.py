@@ -84,6 +84,19 @@ def main():
         verdict, counts["pass"], counts["fail"], counts["skip"],
         counts["xfail"], counts["xpass"], counts["error"]))
 
+    # 401 hint (B1): 全部 fail 都是 401 而 BMC 在正常应答(其余 AR 有 pass)时, 最大嫌疑是
+    # 凭据配错(infra)而非 BMC 不满足 baseline — exit 语义仍是 α truth(fail 是 BMC 对这些
+    # 凭据的真实回答, 拒绝错误凭据恰是正确行为), 但把"先查凭据"指出来, 防止用户按 fail
+    # 行方向去 debug BMC 接口。probe 无法自证所给凭据是否正确, 故只 hint 不重分类。
+    if counts["fail"] > 0 and counts["pass"] > 0:
+        fails = [r for r in records
+                 if isinstance(r, dict) and r.get("status") == "fail"]
+        if fails and all(r.get("code") == 401 for r in fails):
+            print("HINT: all {} failing ARs returned HTTP 401 while {} other AR(s) passed —".format(
+                len(fails), counts["pass"]))
+            print("      likely wrong credentials (OB_TQ_USER / OB_TQ_PASSWORD env or ar_probes.yaml")
+            print("      auth), not a baseline miss. Verify creds and re-run before debugging the BMC.")
+
     # 逐条五态(评审 🟡7): 默认打印每条 AR(含 pass/fail), fail/error 带 code + reason;
     # skip/xfail/xpass 带 reason + source。help "read the fail rows" 才名副其实。
     for r in records:
