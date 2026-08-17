@@ -626,6 +626,18 @@ _smoke_render_verdict() {
     # α 重申: exit 1 当下向 stderr 喂一行 α 语义, 防 caller 据全局 "1 = broken" 误判 smoke 坏。
     # warn 默认走 stdout, 显式 >&2 落 stderr(不污染 stdout 真相报告)。
     warn "exit 1 here is the α truth-reporter contract: the ✗ rows above report the BMC interface's ACTUAL state, NOT a smoke command failure — read the ✗ rows to see which interface and why (debug the BMC interface, not smoke)." >&2
+    # 调和提示(A1): Managers/SoftwareVersion ✗ 与 test-qemu 层 pass 同时成立有已知形态 —
+    # smoke 是固定哨兵(零 per-machine, 不能校准), 持久 image 缺口会让它对某 image 常红;
+    # per-machine baseline 曾以校准吸收同款缺口(romulus 先例, 记录在 tests/baseline/)。
+    # 这是信息索引非 remedy(解耦原则: peer 命令互相不做流程 nudge): 指出瞬时/持久的区分法
+    # 与校准历史落点, 不指使 caller 下一步跑哪条命令。
+    local _srv_cal=""
+    for _srv_cal in "${_srv_fn[@]}"; do
+        if [[ "$_srv_cal" == *"Managers"* || "$_srv_cal" == *"SoftwareVersion"* ]]; then
+            info "Managers/SoftwareVersion ✗ has two known shapes: (a) transient bmcweb hiccup — a re-run of smoke distinguishes it (each probe already retries once); (b) a persistent image gap — the romulus precedent was absorbed by per-machine baseline calibration (notes in tests/baseline/<machine>/applicability.yaml); the calibrated per-machine verdict lives in the test-qemu layer, orthogonal to this smoke row." >&2
+            break
+        fi
+    done
     return 1
 }
 
