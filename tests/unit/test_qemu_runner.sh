@@ -197,6 +197,31 @@ assert_rc 3 "lowercase HTTP method rejected as config error" \
 assert_rc 3 "planner unit-separator path rejected as config error" \
   _planner_fixture "$_tmp/control-path.yaml"
 
+# skip AR 可省略 request(评审配套⑤): 无占位假请求; applicable AR 缺 request → exit 3
+cat > "$_tmp/skip-noreq.yaml" <<'YAML'
+auth: {user: r, password: x}
+ars:
+  - ar: TEST-SKIP
+    name: skip without request
+    probe: redfish
+    suite: x
+    assert: [{type: status_in, value: [200]}]
+    depends_on: []
+    rationale: skip AR may omit request
+YAML
+cat > "$_tmp/skip-noreq-appl.yaml" <<'YAML'
+default: applicable
+overrides:
+  TEST-SKIP: {status: skip, reason: not emulatable in QEMU, source: unit}
+YAML
+rc=0; OB_TQ_AR_PROBES="$_tmp/skip-noreq.yaml" OB_TQ_APPL="$_tmp/skip-noreq-appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp/skip-noreq.out" 2>&1 || rc=$?
+assert_eq "skip AR without request → dry-run ok" "$rc" "0"
+assert_contains "skip AR listed as skip" "$(cat "$_tmp/skip-noreq.out")" "TEST-SKIP"
+rc=0; OB_TQ_AR_PROBES="$_tmp/skip-noreq.yaml" OB_TQ_APPL="$_tmp/applicable.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >/dev/null 2>&1 || rc=$?
+assert_eq "applicable AR missing request → exit 3" "$rc" "3"
+
 REPORT_BIN="$(dirname "$RUNNER")/report.py"
 _report_stdin_case() {
   local payload="$1"

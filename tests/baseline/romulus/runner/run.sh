@@ -165,16 +165,26 @@ for a in ars:
             sys.stderr.write("run.sh: AR '%s' unknown assert type '%s'; allowed: %s\n" %
                              (a["ar"], x.get("type"), ", ".join(_ALLOWED_ASSERT)))
             sys.exit(3)
-    req = a["request"]
-    # method 白名单 + path 拒控制字符: 两者直接进入 framing/HTTP argv。
-    _m = req.get("method", "")
-    _p = req.get("path", "")
-    if not isinstance(_m, str) or _m not in _ALLOWED_METHODS:
-        sys.stderr.write("run.sh: AR '%s' bad HTTP method '%s'; allowed: %s\n" % (a["ar"], _m, ", ".join(_ALLOWED_METHODS)))
-        sys.exit(3)
-    if not isinstance(_p, str) or has_control_chars(_p):
-        sys.stderr.write("run.sh: AR '%s' request.path has control chars or non-str\n" % a["ar"])
-        sys.exit(3)
+    # request 缺省容忍(评审配套⑤): 仅实际将 skip 的 AR 可省略 request — 无可执行
+    # 探测定义就不该编造占位请求(如 Web banner AR 挂 GET /redfish/v1 的语义错位);
+    # request 存在则无条件过白名单校验(数据要合法, applicability 改回 applicable 后即跑)。
+    req = a.get("request") or {}
+    if not req:
+        if stat[a["ar"]][0] not in ("skip", "cascade_skip"):
+            sys.stderr.write("run.sh: AR '%s' missing request (required unless applicability is skip)\n" % a["ar"])
+            sys.exit(3)
+        _m = ""
+        _p = ""
+    else:
+        # method 白名单 + path 拒控制字符: 两者直接进入 framing/HTTP argv。
+        _m = req.get("method", "")
+        _p = req.get("path", "")
+        if not isinstance(_m, str) or _m not in _ALLOWED_METHODS:
+            sys.stderr.write("run.sh: AR '%s' bad HTTP method '%s'; allowed: %s\n" % (a["ar"], _m, ", ".join(_ALLOWED_METHODS)))
+            sys.exit(3)
+        if not isinstance(_p, str) or has_control_chars(_p):
+            sys.stderr.write("run.sh: AR '%s' request.path has control chars or non-str\n" % a["ar"])
+            sys.exit(3)
     body = req.get("body")
     body_json = json.dumps(body) if body is not None else ""
     asserts_json = json.dumps(a.get("assert", []))

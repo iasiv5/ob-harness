@@ -798,6 +798,13 @@ Options:
   -d, --dry-run    List ARs + applicability, no probe (runner-level)
   -h, --help       Show this help
 
+Environment:
+  OB_TQ_USER / OB_TQ_PASSWORD   Redfish creds — env wins over argv flags and over
+                                ar_probes.yaml auth (keeps secrets out of 'ps';
+                                environ is owner-only). Missing ones fall back to
+                                ar_probes.yaml auth.redfish / auth.
+  OB_TQ_TIMEOUT                 Per-probe HTTP timeout seconds (default 10)
+
 Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish
           port from the instance's PID file (no port overrides honored).
           With no running instance it exits 3 and will NOT boot one — run
@@ -909,6 +916,22 @@ cmd_test_qemu() {
         error "No baseline dir for '$MACHINE'."
         error "Expected tests/baseline/$MACHINE/ (community) or contexts/baseline/$MACHINE/ (custom). See ADR-0025."
         exit 3
+    fi
+
+    # ── 谱系提示(评审配套①): custom 谱系(source label 或 QEMU binary)命中社区 tests/baseline/
+    #    时提示 fail 归因风险 — 不可消音, 安静的唯一出路是 contexts/baseline/<machine>/ 数据接管
+    #    (ADR-0025)。谱系事实读不到 → 视为 unknown, 不提示(没有事实不告警)。
+    local _tq_root="${HARNESS_ROOT:-$OB_ENTRY_DIR}"
+    if [[ "$_dir" == "$_tq_root/tests/baseline/$MACHINE" ]]; then
+        local _src_label="" _bin_kind="community"
+        _src_label="$(read_manifest_field source_label 2>/dev/null || true)"
+        [[ "$PIDFILE_BINARY" == */custom/* ]] && _bin_kind="custom"
+        if [[ "$_src_label" == "custom" || "$_bin_kind" == "custom" ]]; then
+            warn "Probing the COMMUNITY baseline ($_dir) in a custom environment:"
+            warn "  OpenBMC source label=${_src_label:-unknown}, QEMU binary=$_bin_kind."
+            warn "  A fail may be specific to this build — confirm against upstream, or provide"
+            warn "  contexts/baseline/$MACHINE/ to own the verdict (ADR-0025)."
+        fi
     fi
 
     # ── 从 PID 文件读真实 Redfish 端口 (qemu_instance_liveness 已填 PIDFILE_*; 不假设默认值) ──

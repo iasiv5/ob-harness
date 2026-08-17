@@ -69,9 +69,8 @@ ars:
     name: Web UI banner customization
     probe: redfish
     suite: webui
-    request:
-      method: GET
-      path: /redfish/v1
+    # 无 request: skip AR 无可执行探测定义, 不编造占位请求(评审配套⑤;
+    # planner 允许 skip AR 省略 request, applicable AR 缺 request 仍 exit 3)
     assert:
       - type: status_in
         value: [200]

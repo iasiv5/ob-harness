@@ -268,6 +268,10 @@ test-qemu Options:
   --suite <name>          Only run ARs in this suite
   --ar <id>               Only run the named AR
   --report <path>         Dump JSON report to PATH
+  Environment:
+    OB_TQ_USER / OB_TQ_PASSWORD  Redfish creds — env wins over ar_probes.yaml
+                    auth (keeps secrets out of 'ps'; environ is owner-only)
+    OB_TQ_TIMEOUT  Per-probe HTTP timeout seconds (default 10)
   Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish port
             from the instance's PID file (no port overrides honored). With no
             running instance it exits 3 and will NOT boot one — run
