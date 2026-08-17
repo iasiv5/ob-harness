@@ -1,17 +1,15 @@
-# romulus 本地适用性:标 skip/xfail 的 AR + reason + source。
+# romulus 适用性:标 skip/xfail 的 AR + reason + source。
+#
+# 校准记录(2026-08-17):
+#   BMC-3-15-1 改测 FirmwareInventory collection 非空, 当前 pass → 移除
+#              xfail; Managers/bmc.FirmwareVersion 的 bmcweb path 映射缺口
+#              不再由 baseline 长期吞掉。
+#   BMC-9-1-1  Accounts.Description 已作为 applicable 字段锁定, 不再 xfail。
 # default: applicable — 未列出的 AR 均执行 probe 判定。
 # statuses: applicable(默认) / skip(不调 probe) / xfail(调 probe: 预期 fail->xfail, 意外 pass->xpass)
 default: applicable
 overrides:
-  BMC-3-15-1:
-    status: xfail
-    reason: romulus image 不暴露 Managers/bmc.FirmwareVersion (顶层无 + SoftwareInventory 空), 跟踪中
-    source: manual
   BMC-7-7-1:
     status: skip
-    reason: romulus 未启用 banner 定制 (QEMU 不可仿真)
-    source: manual
-  BMC-9-1-1:
-    status: xfail
-    reason: romulus 预期不填 Accounts.Description, 跟踪中
+    reason: romulus QEMU 暂无 Web UI banner 可执行 Redfish probe
     source: manual
