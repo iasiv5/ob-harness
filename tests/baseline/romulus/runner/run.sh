@@ -3,6 +3,14 @@
 # 收 pass/fail/skip/xfail/xpass → report.py → exit 0/1。
 # per-machine (ADR-0025); host/port/auth 由调用方注入, 不硬编码。
 #
+# 结构地图(B3; 4 段, 每 python 件独立可单测):
+#   ① 前置检查     — 参数/凭据(argv 或 env 至少一源)/PyYAML
+#   ② plan.py      — YAML × applicability → schema 校验 + 过滤 + cascade-skip
+#                    → \x1f 分隔计划行(数据错 → exit 3, 不进 α truth)
+#   ③ 主循环       — 计划行逐条: skip(不调 probe)/xfail/applicable(调 probe);
+#                    probe 输出经 assemble.py 协议校验 + 五态判定 → JSONL
+#   ④ report.py    — 汇总 VERDICT + 逐条行 + 可选 JSON report; exit 0/1/3
+#
 # rc 纪律 (评审三轮 🔴1): set -euo pipefail 下 probe fail (exit 1) 不能裸调,
 # 否则 errexit 中止 runner、report.py 不执行。每条 probe 用 if/else 捕获 rc。
 set -euo pipefail
@@ -64,6 +72,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 AR_PROBES="${OB_TQ_AR_PROBES:-$SCRIPT_DIR/../ar_probes.yaml}"
 APPL="${OB_TQ_APPL:-$SCRIPT_DIR/../applicability.yaml}"
 PROBE="${OB_TQ_PROBE:-$SCRIPT_DIR/probe_redfish.py}"
+PLAN="$SCRIPT_DIR/plan.py"
+ASSEMBLE="$SCRIPT_DIR/assemble.py"
 REPORT="$SCRIPT_DIR/report.py"
 
 if [[ $DRY_RUN -eq 0 ]]; then
@@ -85,114 +95,10 @@ if ! python3 -c "import yaml" 2>/dev/null; then
     exit 3
 fi
 
-# planner: 读 yaml × applicability, 应用 --ar/--suite 过滤 + cascade-skip 传播。
-# 产 \x1f 分隔行; YAML 解析失败 → exit 3 + remedy(不 traceback, 不污染 α truth, 评审 🔴2)
+# ── ② planner: 读 yaml × applicability, 应用 --ar/--suite 过滤 + cascade-skip 传播。
+# 产 \x1f 分隔行; YAML/schema 违规 → exit 3 + remedy(不 traceback, 不污染 α truth, 评审 🔴2)
 if ! plan=$(AR_FILTER="$AR_FILTER" SUITE_FILTER="$SUITE_FILTER" \
-       AR_PROBES="$AR_PROBES" APPL="$APPL" python3 -c '
-import yaml, json, os, sys
-af = os.environ.get("AR_FILTER", "")
-sf = os.environ.get("SUITE_FILTER", "")
-try:
-    d = yaml.safe_load(open(os.environ["AR_PROBES"]))
-    appl = yaml.safe_load(open(os.environ["APPL"]))
-except Exception as e:
-    sys.stderr.write("run.sh: cannot parse baseline YAML: %s\n" % e)
-    sys.exit(3)
-default = appl.get("default", "applicable")
-overrides = appl.get("overrides", {})
-ars = d["ars"]
-_ALLOWED_APPL = ("applicable", "skip", "xfail")
-def has_control_chars(value):
-    return any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in value)
-# schema 校验(评审 🟡3): default status 白名单(非法 → exit 3, 不 exit 2)
-if default not in _ALLOWED_APPL:
-    sys.stderr.write("run.sh: applicability default '%s' not in %s\n" % (default, ", ".join(_ALLOWED_APPL)))
-    sys.exit(3)
-# schema 校验: AR ID 是 framing + report identity, 须非空且不含控制字符。
-for a in ars:
-    ar_id = a.get("ar") if isinstance(a, dict) else None
-    if not isinstance(ar_id, str) or not ar_id or has_control_chars(ar_id):
-        sys.stderr.write("run.sh: bad AR ID %r (want non-empty string without control chars)\n" % ar_id)
-        sys.exit(3)
-# schema 校验(评审 🟡3): depends_on 引用完整性(未知 dependency 不默认 applicable)
-ar_ids = {a["ar"] for a in ars}
-for a in ars:
-    for dep in (a.get("depends_on") or []):
-        if dep not in ar_ids:
-            sys.stderr.write("run.sh: AR '%s' depends_on unknown AR '%s'\n" % (a["ar"], dep))
-            sys.exit(3)
-# schema 校验(评审 🟡2): AR ID 唯一(重复 → exit 3, 否则同 AR 跑两次)
-_seen = set()
-for a in ars:
-    if a["ar"] in _seen:
-        sys.stderr.write("run.sh: duplicate AR ID '%s'\n" % a["ar"])
-        sys.exit(3)
-    _seen.add(a["ar"])
-# schema 校验(评审 🟡2): orphan override(指向不存在 AR → exit 3)
-for _o_id in overrides:
-    if _o_id not in ar_ids:
-        sys.stderr.write("run.sh: applicability override '%s' references unknown AR\n" % _o_id)
-        sys.exit(3)
-def meta(ar_id):
-    o = overrides.get(ar_id, {})
-    st = o.get("status", default)
-    if st not in _ALLOWED_APPL:
-        sys.stderr.write("run.sh: AR '%s' applicability status '%s' not in %s\n" % (ar_id, st, ", ".join(_ALLOWED_APPL)))
-        sys.exit(3)
-    return (st, o.get("reason", ""), o.get("source", ""))
-stat = {a["ar"]: meta(a["ar"]) for a in ars}
-# cascade-skip: depends_on 命中 skip/cascade_skip 的 AR 级联为 skip
-changed = True
-while changed:
-    changed = False
-    for a in ars:
-        if stat[a["ar"]][0] == "applicable":
-            for dep in (a.get("depends_on") or []):
-                ds = stat.get(dep, ("applicable", "", ""))[0]
-                if ds in ("skip", "cascade_skip"):
-                    stat[a["ar"]] = ("cascade_skip", "depends_on " + dep + " skipped", "auto")
-                    changed = True
-_ALLOWED_ASSERT = ("status_in", "json_path_exists", "json_path_match")
-_ALLOWED_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")
-for a in ars:
-    if af and a["ar"] != af:
-        continue
-    if sf and a.get("suite") != sf:
-        continue
-    # schema 校验(评审二轮 🟡): 未知 assert type = baseline 数据错, exit 3(不当 BMC fail)
-    for x in a.get("assert", []):
-        if x.get("type") not in _ALLOWED_ASSERT:
-            sys.stderr.write("run.sh: AR '%s' unknown assert type '%s'; allowed: %s\n" %
-                             (a["ar"], x.get("type"), ", ".join(_ALLOWED_ASSERT)))
-            sys.exit(3)
-    # request 缺省容忍(评审配套⑤): 仅实际将 skip 的 AR 可省略 request — 无可执行
-    # 探测定义就不该编造占位请求(如 Web banner AR 挂 GET /redfish/v1 的语义错位);
-    # request 存在则无条件过白名单校验(数据要合法, applicability 改回 applicable 后即跑)。
-    req = a.get("request") or {}
-    if not req:
-        if stat[a["ar"]][0] not in ("skip", "cascade_skip"):
-            sys.stderr.write("run.sh: AR '%s' missing request (required unless applicability is skip)\n" % a["ar"])
-            sys.exit(3)
-        _m = ""
-        _p = ""
-    else:
-        # method 白名单 + path 拒控制字符: 两者直接进入 framing/HTTP argv。
-        _m = req.get("method", "")
-        _p = req.get("path", "")
-        if not isinstance(_m, str) or _m not in _ALLOWED_METHODS:
-            sys.stderr.write("run.sh: AR '%s' bad HTTP method '%s'; allowed: %s\n" % (a["ar"], _m, ", ".join(_ALLOWED_METHODS)))
-            sys.exit(3)
-        if not isinstance(_p, str) or has_control_chars(_p):
-            sys.stderr.write("run.sh: AR '%s' request.path has control chars or non-str\n" % a["ar"])
-            sys.exit(3)
-    body = req.get("body")
-    body_json = json.dumps(body) if body is not None else ""
-    asserts_json = json.dumps(a.get("assert", []))
-    s, r, src = stat[a["ar"]]
-    # framing: method/path 原字符串(白名单/控制字符校验保证无 \n); reason/src json.dumps(多行允许)
-    print("\x1f".join([a["ar"], s, _m, _p,
-                     body_json, asserts_json, json.dumps(r), json.dumps(src)]))
-'); then
+       AR_PROBES="$AR_PROBES" APPL="$APPL" python3 "$PLAN"); then
     echo "run.sh: baseline parse/validate failed (see stderr above: YAML syntax / unknown assert type / bad applicability status / unknown depends_on)." >&2
     exit 3
 fi
@@ -223,16 +129,13 @@ fi
 results_file="$(mktemp)"
 trap 'rm -f "$results_file"' EXIT
 
+# ── ③ 主循环: 计划行逐条分派。skip/cascade_skip 不调 probe; xfail/applicable 调 probe,
+# 输出经 assemble.py 协议校验 + 五态判定装成 JSONL record。
 while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
   [[ -z "$ar" ]] && continue
   case "$status" in
     skip|cascade_skip)
-      python3 -c 'import json, sys
-r = json.loads(sys.argv[2]) if sys.argv[2] else ""
-src = json.loads(sys.argv[3]) if sys.argv[3] else ""
-print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": r,
-                  "source": src, "code": None, "actual": None}))' \
-        "$ar" "$reason" "$source" >> "$results_file"
+      python3 "$ASSEMBLE" --skip "$ar" "$reason" "$source" >> "$results_file"
       [[ $VERBOSE -eq 1 ]] && printf '  %-14s skip\n' "$ar" >&2
       ;;
     xfail|applicable)
@@ -246,69 +149,17 @@ print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": r,
       [[ -n "$PASSWORD" ]] && probe_args+=(--password "$PASSWORD")
       [[ -n "$body" ]] && probe_args+=(--body "$body")
       if out=$("${probe_args[@]}"); then rc=0; else rc=$?; fi
-      # probe 协议校验 + status(评审 🔴1): rc 限于 0/1/3; 输出必须 dict + pass/error/rc 一致;
-      # 不一致({}+rc0/[]+rc0/rc2/rc3无error) → error record, 不假 PASS/冒充 BMC fail。
-      # 装配层 rc 兜底(评审 🟡1): 内联 python 异常不允许经 errexit 折叠成 exit 1 假 α truth —
-      # 失败改记 error record(infra)。已知触发器(编码崩溃)已被头部双 export 消灭, 本分支属
-      # 防御性: 敌意 env 回归用例走的是预防层, 不断言此分支, 勿再为它造测(四轮对撞结论)。
+      # probe 协议校验 + 五态判定经 assemble.py(评审 🔴1: 不一致 → error record,
+      # 不假 PASS/冒充 BMC fail)。装配层 rc 兜底(评审 🟡1): 内联 python 异常不允许经
+      # errexit 折叠成 exit 1 假 α truth — 失败改记 error record(infra)。已知触发器
+      # (编码崩溃)已被头部双 export 消灭, 本分支属防御性: 敌意 env 回归用例走的是
+      # 预防层, 不断言此分支, 勿再为它造测(四轮对撞结论)。
       _rec=""
-      _rec=$(printf '%s' "$out" | python3 -c 'import json, sys
-raw = sys.stdin.read()
-appl = sys.argv[2]
-src = json.loads(sys.argv[3]) if sys.argv[3] else ""
-appl_reason = json.loads(sys.argv[4]) if sys.argv[4] else ""
-rc = int(sys.argv[5])
-try:
-    d = json.loads(raw)
-except Exception:
-    d = None
-proto = None
-if not isinstance(d, dict):
-    proto = "probe output not dict (infra): " + str(raw)[:200]
-elif rc not in (0, 1, 3):
-    proto = "probe rc %d outside 0/1/3 (infra)" % rc
-elif any(k not in d for k in ("pass", "code", "body", "actual", "reason")):
-    proto = "probe output missing required field (infra)"
-elif type(d.get("pass")) is not bool:
-    proto = "probe pass is not bool (infra)"
-elif "error" in d and type(d.get("error")) is not bool:
-    proto = "probe error is not bool (infra)"
-elif d.get("code") is not None and type(d.get("code")) is not int:
-    proto = "probe code is not int/null (infra)"
-elif not isinstance(d.get("body"), str) or not isinstance(d.get("reason"), str):
-    proto = "probe body/reason is not string (infra)"
-elif rc == 3 and not (d.get("pass") is False and d.get("error") is True):
-    proto = "probe rc=3 requires pass=false,error=true (infra)"
-elif rc == 0 and not (d.get("pass") is True and d.get("error", False) is False):
-    proto = "probe rc=0 requires pass=true,error=false (infra)"
-elif rc == 1 and not (d.get("pass") is False and d.get("error", False) is False):
-    proto = "probe rc=1 requires pass=false,error=false (infra)"
-if proto:
-    d = {"pass": False, "error": True, "code": None, "body": raw,
-         "actual": None, "reason": proto}
-    st = "error"
-elif rc == 3:
-    st = "error"
-elif appl == "xfail":
-    st = "xpass" if rc == 0 else "xfail"
-else:
-    st = "pass" if rc == 0 else "fail"
-d["ar"] = sys.argv[1]
-d["status"] = st
-d["source"] = src
-d["probe_reason"] = d.get("reason", "") or proto or ""
-if st in ("xfail", "xpass") and appl_reason:
-    d["reason"] = appl_reason
-elif proto:
-    d["reason"] = proto
-print(json.dumps(d, ensure_ascii=False))' "$ar" "$status" "$source" "$reason" "$rc") || _rec=""
+      _rec=$(printf '%s' "$out" | python3 "$ASSEMBLE" "$ar" "$status" "$source" "$reason" "$rc") || _rec=""
       if [[ -z "$_rec" ]]; then
-          # argv 纯 ASCII + print 默认 ensure_ascii → 此构造自身不会崩; 若真崩则 errexit 可见,
-          # 好过静默丢 AR 记录(report 读空行会被 skip, AR 既不 pass 也不 fail)。
-          _rec=$(python3 -c 'import json, sys
-print(json.dumps({"ar": sys.argv[1], "status": "error",
-                  "reason": "record assembly failed (infra): runner inline python aborted",
-                  "code": None, "actual": None}, ensure_ascii=False))' "$ar")
+          # 若真崩则 errexit 可见, 好过静默丢 AR 记录(report 读空行会被 skip,
+          # AR 既不 pass 也不 fail)。
+          _rec=$(python3 "$ASSEMBLE" --fallback "$ar")
       fi
       echo "$_rec" >> "$results_file"
       if [[ $VERBOSE -eq 1 ]]; then
@@ -322,6 +173,7 @@ print(json.dumps({"ar": sys.argv[1], "status": "error",
   esac
 done <<< "$plan"
 
+# ── ④ report: 汇总 VERDICT + 逐条行 + 可选 JSON; exit 0(无 applicable fail)/1(α truth)/3(infra)。
 report_args=(python3 "$REPORT" --results "$results_file")
 if [[ -n "$REPORT_PATH" ]]; then
   report_args+=(--report "$REPORT_PATH")

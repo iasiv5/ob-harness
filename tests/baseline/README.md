@@ -47,6 +47,16 @@ cp -r tests/baseline/romulus tests/baseline/<new-machine>   # 社区机
 runner 探测是确定性脚本 + assert 原语（状态断言非计时断言，零 flake），
 LLM 不参与 runtime 判定。
 
+`runner/` 文件构成（4 件，各管一段，可独立单测）：
+- `run.sh` — bash 编排：参数/凭据前置 → planner → 逐 AR 分派 → report。
+  顶部"结构地图"注释是接入者的阅读入口。
+- `plan.py` — planner：两份 YAML → schema 校验（数据错 exit 3 不进
+  α truth）→ `--ar`/`--suite` 过滤 → cascade-skip 传播 → 计划行。
+- `assemble.py` — record 装配层：probe 输出协议校验（不一致记 error
+  不假 PASS）+ 五态判定 + skip record 组装。
+- `probe_redfish.py` — Redfish probe 引擎 + assert 原语（`--selftest`
+  无网络自检）；`report.py` — VERDICT 汇总 + 逐条行 + JSON report。
+
 ## applicability 维护规则（xfail 不是永久停车场；降级锚点不是永久降级）
 
 - 新 AR 默认 `applicable`；仅在**该机已验证**不适用（skip）或当前不符
