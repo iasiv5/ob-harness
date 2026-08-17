@@ -7,6 +7,15 @@
 # 否则 errexit 中止 runner、report.py 不执行。每条 probe 用 if/else 捕获 rc。
 set -euo pipefail
 
+# 编码钉死(评审 🟢4, 四轮对撞定稿): 两个 export 各管一个敌意变体、互不可替 —
+#   PYTHONIOENCODING=utf-8 覆盖"stdio 被压成 ascii"的预设(变体 B: xfail/xpass 的中文 reason
+#     在装配层 print(ensure_ascii=False) 撞 ascii stdio 崩 → errexit → exit 1 假 α truth);
+#   PYTHONUTF8=1 覆盖"UTF-8 mode 被关"的预设(变体 A: 内嵌 python -c 的中文注释经 argv
+#     surrogateescape 解码崩 / open() 非 UTF-8)。PYTHONIOENCODING 优先级高于 UTF-8 mode
+#   的 stdio 面, 故双 export 缺一即留一个洞。子进程(planner/probe/装配层/report)全继承。
+export PYTHONIOENCODING=utf-8
+export PYTHONUTF8=1
+
 HOST=""
 PORT=""
 USER_NAME=""
@@ -16,17 +25,20 @@ SUITE_FILTER=""
 REPORT_PATH=""
 VERBOSE=0
 DRY_RUN=0
-TIMEOUT="${TIMEOUT:-10}"
+TIMEOUT="${OB_TQ_TIMEOUT:-10}"
 
 usage() {
   cat <<EOF
-Usage: run.sh --host H --port P --user U --password W [options]
+Usage: run.sh --host H --port P [--user U] [--password W] [options]
+  Credentials: --user/--password argv OR OB_TQ_USER / OB_TQ_PASSWORD env.
+  Env is preferred for real passwords (argv is ps-visible; environ is
+  owner-only) — probe_redfish.py _resolve_auth consumes the env fallback.
   --ar ID         only run AR with this id
   --suite NAME    only run ARs in this suite
   --report PATH   dump JSON report to PATH
   -v, --verbose   print per-AR status to stderr
   -d, --dry-run   list ARs + applicability, no probe, exit 0
-  --timeout SE    per-probe HTTP timeout (default 10)
+  --timeout SE    per-probe HTTP timeout (default 10; env OB_TQ_TIMEOUT)
   -h, --help      show this help
 EOF
 }
@@ -55,8 +67,13 @@ PROBE="${OB_TQ_PROBE:-$SCRIPT_DIR/probe_redfish.py}"
 REPORT="$SCRIPT_DIR/report.py"
 
 if [[ $DRY_RUN -eq 0 ]]; then
-  if [[ -z "$HOST" || -z "$PORT" || -z "$USER_NAME" || -z "$PASSWORD" ]]; then
-    echo "run.sh: --host/--port/--user/--password required (or use --dry-run)" >&2
+  # 凭据各满足 argv 或 env 至少一源(评审 🟡2); 缺口指名, 不笼统一句。
+  [[ -z "$HOST" || -z "$PORT" ]] && { echo "run.sh: --host/--port required (or use --dry-run)" >&2; exit 2; }
+  _cred_missing=""
+  [[ -z "$USER_NAME" && -z "${OB_TQ_USER:-}" ]] && _cred_missing="--user (or OB_TQ_USER env)"
+  [[ -z "$PASSWORD" && -z "${OB_TQ_PASSWORD:-}" ]] && _cred_missing="$_cred_missing --password (or OB_TQ_PASSWORD env)"
+  if [[ -n "$_cred_missing" ]]; then
+    echo "run.sh: missing credentials:$_cred_missing" >&2
     exit 2
   fi
 fi
@@ -210,14 +227,21 @@ print(json.dumps({"ar": sys.argv[1], "status": "skip", "reason": r,
       ;;
     xfail|applicable)
       # method/path 原字符串(planner 白名单/控制字符校验保证无 \n, 评审 🟡1)
+      # 凭据条件传(评审 🟡2): argv 缺者不传, probe _resolve_auth 从 OB_TQ_* env 补 —
+      # 密码全程不落 argv(ps world-readable → environ owner-only)。
       probe_args=(python3 "$PROBE" --host "$HOST" --port "$PORT" \
-                  --user "$USER_NAME" --password "$PASSWORD" \
                   --method "$method" --path "$path" \
                   --asserts "$asserts" --timeout "$TIMEOUT")
+      [[ -n "$USER_NAME" ]] && probe_args+=(--user "$USER_NAME")
+      [[ -n "$PASSWORD" ]] && probe_args+=(--password "$PASSWORD")
       [[ -n "$body" ]] && probe_args+=(--body "$body")
       if out=$("${probe_args[@]}"); then rc=0; else rc=$?; fi
       # probe 协议校验 + status(评审 🔴1): rc 限于 0/1/3; 输出必须 dict + pass/error/rc 一致;
       # 不一致({}+rc0/[]+rc0/rc2/rc3无error) → error record, 不假 PASS/冒充 BMC fail。
+      # 装配层 rc 兜底(评审 🟡1): 内联 python 异常不允许经 errexit 折叠成 exit 1 假 α truth —
+      # 失败改记 error record(infra)。已知触发器(编码崩溃)已被头部双 export 消灭, 本分支属
+      # 防御性: 敌意 env 回归用例走的是预防层, 不断言此分支, 勿再为它造测(四轮对撞结论)。
+      _rec=""
       _rec=$(printf '%s' "$out" | python3 -c 'import json, sys
 raw = sys.stdin.read()
 appl = sys.argv[2]
@@ -267,7 +291,15 @@ if st in ("xfail", "xpass") and appl_reason:
     d["reason"] = appl_reason
 elif proto:
     d["reason"] = proto
-print(json.dumps(d, ensure_ascii=False))' "$ar" "$status" "$source" "$reason" "$rc")
+print(json.dumps(d, ensure_ascii=False))' "$ar" "$status" "$source" "$reason" "$rc") || _rec=""
+      if [[ -z "$_rec" ]]; then
+          # argv 纯 ASCII + print 默认 ensure_ascii → 此构造自身不会崩; 若真崩则 errexit 可见,
+          # 好过静默丢 AR 记录(report 读空行会被 skip, AR 既不 pass 也不 fail)。
+          _rec=$(python3 -c 'import json, sys
+print(json.dumps({"ar": sys.argv[1], "status": "error",
+                  "reason": "record assembly failed (infra): runner inline python aborted",
+                  "code": None, "actual": None}, ensure_ascii=False))' "$ar")
+      fi
       echo "$_rec" >> "$results_file"
       if [[ $VERBOSE -eq 1 ]]; then
           printf '  %-14s %s\n' "$ar" "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("status","?"))' "$_rec")" >&2

@@ -17,9 +17,11 @@ out=$("$OB" test-qemu --help 2>&1) || true
 assert_true "test-qemu registered (--help mentions test-qemu)" grep -q "test-qemu" <<<"$out"
 
 # (2) parse_args 私有参数穿透(🔴1): --suite/--ar/--report 越过全局 parser, 不被 Unknown option 拦
-rc=0; "$OB" test-qemu fake-m --suite users --ar BMC-3-1-2 --report /tmp/tq_proto.out >/tmp/tq_proto.run 2>&1 || rc=$?
-assert_false "private flags NOT blocked as 'Unknown option'" grep -qi "Unknown option" /tmp/tq_proto.run
+_tq_p1="$(mktemp)"; _tq_p2="$(mktemp)"   # mktemp(评审 🟢3): 多用户并行跑 protocol 不互踩 /tmp 固定名
+rc=0; "$OB" test-qemu fake-m --suite users --ar BMC-3-1-2 --report "$_tq_p1" >"$_tq_p2" 2>&1 || rc=$?
+assert_false "private flags NOT blocked as 'Unknown option'" grep -qi "Unknown option" "$_tq_p2"
 assert_eq "private flags reach cmd_test_qemu (exit 3 at liveness, no instance)" "$rc" "3"
+rm -f "$_tq_p1" "$_tq_p2"
 
 # (3) machine 必填(🟡5): 无 machine → exit 3
 rc=0; "$OB" test-qemu >/tmp/tq_nomachine.run 2>&1 || rc=$?

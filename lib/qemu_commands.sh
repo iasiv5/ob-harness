@@ -914,11 +914,15 @@ cmd_test_qemu() {
     # ── 从 PID 文件读真实 Redfish 端口 (qemu_instance_liveness 已填 PIDFILE_*; 不假设默认值) ──
     local _port="$PIDFILE_REDFISH_PORT"
 
-    # ── 从 ar_probes.yaml 顶层读 auth (PyYAML; cmd_test_qemu 不硬编码凭据) ──
+    # ── 凭据解析: env OB_TQ_USER/OB_TQ_PASSWORD 优先, 缺者从 ar_probes.yaml auth 补 ──
+    # (评审 🟡2 + 🟢1: 密码经 env 注入 runner/probe — argv 是 ps 全局可见的, environ owner-only;
+    #  双源校验防 env 与 YAML 打架: user/password 各满足 env 或 YAML 至少一源, 缺则 exit 3 指名。)
     # $() 捕获 + || _arc=$? 显式判 rc(评审 🟡1): process substitution 的 read 在 set -e 下 EOF
     # exit 1 会先于显式 exit 3 触发 errexit, 把 malformed YAML 误报成 exit 1(α truth 污染)。
-    local _auth_user="" _auth_pass="" _auth_out="" _arc=0
-    _auth_out=$(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
+    local _auth_user="${OB_TQ_USER:-}" _auth_pass="${OB_TQ_PASSWORD:-}"
+    local _auth_out="" _arc=0
+    if [[ -z "$_auth_user" || -z "$_auth_pass" ]]; then
+        _auth_out=$(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
 import yaml, os, sys
 try:
     d = yaml.safe_load(open(os.environ["OB_TQ_YAML"])) or {}
@@ -930,21 +934,34 @@ rf = a.get("redfish") if isinstance(a.get("redfish"), dict) else None
 print((rf or {}).get("user") or a.get("user") or "")
 print((rf or {}).get("password") or a.get("password") or "")
 ') || _arc=$?
-    if [[ $_arc -ne 0 ]]; then
-        error "Cannot parse $_dir/ar_probes.yaml auth (YAML malformed — see parse error above)."
+        if [[ $_arc -ne 0 ]]; then
+            error "Cannot parse $_dir/ar_probes.yaml auth (YAML malformed — see parse error above)."
+            exit 3
+        fi
+        # env 已设者胜, 只从 YAML 补缺(print 两行, $() 已去尾换行)
+        [[ -z "$_auth_user" ]] && _auth_user="${_auth_out%%$'\n'*}"
+        if [[ -z "$_auth_pass" ]]; then
+            _auth_pass="${_auth_out#*$'\n'}"
+            [[ "$_auth_pass" == "$_auth_out" ]] && _auth_pass=""   # 单行兜底(无第二行)
+        fi
+    fi
+    if [[ -z "$_auth_user" ]]; then
+        error "No Redfish user for '$MACHINE' baseline probes."
+        error "Set OB_TQ_USER env, or auth.redfish.user (fallback auth.user) in $_dir/ar_probes.yaml."
         exit 3
     fi
-    _auth_user="${_auth_out%%$'\n'*}"
-    _auth_pass="${_auth_out#*$'\n'}"
-    [[ "$_auth_pass" == "$_auth_out" ]] && _auth_pass=""   # 单行兜底(无第二行)
-    if [[ -z "$_auth_user" ]]; then
-        error "Cannot read auth.redfish.user (or fallback auth.user) from $_dir/ar_probes.yaml."
+    if [[ -z "$_auth_pass" ]]; then
+        error "No Redfish password for '$MACHINE' baseline probes."
+        error "Set OB_TQ_PASSWORD env, or auth.redfish.password (fallback auth.password) in $_dir/ar_probes.yaml."
         exit 3
     fi
 
-    # ── 调 per-machine runner (host/port/auth 注入; runner exit 0/1 透传为 ob exit 0/1) ──
+    # ── 调 per-machine runner (host/port argv + 凭据 env 注入; runner exit 0/1 透传为 ob exit 0/1) ──
+    # 凭据走 env 不走 argv(评审 🟡2): ob → bash run.sh → python probe 全链 ps 不可见;
+    # run.sh 侧"argv 或 env 至少一源"校验由 env 满足, probe _resolve_auth 的 env fallback 消费。
     info "test-qemu: probing '$MACHINE' baseline at $_dir (Redfish port $_port)."
-    local -a _run_args=(bash "$_dir/runner/run.sh" --host 127.0.0.1 --port "$_port" --user "$_auth_user" --password "$_auth_pass")
+    export OB_TQ_USER="$_auth_user" OB_TQ_PASSWORD="$_auth_pass"
+    local -a _run_args=(bash "$_dir/runner/run.sh" --host 127.0.0.1 --port "$_port")
     [[ -n "$_ar" ]] && _run_args+=(--ar "$_ar")
     [[ -n "$_suite" ]] && _run_args+=(--suite "$_suite")
     [[ -n "$_report" ]] && _run_args+=(--report "$_report")

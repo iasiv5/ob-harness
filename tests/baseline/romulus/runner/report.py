@@ -22,7 +22,9 @@ STATUSES = ("pass", "fail", "skip", "xfail", "xpass", "error")
 def load_records(path):
     records = []
     try:
-        stream = sys.stdin if path == "-" else open(path)
+        # encoding 钉死(评审 🟢4 双保险): results 文件恒为 UTF-8 字节(run.sh 双 export 钉死
+        # 子进程 stdio); 本脚本作为独立 CLI 调用时环境不可控 → 显式 utf-8, 不随 locale 漂移。
+        stream = sys.stdin if path == "-" else open(path, encoding="utf-8")
         for line in stream:
             line = line.strip()
             if line:
@@ -109,7 +111,7 @@ def main():
         try:
             d = os.path.dirname(os.path.abspath(args.report)) or "."
             fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
-            with os.fdopen(fd, "w") as f:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(blob, f, ensure_ascii=False, indent=2)
             os.replace(tmp, args.report)
             tmp = None  # 已 rename, 不删
