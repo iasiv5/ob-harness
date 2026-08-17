@@ -528,45 +528,51 @@ _smoke_wait_ssh_tcp() {
     return 1
 }
 
+# _smoke_curl_fetch <url> <code_ref> <body_ref> — curl 取一个 Redfish 资源, 经 nameref 回填
+# code/body。两个 Redfish probe(root/Managers)的公共底座: max-time + 传输失败单次重试。
+#   --max-time: bmcweb 偶发挂起时无上界 curl 会阻塞到对端断开(实测 >120s 才报 HTTP 000),
+#     挂死探测整体; 10s 对齐 test-qemu OB_TQ_TIMEOUT 默认, env OB_SMOKE_HTTP_TIMEOUT 可调。
+#   重试一次: 单次传输失败(连接 reset/TLS 握手超时/连接拒绝)常是瞬时抖动, 立即判 ✗ 会把
+#     infra 抖动冒充 α truth(实测同一实例一次 smoke Managers 000 ✗ / 重跑 1s 全绿)。连续
+#     两次失败才维持 "000" 交 judge 判 ✗ — 与 test-qemu "error=infra, 重跑" 语义对齐。
+# rc≠0(含部分传输后失败, 此时 -w 末行未产出, 解析只会得垃圾)→ code 留 "000", body 空。
+# 不 exit; set -e-safe(|| rc=$?)。
+_smoke_curl_fetch() {
+    local url="$1"
+    local -n _scf_code="$2"
+    local -n _scf_body="$3"
+    _scf_code="000"; _scf_body=""
+    local out="" rc=0
+    out=$(curl -sk --max-time "${OB_SMOKE_HTTP_TIMEOUT:-10}" -u root:0penBmc \
+          -w $'\n__OB_HTTP__%{http_code}' "$url" 2>/dev/null) || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        rc=0
+        out=$(curl -sk --max-time "${OB_SMOKE_HTTP_TIMEOUT:-10}" -u root:0penBmc \
+              -w $'\n__OB_HTTP__%{http_code}' "$url" 2>/dev/null) || rc=$?
+    fi
+    if [[ "$rc" -eq 0 && -n "$out" ]]; then
+        _scf_code="${out##*$'\n'}"         # 末行 = __OB_HTTP__<code>
+        _scf_code="${_scf_code#__OB_HTTP__}"
+        _scf_body="${out%$'\n'*}"           # 去末行 = body
+    fi
+    # 两次 curl 都失败 → 维持 "000"(judge 据此判 fail)
+    return 0
+}
+
 # _smoke_probe_redfish <port> <code_ref> <body_ref> — curl 取 Redfish 根, 经 nameref 回填 code/body。
 # nameref 回填(非 _VF_* 全局), protocol 可测(对照 resolve_command_machine nameref 范式)。
-# curl 整体失败(连接拒绝)→ code 留 "000", body 空。不 exit; set -e-safe(|| rc=$?)。
+# curl 整体失败(连接拒绝)→ code 留 "000", body 空(经 _smoke_curl_fetch 的 max-time+重试)。
 _smoke_probe_redfish() {
     local port="$1"
-    local -n _spr_code="$2"
-    local -n _spr_body="$3"
-    _spr_code="000"; _spr_body=""
-    local out="" rc=0
-    out=$(curl -sk -u root:0penBmc -w $'\n__OB_HTTP__%{http_code}' \
-          "https://localhost:$port/redfish/v1" 2>/dev/null) || rc=$?
-    if [[ -n "$out" ]]; then
-        _spr_code="${out##*$'\n'}"        # 末行 = __OB_HTTP__<code>
-        _spr_code="${_spr_code#__OB_HTTP__}"
-        _spr_body="${out%$'\n'*}"          # 去末行 = body
-    fi
-    # curl 整体失败 → 维持 "000"(judge 据此判 fail)
-    return 0
+    _smoke_curl_fetch "https://localhost:$port/redfish/v1" "$2" "$3"
 }
 
 # _smoke_probe_redfish_managers <port> <code_ref> <body_ref> — curl 取 Redfish Managers/bmc
 # (OpenBMC 标准 manager id, 全 image 通用, 非 per-machine 知识), 经 nameref 回填 code/body。
 # 形态对照 _smoke_probe_redfish; 一次 probe 喂 managers + swversion 两个 judge(深一层接口)。
-# curl 整体失败(连接拒绝)→ code "000", body 空。不 exit; set -e-safe(|| rc=$?)。
 _smoke_probe_redfish_managers() {
     local port="$1"
-    local -n _sprm_code="$2"
-    local -n _sprm_body="$3"
-    _sprm_code="000"; _sprm_body=""
-    local out="" rc=0
-    out=$(curl -sk -u root:0penBmc -w $'\n__OB_HTTP__%{http_code}' \
-          "https://localhost:$port/redfish/v1/Managers/bmc" 2>/dev/null) || rc=$?
-    if [[ -n "$out" ]]; then
-        _sprm_code="${out##*$'\n'}"        # 末行 = __OB_HTTP__<code>
-        _sprm_code="${_sprm_code#__OB_HTTP__}"
-        _sprm_body="${out%$'\n'*}"          # 去末行 = body
-    fi
-    # curl 整体失败 → 维持 "000"(judge 据此判 fail)
-    return 0
+    _smoke_curl_fetch "https://localhost:$port/redfish/v1/Managers/bmc" "$2" "$3"
 }
 
 # _smoke_probe_ipmi <port> <rc_ref> <out_ref> — 一条 ipmitool mc info, 经 nameref 回填 rc/out。

@@ -52,6 +52,31 @@ _rcode="PRE"; _rbody="PRE"
 PATH="$DB:$PATH" _smoke_probe_redfish 2443 _rcode _rbody
 assert_eq "redfish probe conn-fail → nameref code 000" "$_rcode" "000"
 assert_eq "redfish probe conn-fail → nameref body 空" "$_rbody" ""
+# max-time 传递(A2): probe 调 curl 必带 --max-time(无上界 curl 会挂死探测)
+assert_true "redfish probe passes --max-time to curl" \
+    grep -q -- "--max-time" "$DB/.curl.calls"
+# 持续失败时重试恰好两次(A2): 每探测一次 curl 被调 2 回(首败+重试仍败→000)。
+# 计数口径按 URL 出现次数(每次 curl 调用的 argv 恰含 URL 一次; -w 参数自带换行,
+# 按行数统计会一次调用记 2 行, 不可用)
+_calls_before=$(grep -c "redfish/v1" "$DB/.curl.calls" || true)
+PATH="$DB:$PATH" _smoke_probe_redfish 2443 _rcode _rbody
+_calls_after=$(grep -c "redfish/v1" "$DB/.curl.calls" || true)
+assert_eq "redfish probe retries exactly once on transport failure" \
+    "$((_calls_after - _calls_before))" "2"
+
+# 传输失败单次重试恢复(A2): 首调 exit 7, 重试答 200 → code 200(瞬时抖动不冒充 ✗)
+rm -f "$DB/.curl.rc" "$DB/.curl.sh" "$DB/.curl.calls" "$DB/.curl_n.count"
+cat > "$DB/.curl.sh" <<'CURL_SH'
+d="$(dirname "$0")"
+n=$(cat "$d/.curl_n.count" 2>/dev/null || echo 0); n=$((n+1)); printf '%s' "$n" > "$d/.curl_n.count"
+[[ "$n" -eq 1 ]] && exit 7
+printf '%s\n' '{"@Redfish.Copyright":"OpenBMC","Name":"ServiceRoot","Id":"v1"}'
+printf '__OB_HTTP__200\n'
+CURL_SH
+_rcode=""; _rbody=""
+PATH="$DB:$PATH" _smoke_probe_redfish 2443 _rcode _rbody
+assert_eq "redfish probe transient-fail retry recovers code 200" "$_rcode" "200"
+assert_contains "redfish probe transient-fail retry recovers body" "$_rbody" "@Redfish.Copyright"
 
 # === (1b) _smoke_probe_redfish_managers: fake curl 按 URL 答 Managers body → nameref outvars ===
 # 一次 probe 喂 managers + swversion 两个 judge(深一层接口)。fake curl 按 $* 中的 URL 分支答。
