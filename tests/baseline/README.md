@@ -47,13 +47,19 @@ cp -r tests/baseline/romulus tests/baseline/<new-machine>   # 社区机
 runner 探测是确定性脚本 + assert 原语（状态断言非计时断言，零 flake），
 LLM 不参与 runtime 判定。
 
-## applicability 维护规则（xfail 不是永久停车场）
+## applicability 维护规则（xfail 不是永久停车场；降级锚点不是永久降级）
 
 - 新 AR 默认 `applicable`；仅在**该机已验证**不适用（skip）或当前不符
   （xfail）时加 override，`reason` 写实测证据，`source: manual`。
 - **xfail 是对"当前验证过的 image"的假设**：image 升级后假设可能失效。
 - **稳定 xpass 后必须移除 override、恢复 applicable**——否则后续回归会被
   xfail 静默吞掉（又变 fail 时记 xfail、不 exit 1，回归不可见）。
+- **降级锚点随 image 升级重评**：因接口缺口把 AR 锚点从正位降到弱断言
+  （换端点/换字段，如 Managers/bmc.FirmwareVersion → FirmwareInventory
+  非空）是过渡形态，不是终态——降级理由写进 `rationale` + 本文件校准
+  记录；缺口接口恢复（连续多次实测稳定）后**升回正位锚点**，弱断言
+  退役。长期停在降级锚点 = 用弱断言掩盖已恢复的能力，与 xfail 停车场
+  同构（BMC-3-15-1 是先例：2026-08-17 重评升回）。
 - runner 的 schema 校验兜底：未知 assert type / 未知 depends_on / 重复 AR ID
   / orphan override / 非白名单 HTTP method 均 exit 3（数据错 ≠ BMC fail）。
 - skip 的 AR 可省略 `request:`（无可执行探测定义就不该编造占位请求）；

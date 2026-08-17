@@ -37,18 +37,20 @@ ars:
     suite: core
     request:
       method: GET
-      path: /redfish/v1/UpdateService/FirmwareInventory
+      path: /redfish/v1/Managers/bmc
     assert:
       - type: status_in
         value: [200]
       - type: json_path_exists
-        path: Members.0
+        path: FirmwareVersion
     depends_on: [BMC-2-2-1]
     rationale: >
-      romulus QEMU 当前稳定暴露 UpdateService/FirmwareInventory;
-      Managers/bmc.FirmwareVersion 受 bmcweb software functional path 映射影响,
-      不作为 baseline 的测试锚点。这里锁定 FirmwareInventory collection
-      可达且至少有一个 firmware member。
+      锚点重评(2026-08-17): Managers/bmc.FirmwareVersion 是 Redfish 规范
+      中 BMC 版本上报的正位锚点, 实测已连续 5/5 稳定填充
+      (3.1.0-dev-896-g13fe9141ef-dirty), 从降级锚点升回。此前 bmcweb
+      software functional path 映射缺口时期曾降级锚到
+      UpdateService/FirmwareInventory collection 非空(弱断言), 该降级
+      锚点随缺口修复退役 — 降级不是永久形态, 见 README 重评规则。
 
   - ar: BMC-3-1-2
     name: Reject account create violating username rule
