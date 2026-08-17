@@ -326,5 +326,8 @@ report_args=(python3 "$REPORT" --results "$results_file")
 if [[ -n "$REPORT_PATH" ]]; then
   report_args+=(--report "$REPORT_PATH")
 fi
+# verbose 时 pass 行已实时流过 stderr(run.sh -v), report 跳过 pass 行防双打(A4);
+# 非 pass 行(code/reason/source)仍全量保留。
+[[ $VERBOSE -eq 1 ]] && report_args+=(--compact-rows)
 if "${report_args[@]}"; then rc=0; else rc=$?; fi
 exit "$rc"

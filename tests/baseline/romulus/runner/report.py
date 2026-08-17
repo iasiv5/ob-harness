@@ -43,6 +43,9 @@ def main():
                    help="JSONL results file (use '-' for stdin)")
     p.add_argument("--report", default=None,
                    help="optional path to dump full JSON report")
+    p.add_argument("--compact-rows", action="store_true",
+                   help="print only non-pass AR rows (pass rows were already "
+                        "streamed live by run.sh -v; avoids double printing)")
     args = p.parse_args()
 
     records = load_records(args.results)
@@ -99,11 +102,16 @@ def main():
 
     # 逐条五态(评审 🟡7): 默认打印每条 AR(含 pass/fail), fail/error 带 code + reason;
     # skip/xfail/xpass 带 reason + source。help "read the fail rows" 才名副其实。
+    # --compact-rows(A4): run.sh -v 已在 stderr 实时流过每条 AR 状态(含 pass), report
+    # 再全量打一遍是双打 — 跳过 pass 行(reason 恒 "ok", 无信息损失), 非 pass 行保留
+    # code/reason/source 详情。
     for r in records:
         if not isinstance(r, dict):
             print("  <non-dict>    error | {!r}".format(r))
             continue
         st = r.get("status", "?")
+        if args.compact_rows and st == "pass":
+            continue
         ar = str(r.get("ar", "?"))   # coerce(评审 🟡2: ar 非 str 不 format 崩)
         # 字段 coerce 到 str(评审 🟡4: reason/source 非 str 不 AttributeError; 仅显示用)
         reason = str(r.get("reason", "") or "").replace("\n", " ")[:120]
