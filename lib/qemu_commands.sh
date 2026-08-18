@@ -855,7 +855,8 @@ test_qemu_usage() {
     cat <<EOF
 Usage: ob test-qemu <machine> [options]
 
-Run <machine>'s baseline AR probes on its RUNNING QEMU instance. Each AR
+Run <machine>'s baseline AR probes on its RUNNING QEMU instance (probe mode;
+--dry-run lists ARs + applicability without an instance). Each AR
 (需求条目) is probed and verdicted pass/fail/skip/xfail/xpass.
 
 Options:
@@ -863,7 +864,7 @@ Options:
   --ar <id>        Only run the named AR
   --report <path>  Dump JSON report to PATH
   -v, --verbose    Print per-AR status to stderr
-  -d, --dry-run    List ARs + applicability, no probe (runner-level)
+  -d, --dry-run    List ARs + applicability, no probe (no running instance needed)
   -h, --help       Show this help
 
 Environment:
@@ -876,7 +877,8 @@ Environment:
 Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish
           port from the instance's PID file (no port overrides honored).
           With no running instance it exits 3 and will NOT boot one — run
-          'ob start-qemu <machine>' first.
+          'ob start-qemu <machine>' first. With --dry-run no instance is
+          needed — baseline asset check only.
 
 baseline dir (lineage-routed, per ADR-0025/0026; lineage is judged on the
           source label alone — the QEMU binary dir is derived from the same

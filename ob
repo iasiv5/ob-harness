@@ -212,7 +212,7 @@ Commands:
   stop-qemu    [<machine>]    Stop a running QEMU instance
   deploy-to-qemu [<machine>]  Rebuild image and restart QEMU for clean verification
   smoke        [<machine>]    Probe a running QEMU-backed BMC (read-only OOB probe; no bring-up/teardown)
-  test-qemu    [<machine>]    Run <machine>'s baseline AR probes on its running QEMU instance (probe-only; pass/fail/skip/xfail/xpass)
+  test-qemu    [<machine>]    Run <machine>'s baseline AR probes on its running QEMU instance (probe-only; pass/fail/skip/xfail/xpass; --dry-run lists ARs without an instance)
   dev          [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
 
 Global Options:
@@ -264,7 +264,7 @@ smoke Options:
     OB_SMOKE_READY_ATTEMPTS  Poll attempts for BMC SSH-port readiness (default 30, 5s each)
 
 test-qemu Options:
-  <machine>               Whose running QEMU instance to test (required positional)
+  <machine>               Whose baseline to test (required positional; a RUNNING instance is required unless --dry-run)
   --suite <name>          Only run ARs in this suite
   --ar <id>               Only run the named AR
   --report <path>         Dump JSON report to PATH
@@ -275,7 +275,8 @@ test-qemu Options:
   Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish port
             from the instance's PID file (no port overrides honored). With no
             running instance it exits 3 and will NOT boot one — run
-            'ob start-qemu <machine>' first.
+            'ob start-qemu <machine>' first. With --dry-run no instance is
+            needed — it lists ARs + applicability only.
   baseline dir (lineage-routed, per ADR-0025/0026): community lineage
             (community source + community QEMU binary) → tests/baseline/<machine>;
             custom lineage (either custom) → contexts/baseline/<machine>. No
