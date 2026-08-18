@@ -277,9 +277,11 @@ test-qemu Options:
             running instance it exits 3 and will NOT boot one — run
             'ob start-qemu <machine>' first. With --dry-run no instance is
             needed — it lists ARs + applicability only.
-  baseline dir (lineage-routed, per ADR-0025/0026): community lineage
-            (community source + community QEMU binary) → tests/baseline/<machine>;
-            custom lineage (either custom) → contexts/baseline/<machine>. No
+  baseline dir (lineage-routed, per ADR-0025/0026; lineage is judged on the
+            source label alone — the QEMU binary dir derives from the same
+            label, not an independent factor): community lineage (community
+            source label) → tests/baseline/<machine>; custom lineage (any
+            non-community source label) → contexts/baseline/<machine>. No
             cross-lineage fallback — attribution stays closed.
   Verdict (per AR): pass / fail / skip / xfail / xpass / error. skip/xfail/xpass
             do NOT affect the exit-code. error = a probe could not get a clean
