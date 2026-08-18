@@ -122,4 +122,30 @@ assert_true "baseline remedy first (reorder)" grep -q "No baseline dir for 'fake
 assert_false "liveness remedy not reached" grep -q "No QEMU instance running" <<<"$out"
 rm -rf "$_tq_bf_root"
 
+# (7) cmd 层 dry-run 前置集豁免: 无 QEMU、无凭据(env unset + YAML auth 删除) → exit 0 列 AR。
+#     runner run.sh DRY_RUN 分支原生豁免 host/port/凭据; fake 根同 (6) 注入模式,
+#     community label → tests/baseline/fake-m(复制真实 romulus 基线保 schema 真实,
+#     再删 auth 使凭据豁免可证 — 否则 YAML auth 会掩盖"凭据段未豁免"的实现错误;
+#     planner 不依赖 auth)。cp 在 OB_ENTRY_DIR 覆盖前用真实根取源(env-prefix 只在
+#     cmd_test_qemu 执行期间生效, 不改进程变量)。否定断言必须 assert_false —
+#     assert_true 直接执行 "$@", "! " 作参数传入会执行名为 "!" 的命令必失败。
+_tq_dry_root="$(mktemp -d)"
+mkdir -p "$_tq_dry_root/workspace/configs" "$_tq_dry_root/tests/baseline"
+printf 'source_label=community\n' > "$_tq_dry_root/workspace/configs/openbmc-source.manifest"
+cp -r "$OB_ENTRY_DIR/tests/baseline/romulus" "$_tq_dry_root/tests/baseline/fake-m"
+python3 - "$_tq_dry_root/tests/baseline/fake-m/ar_probes.yaml" <<'PY'
+import sys, yaml
+p = sys.argv[1]
+d = yaml.safe_load(open(p)) or {}
+d.pop("auth", None)
+yaml.safe_dump(d, open(p, "w"), allow_unicode=True, sort_keys=False)
+PY
+unset OB_TQ_USER OB_TQ_PASSWORD
+rc=0; out=$(MACHINE=fake-m OB_ENTRY_DIR="$_tq_dry_root" cmd_test_qemu --dry-run 2>&1) || rc=$?
+assert_eq "dry-run without QEMU/creds → exit 0" "$rc" "0"
+assert_true "dry-run lists ARs (runner dry-run banner)" grep -q "dry-run: AR list" <<<"$out"
+assert_false "dry-run touches no liveness" grep -q "No QEMU instance running" <<<"$out"
+assert_false "dry-run touches no credentials gate" grep -q "No Redfish user" <<<"$out"
+rm -rf "$_tq_dry_root"
+
 assert_summary

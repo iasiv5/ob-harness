@@ -1007,15 +1007,17 @@ cmd_test_qemu() {
 
     # ── 前置 3: 凭据解析 — env OB_TQ_USER/OB_TQ_PASSWORD 优先, 缺者从 ar_probes.yaml auth 补 ──
     # 凭据只依赖 baseline dir(读 ar_probes.yaml), 修复成本低但检查零成本 — 与 baseline 同属
-    # 本地可判定前置, 先于 QEMU 运行态。
+    # 本地可判定前置, 先于 QEMU 运行态。仅 probe 需要: dry-run 不 probe, 凭据无用
+    # (与 run.sh DRY_RUN 分支的凭据豁免对齐)。
     # (评审 🟡2 + 🟢1: 密码经 env 注入 runner/probe — argv 是 ps 全局可见的, environ owner-only;
     #  双源校验防 env 与 YAML 打架: user/password 各满足 env 或 YAML 至少一源, 缺则 exit 3 指名。)
     # $() 捕获 + || _arc=$? 显式判 rc(评审 🟡1): process substitution 的 read 在 set -e 下 EOF
     # exit 1 会先于显式 exit 3 触发 errexit, 把 malformed YAML 误报成 exit 1(α truth 污染)。
-    local _auth_user="${OB_TQ_USER:-}" _auth_pass="${OB_TQ_PASSWORD:-}"
-    local _auth_out="" _arc=0
-    if [[ -z "$_auth_user" || -z "$_auth_pass" ]]; then
-        _auth_out=$(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
+    if [[ $_dry -eq 0 ]]; then
+        local _auth_user="${OB_TQ_USER:-}" _auth_pass="${OB_TQ_PASSWORD:-}"
+        local _auth_out="" _arc=0
+        if [[ -z "$_auth_user" || -z "$_auth_pass" ]]; then
+            _auth_out=$(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
 import yaml, os, sys
 try:
     d = yaml.safe_load(open(os.environ["OB_TQ_YAML"])) or {}
@@ -1027,59 +1029,68 @@ rf = a.get("redfish") if isinstance(a.get("redfish"), dict) else None
 print((rf or {}).get("user") or a.get("user") or "")
 print((rf or {}).get("password") or a.get("password") or "")
 ') || _arc=$?
-        if [[ $_arc -ne 0 ]]; then
-            error "Cannot parse $_dir/ar_probes.yaml auth (YAML malformed — see parse error above)."
+            if [[ $_arc -ne 0 ]]; then
+                error "Cannot parse $_dir/ar_probes.yaml auth (YAML malformed — see parse error above)."
+                exit 3
+            fi
+            # env 已设者胜, 只从 YAML 补缺(print 两行, $() 已去尾换行)
+            [[ -z "$_auth_user" ]] && _auth_user="${_auth_out%%$'\n'*}"
+            if [[ -z "$_auth_pass" ]]; then
+                _auth_pass="${_auth_out#*$'\n'}"
+                [[ "$_auth_pass" == "$_auth_out" ]] && _auth_pass=""   # 单行兜底(无第二行)
+            fi
+        fi
+        if [[ -z "$_auth_user" ]]; then
+            error "No Redfish user for '$MACHINE' baseline probes."
+            error "Set OB_TQ_USER env, or auth.redfish.user (fallback auth.user) in $_dir/ar_probes.yaml."
             exit 3
         fi
-        # env 已设者胜, 只从 YAML 补缺(print 两行, $() 已去尾换行)
-        [[ -z "$_auth_user" ]] && _auth_user="${_auth_out%%$'\n'*}"
         if [[ -z "$_auth_pass" ]]; then
-            _auth_pass="${_auth_out#*$'\n'}"
-            [[ "$_auth_pass" == "$_auth_out" ]] && _auth_pass=""   # 单行兜底(无第二行)
+            error "No Redfish password for '$MACHINE' baseline probes."
+            error "Set OB_TQ_PASSWORD env, or auth.redfish.password (fallback auth.password) in $_dir/ar_probes.yaml."
+            exit 3
         fi
+        export OB_TQ_USER="$_auth_user" OB_TQ_PASSWORD="$_auth_pass"
     fi
-    if [[ -z "$_auth_user" ]]; then
-        error "No Redfish user for '$MACHINE' baseline probes."
-        error "Set OB_TQ_USER env, or auth.redfish.user (fallback auth.user) in $_dir/ar_probes.yaml."
-        exit 3
-    fi
-    if [[ -z "$_auth_pass" ]]; then
-        error "No Redfish password for '$MACHINE' baseline probes."
-        error "Set OB_TQ_PASSWORD env, or auth.redfish.password (fallback auth.password) in $_dir/ar_probes.yaml."
-        exit 3
-    fi
-    export OB_TQ_USER="$_auth_user" OB_TQ_PASSWORD="$_auth_pass"
 
     # ── 前置 4: RUNNING QEMU instance (probe-only, 对齐 cmd_smoke; 绝不探死端口防假"BMC 坏") ──
-    derive_qemu_paths
-    local _test_lock_fd="" _test_lock_owned=""
-    _qemu_lifecycle_lock_or_exit "$MACHINE" _test_lock_fd _test_lock_owned
-    local _liv=""
-    qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024)
-    case "$_liv" in
-        nopid)
-            error "No QEMU instance running for '$MACHINE' (no PID file)."
-            error "Run 'ob start-qemu $MACHINE' first."
-            exit 3
-            ;;
-        exited|recycled)
-            qemu_instance_clean_stale "$MACHINE"
-            error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
-            error "Run 'ob start-qemu $MACHINE' first."
-            exit 3
-            ;;
-        running)
-            ;;
-    esac
+    # liveness/lock/port 仅 probe 需要; dry-run 是 baseline 资产检查(planner-only), 不碰
+    # BMC —— 与 run.sh DRY_RUN 分支的前置豁免对齐。
+    local _test_lock_fd="" _test_lock_owned="" _liv="" _port=""
+    if [[ $_dry -eq 0 ]]; then
+        derive_qemu_paths
+        _qemu_lifecycle_lock_or_exit "$MACHINE" _test_lock_fd _test_lock_owned
+        qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024)
+        case "$_liv" in
+            nopid)
+                error "No QEMU instance running for '$MACHINE' (no PID file)."
+                error "Run 'ob start-qemu $MACHINE' first."
+                exit 3
+                ;;
+            exited|recycled)
+                qemu_instance_clean_stale "$MACHINE"
+                error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
+                error "Run 'ob start-qemu $MACHINE' first."
+                exit 3
+                ;;
+            running)
+                ;;
+        esac
 
-    # ── 从 PID 文件读真实 Redfish 端口 (qemu_instance_liveness 已填 PIDFILE_*; 不假设默认值) ──
-    local _port="$PIDFILE_REDFISH_PORT"
+        # ── 从 PID 文件读真实 Redfish 端口 (qemu_instance_liveness 已填 PIDFILE_*; 不假设默认值) ──
+        _port="$PIDFILE_REDFISH_PORT"
+    fi
 
     # ── 调 per-machine runner (host/port argv + 凭据 env 注入; runner exit 0/1 透传为 ob exit 0/1) ──
     # 凭据走 env 不走 argv(评审 🟡2): ob → bash run.sh → python probe 全链 ps 不可见;
     # run.sh 侧"argv 或 env 至少一源"校验由 env 满足, probe _resolve_auth 的 env fallback 消费。
-    info "test-qemu: probing '$MACHINE' baseline at $_dir (lineage $_lineage, Redfish port $_port)."
-    local -a _run_args=(bash "$_dir/runner/run.sh" --host 127.0.0.1 --port "$_port")
+    if [[ $_dry -eq 1 ]]; then
+        info "test-qemu: dry-run '$MACHINE' baseline at $_dir (lineage $_lineage, no probe, no instance needed)."
+    else
+        info "test-qemu: probing '$MACHINE' baseline at $_dir (lineage $_lineage, Redfish port $_port)."
+    fi
+    local -a _run_args=(bash "$_dir/runner/run.sh")
+    [[ $_dry -eq 0 ]] && _run_args+=(--host 127.0.0.1 --port "$_port")
     [[ -n "$_ar" ]] && _run_args+=(--ar "$_ar")
     [[ -n "$_suite" ]] && _run_args+=(--suite "$_suite")
     [[ -n "$_report" ]] && _run_args+=(--report "$_report")
@@ -1088,7 +1099,7 @@ print((rf or {}).get("password") or a.get("password") or "")
 
     local _rrc=0
     "${_run_args[@]}" || _rrc=$?
-    _qemu_lifecycle_lock_release_if_owned "$_test_lock_fd" "$_test_lock_owned"
+    [[ $_dry -eq 0 ]] && _qemu_lifecycle_lock_release_if_owned "$_test_lock_fd" "$_test_lock_owned"
     # runner exit taxonomy(评审 🔴2): 0=无 applicable fail / 1=α truth(BMC fail) / 3=infra-config-data 前置缺失。
     # 映射字面 exit(exit-contract X: 须字面 0/1/2/3)。unknown rc → exit 3(runner internal error),
     # 不用 exit 1——test-qemu 的 exit 1 专属 α truth, 不混 broken。
