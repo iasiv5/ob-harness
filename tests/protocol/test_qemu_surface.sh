@@ -4,9 +4,11 @@
 #   (2) parse_args 私有参数穿透(评审 🔴1): --suite/--ar/--report 越过全局 option parser,
 #       不被 "Unknown option" 拦, 到达 cmd_test_qemu 的 liveness 前置 → exit 3
 #   (3) machine 必填(评审 🟡5): ob test-qemu 无 machine → exit 3
-#   (4) test_qemu_resolve_baseline_dir 目录优先级(评审 🔴2, 直测 leaf-pure helper, 零 QEMU):
-#       contexts/baseline/<m> (custom, 优先) > tests/baseline/<m> (community) > MISSING
-#       —— cmd 层的 "No baseline dir" remedy 需先过 liveness, 属 integration, 不在此测。
+#   (4) 谱系路由(评审 🔴2 → ADR-0026 改写, 直测 leaf-pure helper, 零 QEMU):
+#       test_qemu_lineage 判定(任一 custom → custom, 否则 community) +
+#       test_qemu_resolve_baseline_dir 路由(community→tests/, custom→contexts/,
+#       不跨谱系回退, 缺 → MISSING)—— cmd 层的 "No baseline dir" remedy 需先过
+#       liveness, 属 integration, 不在此测。
 set -uo pipefail
 source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
@@ -27,27 +29,41 @@ rm -f "$_tq_p1" "$_tq_p2"
 rc=0; "$OB" test-qemu >/tmp/tq_nomachine.run 2>&1 || rc=$?
 assert_eq "no machine → exit 3" "$rc" "3"
 
-# (4) test_qemu_resolve_baseline_dir 目录优先级(🔴2, 零 QEMU 直测 leaf-pure helper)
+# (4) 谱系路由(🔴2 → ADR-0026 改写, 零 QEMU 直测 leaf-pure helper)
 TMP="$(mktemp -d)"
-_tq_helper_priority() {
+_tq_helper_lineage_routing() {
     local out=""
     HARNESS_ROOT="$TMP"
-    # 双目录都在 → custom (contexts) 优先
+
+    # 4a. test_qemu_lineage 判定: 任一 custom → custom; 否则 community; 恒 rc 0
+    test_qemu_lineage "community" "/x/qemu-bin/community/qemu" out
+    [[ "$out" == "community" ]] || { echo "lineage-both-community FAIL: got '$out'" >&2; return 1; }
+    test_qemu_lineage "custom" "/x/qemu-bin/community/qemu" out
+    [[ "$out" == "custom" ]] || { echo "lineage-src-custom FAIL: got '$out'" >&2; return 1; }
+    test_qemu_lineage "community" "/x/qemu-bin/custom/qemu" out
+    [[ "$out" == "custom" ]] || { echo "lineage-binary-custom FAIL: got '$out'" >&2; return 1; }
+
+    # 4b. 路由: community 谱系 → tests/, 即使 contexts/ 也存在(不跨谱系回退/覆盖)
     mkdir -p "$TMP/contexts/baseline/fake-m" "$TMP/tests/baseline/fake-m"
-    test_qemu_resolve_baseline_dir fake-m out
-    [[ "$out" == "$TMP/contexts/baseline/fake-m" ]] || { echo "custom-prefer FAIL: got '$out'" >&2; return 1; }
-    # 删 custom → community (tests) 回退
+    test_qemu_resolve_baseline_dir community fake-m out
+    [[ "$out" == "$TMP/tests/baseline/fake-m" ]] || { echo "community-routed FAIL: got '$out'" >&2; return 1; }
+    # 4c. 路由: custom 谱系 → contexts/, 即使 tests/ 也存在
+    test_qemu_resolve_baseline_dir custom fake-m out
+    [[ "$out" == "$TMP/contexts/baseline/fake-m" ]] || { echo "custom-routed FAIL: got '$out'" >&2; return 1; }
+    # 4d. 本谱系目录缺失 → MISSING(不回退他谱系目录)
     rm -rf "$TMP/contexts/baseline/fake-m"
-    test_qemu_resolve_baseline_dir fake-m out
-    [[ "$out" == "$TMP/tests/baseline/fake-m" ]] || { echo "community-fallback FAIL: got '$out'" >&2; return 1; }
-    # 都删 → MISSING
+    test_qemu_resolve_baseline_dir custom fake-m out
+    [[ "$out" == "MISSING" ]] || { echo "custom-no-fallback FAIL: got '$out'" >&2; return 1; }
     rm -rf "$TMP/tests/baseline/fake-m"
-    test_qemu_resolve_baseline_dir fake-m out
-    [[ "$out" == "MISSING" ]] || { echo "missing FAIL: got '$out'" >&2; return 1; }
+    test_qemu_resolve_baseline_dir community fake-m out
+    [[ "$out" == "MISSING" ]] || { echo "community-missing FAIL: got '$out'" >&2; return 1; }
+    # 4e. 非法谱系值 → MISSING(防御: cmd 层不会传, helper 不 crash)
+    test_qemu_resolve_baseline_dir bogus fake-m out
+    [[ "$out" == "MISSING" ]] || { echo "bogus-lineage FAIL: got '$out'" >&2; return 1; }
     return 0
 }
-_tq_helper_priority; _hrc=$?
+_tq_helper_lineage_routing; _hrc=$?
 rm -rf "$TMP"
-assert_eq "helper baseline dir priority (custom > community > MISSING)" "$_hrc" "0"
+assert_eq "helper lineage routing (community→tests/, custom→contexts/, no cross-fallback, MISSING)" "$_hrc" "0"
 
 assert_summary

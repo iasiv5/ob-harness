@@ -34,11 +34,15 @@ if [[ -z "$img" ]]; then
 fi
 echo "[integration] test-qemu machine=$MACHINE image=$img"
 
-# baseline 目录门(与 cmd_test_qemu 同序: custom 优先 > community; MISSING → SKIP 77)
+# baseline 目录门(与 cmd_test_qemu 同序: 谱系路由 community→tests/, custom→contexts/; MISSING → SKIP 77)。
+# 预检在 liveness 前, binary 谱系未知 → 用 source-label 单维度宽预检(custom label→contexts,
+# 否则 tests/); cmd 层 liveness 后做 source+binary 双维度权威路由, 预检只是免起 QEMU 的优化。
+_lineage_pre=""
+test_qemu_lineage "$(read_source_label)" "" _lineage_pre
 _baseline_dir=""
-test_qemu_resolve_baseline_dir "$MACHINE" _baseline_dir
+test_qemu_resolve_baseline_dir "$_lineage_pre" "$MACHINE" _baseline_dir
 if [[ "$_baseline_dir" == "MISSING" ]]; then
-    echo "SKIP: no baseline dir for '$MACHINE' (expected tests/baseline/$MACHINE/ or contexts/baseline/$MACHINE/)"
+    echo "SKIP: no baseline dir for '$MACHINE' (lineage: $_lineage_pre; expected $([ "$_lineage_pre" == custom ] && echo contexts/baseline/$MACHINE/ || echo tests/baseline/$MACHINE/), ADR-0026)"
     exit 77
 fi
 

@@ -5,9 +5,14 @@ QEMU 可仿真子集的 AR（需求条目）。每个 machine 目录**自包含*
 probe 引擎 + 本地 applicability，不与他机共享——组织权限边界优先于 DRY，
 详见 [ADR-0025](../../docs/adr/0025-test-qemu-baseline-fullstack-per-machine.md)。
 
-- `tests/baseline/<machine>/` — 社区机，随 ob-harness 上游分发
-- `contexts/baseline/<machine>/` — custom 机本地目录（gitignored，不随上游；
-  **定位优先于 tests/**，可覆盖/校准社区基线）
+- `tests/baseline/<machine>/` — 社区基线，随 ob-harness 上游分发
+- `contexts/baseline/<machine>/` — custom 基线本地目录（gitignored，不随上游）
+
+两者**不是优先级关系，是谱系路由**（ADR-0026）：被测对象的谱系决定查哪个目录——
+community 谱系（社区源 + 社区 QEMU binary）只查 `tests/`，custom 谱系（任一
+custom）只查 `contexts/`，各找各的、不跨谱系回退，本谱系目录缺失即 exit 3。
+社区基线**不会**被 custom 构建消费——custom build 的 fail 无法归因到上游，
+必须由自己的 contexts 基线拥有 verdict。
 
 ## AR 编号语义（为什么序号不连续）
 
@@ -75,12 +80,14 @@ LLM 不参与 runtime 判定。
 - skip 的 AR 可省略 `request:`（无可执行探测定义就不该编造占位请求）；
   带 `request:` 的仍须过 method 白名单校验。
 
-## 谱系（provenance）与 custom 覆盖
+## 谱系（provenance）与 custom 路由
 
 被测对象的谱系 = OpenBMC 主仓 source（`ob init` 的 source label）+ QEMU
-binary（community / custom）。**custom 谱系 + 社区 baseline 是错配**：测出的
-fail 无法归因（上游也这样？还是你 fork/build 特有？）。`ob test-qemu` 在此
-错配时打 WARN 提示（不可消音）——要安静的唯一出路是数据接管：把校准过的
-baseline 放进 `contexts/baseline/<machine>/`（定位优先命中，谱系闭合）。
-社区目录里的 xfail/xpass 结论只对**真正 community source+binary 构建的
-image** 有效，fork 环境的观测请落在自己的 contexts 目录。
+binary（community / custom），任一 custom 即 custom 谱系。`ob test-qemu`
+按谱系**硬路由** baseline 目录（ADR-0026）：community 谱系 → `tests/`，
+custom 谱系 → `contexts/`，不跨谱系回退——custom build 测社区基线的错配
+（fail 无法归因：上游也这样？还是你 fork/build 特有？）在路由层不可能出现。
+custom 谱系下 `contexts/baseline/<machine>/` 缺失会直接 exit 3 并指名该建
+的目录：把校准过的 baseline 放进去即闭合。社区目录里的 xfail/xpass 结论
+只对**真正 community source+binary 构建的 image** 有效，fork 环境的观测
+请落在自己的 contexts 目录。
