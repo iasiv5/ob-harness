@@ -11,6 +11,9 @@
 #       test_qemu_resolve_baseline_dir 路由(community→tests/, custom→contexts/,
 #       不跨谱系回退, 缺 → MISSING)—— cmd 层的 "No baseline dir" remedy 需先过
 #       liveness, 属 integration, 不在此测。
+#   (5) cmd_test_qemu --help 直调: 语义断言(usage 含 Usage: 行)+ radar trace 补偿
+#       (coverage_matrix 备注"exit 函数 radar 低估": "$OB" 子进程 xtrace 不穿透,
+#       当前进程直调对齐 bare_mirror 顶层调用补偿先例; 子 shell 封装防 exit 边界)。
 set -uo pipefail
 source "$(dirname "$0")/../lib/ob_loader.sh"
 source "$(dirname "$0")/../lib/assert.sh"
@@ -95,5 +98,11 @@ _tq_helper_lineage_routing() {
 _tq_helper_lineage_routing; _hrc=$?
 rm -rf "$TMP"
 assert_eq "helper lineage routing (community→tests/, custom→contexts/, no cross-fallback, MISSING)" "$_hrc" "0"
+
+# (5) cmd_test_qemu --help 直调: 语义(usage 渲染) + radar trace 补偿(exit seam 经 "$OB"
+#     子进程的调用 xtrace 不可见, 当前进程子 shell 直调可见 — PS4 FUNCNAME 正常展开;
+#     detect_harness_root 消费 OB_ENTRY_DIR 全局, 与 cwd 无关)
+out=$(cmd_test_qemu -h 2>&1)
+assert_true "cmd_test_qemu -h renders usage (Usage: ob test-qemu)" grep -q "Usage: ob test-qemu" <<<"$out"
 
 assert_summary
