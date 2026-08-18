@@ -2,15 +2,16 @@
 # tests/protocol/test_qemu_surface.sh — ob test-qemu protocol surface 断言(零 QEMU, 毫秒级)。
 #   (1) 命令注册: ob test-qemu --help 含 test-qemu
 #   (2) parse_args 私有参数穿透(评审 🔴1): --suite/--ar/--report 越过全局 option parser,
-#       不被 "Unknown option" 拦, 到达 cmd_test_qemu 的 liveness 前置 → exit 3
+#       不被 "Unknown option" 拦, 到达 cmd_test_qemu 首个缺失前置 → exit 3
+#       (具体落点由 (6) hermetic 锁定为 baseline-first; 此处只断言环境无关的 rc=3)
 #   (3) machine 必填(评审 🟡5): ob test-qemu 无 machine → exit 3
 #   (4) 谱系路由(评审 🔴2 → ADR-0026 改写, 直测 leaf-pure helper, 零 QEMU):
 #       test_qemu_lineage 判定(source label 单维度: custom→custom, community→community) +
 #       test_qemu_resolve_lineage strict 解析(ADR-0026 2026-08-18 修订: manifest 缺失/
 #       字段空 → unknown fail-closed, 不 fallback community) +
 #       test_qemu_resolve_baseline_dir 路由(community→tests/, custom→contexts/,
-#       不跨谱系回退, 缺 → MISSING)—— cmd 层的 "No baseline dir" remedy 需先过
-#       liveness, 属 integration, 不在此测。
+#       不跨谱系回退, 缺 → MISSING)—— 重排后 cmd 层 baseline remedy 无 QEMU 即可测,
+#       见 (6); helper 直测保留覆盖路由分支细节。
 #   (5) cmd_test_qemu --help 直调: 语义断言(usage 含 Usage: 行)+ radar trace 补偿
 #       (coverage_matrix 备注"exit 函数 radar 低估": "$OB" 子进程 xtrace 不穿透,
 #       当前进程直调对齐 bare_mirror 顶层调用补偿先例; 子 shell 封装防 exit 边界)。
@@ -27,7 +28,7 @@ assert_true "test-qemu registered (--help mentions test-qemu)" grep -q "test-qem
 _tq_p1="$(mktemp)"; _tq_p2="$(mktemp)"   # mktemp(评审 🟢3): 多用户并行跑 protocol 不互踩 /tmp 固定名
 rc=0; "$OB" test-qemu fake-m --suite users --ar BMC-3-1-2 --report "$_tq_p1" >"$_tq_p2" 2>&1 || rc=$?
 assert_false "private flags NOT blocked as 'Unknown option'" grep -qi "Unknown option" "$_tq_p2"
-assert_eq "private flags reach cmd_test_qemu (exit 3 at liveness, no instance)" "$rc" "3"
+assert_eq "private flags reach cmd_test_qemu (exit 3 at first missing precondition)" "$rc" "3"
 rm -f "$_tq_p1" "$_tq_p2"
 
 # (3) machine 必填(🟡5): 无 machine → exit 3
@@ -104,5 +105,21 @@ assert_eq "helper lineage routing (community→tests/, custom→contexts/, no cr
 #     detect_harness_root 消费 OB_ENTRY_DIR 全局, 与 cwd 无关)
 out=$(cmd_test_qemu -h 2>&1)
 assert_true "cmd_test_qemu -h renders usage (Usage: ob test-qemu)" grep -q "Usage: ob test-qemu" <<<"$out"
+
+# (6) cmd 层 baseline-first hermetic 直测(前置重排): fake 根注入 OB_ENTRY_DIR
+#     (用例 (5) 已验证的全局注入模式), custom label + 无 baseline dir + 无 QEMU →
+#     exit 3 落 baseline remedy 而非 liveness remedy。hermetic: 不依赖宿主真实
+#     openbmc-source.manifest(workspace/ gitignore, 干净 checkout 无此文件,
+#     宿主 label 环境相关 — 用例 (2) 的 remedy 文案因此不可断言)。
+#     env-prefix 只在函数执行期间生效; detect_harness_root 依它重设的路径全局
+#     会残留, (6)(7) 居文件尾部故无后继污染。
+_tq_bf_root="$(mktemp -d)"
+mkdir -p "$_tq_bf_root/workspace/configs"
+printf 'source_label=custom\n' > "$_tq_bf_root/workspace/configs/openbmc-source.manifest"
+rc=0; out=$(MACHINE=fake-m OB_ENTRY_DIR="$_tq_bf_root" cmd_test_qemu 2>&1) || rc=$?
+assert_eq "no-baseline no-QEMU → exit 3" "$rc" "3"
+assert_true "baseline remedy first (reorder)" grep -q "No baseline dir for 'fake-m'" <<<"$out"
+assert_false "liveness remedy not reached" grep -q "No QEMU instance running" <<<"$out"
+rm -rf "$_tq_bf_root"
 
 assert_summary

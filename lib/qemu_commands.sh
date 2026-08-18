@@ -831,7 +831,8 @@ test_qemu_resolve_lineage() {
 # 谱系与基线的错配(custom 谱系测社区基线 → fail 无法归因)在路由层不可能出现。
 # 锚定 $HARNESS_ROOT (detect_harness_root 设置 = $OB_ENTRY_DIR; 从任意 cwd 调 ob 时相对路径会误报 MISSING)。
 # outvar 写命中目录绝对路径或 "MISSING"; 恒 return 0 (对齐 machine_selection_guard outvar+恒0 / ADR-0024)。
-# 抽出为独立 helper: 让 protocol 测谱系路由时不必构造 fake alive QEMU (cmd 层该 remedy 需先过 liveness)。
+# 抽出为独立 helper: 让 protocol 测谱系路由时直测路由分支细节 (cmd 层 baseline remedy
+# 无 QEMU 即可测 — 前置重排后先于 liveness, 见 cmd_test_qemu 排序原则注释)。
 test_qemu_resolve_baseline_dir() {
     local lineage="$1" machine="$2" outvar="$3"
     local root="${HARNESS_ROOT:-$OB_ENTRY_DIR}"
@@ -961,29 +962,9 @@ cmd_test_qemu() {
         exit 3
     fi
 
-    # ── 前置 2: RUNNING QEMU instance (probe-only, 对齐 cmd_smoke; 绝不探死端口防假"BMC 坏") ──
-    derive_qemu_paths
-    local _test_lock_fd="" _test_lock_owned=""
-    _qemu_lifecycle_lock_or_exit "$MACHINE" _test_lock_fd _test_lock_owned
-    local _liv=""
-    qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024)
-    case "$_liv" in
-        nopid)
-            error "No QEMU instance running for '$MACHINE' (no PID file)."
-            error "Run 'ob start-qemu $MACHINE' first."
-            exit 3
-            ;;
-        exited|recycled)
-            qemu_instance_clean_stale "$MACHINE"
-            error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
-            error "Run 'ob start-qemu $MACHINE' first."
-            exit 3
-            ;;
-        running)
-            ;;
-    esac
-
-    # ── 前置 3: baseline 目录按谱系路由 (ADR-0026; community→tests/, custom→contexts/) ──
+    # ── 前置 2: baseline 目录按谱系路由 (ADR-0026; community→tests/, custom→contexts/) ──
+    # 排序原则: 前置按"缺失时用户修复成本"排序 — baseline 是结构性缺失(建目录级投入)且
+    # 零 QEMU 依赖, 先于 QEMU 运行态检查暴露; liveness 段与 cmd_smoke 同构。
     # 谱系 = source label 单维度。label 是唯一权威事实源: 一个 harness 绑定唯一 source,
     # binary 目录由 label 派生(derive_qemu_paths: qemu-bin/$label), 共线非独立信号。
     # 经 test_qemu_resolve_lineage strict 读取(ADR-0026 2026-08-18 修订): manifest 缺失/
@@ -1023,6 +1004,28 @@ cmd_test_qemu() {
         fi
         exit 3
     fi
+
+    # ── 前置 3: RUNNING QEMU instance (probe-only, 对齐 cmd_smoke; 绝不探死端口防假"BMC 坏") ──
+    derive_qemu_paths
+    local _test_lock_fd="" _test_lock_owned=""
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _test_lock_fd _test_lock_owned
+    local _liv=""
+    qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024)
+    case "$_liv" in
+        nopid)
+            error "No QEMU instance running for '$MACHINE' (no PID file)."
+            error "Run 'ob start-qemu $MACHINE' first."
+            exit 3
+            ;;
+        exited|recycled)
+            qemu_instance_clean_stale "$MACHINE"
+            error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
+            error "Run 'ob start-qemu $MACHINE' first."
+            exit 3
+            ;;
+        running)
+            ;;
+    esac
 
     # ── 从 PID 文件读真实 Redfish 端口 (qemu_instance_liveness 已填 PIDFILE_*; 不假设默认值) ──
     local _port="$PIDFILE_REDFISH_PORT"
