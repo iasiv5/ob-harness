@@ -15,8 +15,9 @@ custom 谱系**只查**`contexts/baseline/<machine>/`，各找各的、**不跨�
 （`ensure_qemu_binary` 二分），launch 无 binary override——(label, binary 路径) 在 ob
 体系内**完全共线**，binary 路径维度是冗余信号；且它防不住的真威胁恰恰防不住
 （`OB_QEMU_BINARY_URL` 指向自编 URL 下载替换 community/ 目录内容时路径不变，路径判定
-照样误判 community，反成假安全感）。`test_qemu_lineage` 按字面二值判定；非二值 →
-"unknown"（manifest 被外力写坏的防御，cmd 层 exit 3，不静默归类）。
+照样误判 community，反成假安全感）。`test_qemu_lineage` 按字面二值判定；非二值或缺失
+（manifest 缺失/字段空，2026-08-18 修订，见 Consequences）→
+"unknown"（防御，cmd 层 exit 3，不静默归类）。
 
 决策由仓库负责人定调（2026-08-17）：两目录不是优先级并列，社区基线随 ob-harness 发布
 到 upstream、custom 基线不上 GitHub；本地 openbmc 仓库是社区版本时默认查 `tests/baseline/`，
@@ -62,10 +63,16 @@ References: [ADR-0025](0025-test-qemu-baseline-fullstack-per-machine.md)（落�
 - **community 谱系的目录卫生**：`contexts/baseline/<machine>/` 在 community 谱系下不再
   被消费（原实现优先命中）。历史遗留的 contexts 目录（如临时校准实验）不再生效——
   社区 build 的 verdict 只由随上游分发的 `tests/baseline/` 拥有，结论可跨环境复现。
-- **谱系判定的边界**：source label 经 `read_source_label` 缺失 fallback community
-  （沿仓库既有口径——manifest 由 `ob init` 写入，`derive_source_label` 二值：URL 归一化
-  等于 `github.com/openbmc/openbmc` → community，否则 custom）。binary 不作为独立信号
-  （与 label 共线，见上）；字面非二值 → unknown 防御 exit 3。内容级 binary 替换
+- **谱系判定的边界**：source label 经 `test_qemu_resolve_lineage` strict 读取——manifest
+  缺失/source_label 字段空**不 fallback community 而判 unknown**（exit 3 + 按成因 remedy），
+  与字面非二值同档 fail-closed 防御（**2026-08-18 修订**：原"经 `read_source_label` 缺失
+  fallback community（沿仓库既有口径）"的取舍撤销——写坏有 unknown 强防御、缺失却静默
+  community 弱防御，两档不对称是归因缺口：manifest 被外力删除 + 旧 custom 实例存活时，
+  社区基线会测 custom build。谱系是 baseline 路由的归因闸门，缺失态 fail-closed。
+  `read_source_label` 的 community fallback 本体保留——binary provisioning 等其他消费方
+  的缺失默认是 fail-safe 方向，无归因问题，不在本闸门管辖）。manifest 由 `ob init` 写入，
+  `derive_source_label` 二值：URL 归一化等于 `github.com/openbmc/openbmc` → community，
+  否则 custom。binary 不作为独立信号（与 label 共线，见上）。内容级 binary 替换
   （自编 URL 下载进 community/）超出 label 可判域——provisioning 信任边界问题，不归
   谱系判定管。
 - **测试面**：protocol 层直测 `test_qemu_lineage`（3 分支）+ 路由（community/custom

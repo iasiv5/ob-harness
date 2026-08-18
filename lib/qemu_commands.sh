@@ -803,6 +803,28 @@ test_qemu_lineage() {
     return 0
 }
 
+# test_qemu_resolve_lineage <outvar> — leaf-pure 谱系解析(manifest strict 读取 → 谱系判定)。
+# 自读 manifest 而不经 read_source_label: 后者把 label 缺失(文件缺/字段空)静默 fallback
+# community, 调用方无法区分"真 community"与"fallback community" — 信息在该层已丢。
+# 谱系判定是 baseline 路由的归因闸门, 缺失态须 fail-closed(ADR-0026 2026-08-18 修订):
+# 文件缺失/source_label 字段空 → "unknown"(cmd 层 exit 3 + 按成因 remedy, 与"写坏"同档
+# 强防御); 字段非空 → 交 test_qemu_lineage 字面二值判定。恒 return 0 + outvar。
+# read_source_label 的 community fallback 本体保留 — binary provisioning 等其他消费方
+# 的缺失默认是 fail-safe 方向(下载社区 binary), 无归因问题, 不在本闸门管辖。
+test_qemu_resolve_lineage() {
+    local outvar="$1" label=""
+    if [[ -f "${SOURCE_MANIFEST_FILE:-}" ]]; then
+        label=$(read_manifest_field source_label 2>/dev/null || true)
+        label=$(trim_whitespace "$label")
+    fi
+    if [[ -z "$label" ]]; then
+        printf -v "$outvar" '%s' "unknown"
+    else
+        test_qemu_lineage "$label" "$outvar"
+    fi
+    return 0
+}
+
 # test_qemu_resolve_baseline_dir <lineage> <machine> <outvar> — leaf-pure helper: 按谱系路由 baseline 目录。
 # community 谱系 → tests/baseline/<machine>(社区基线, 随上游); custom 谱系 →
 # contexts/baseline/<machine>(custom 基线, 不随上游)。各找各的, 不做优先级覆盖 —
@@ -857,7 +879,8 @@ Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish
 
 baseline dir (lineage-routed, per ADR-0025/0026; lineage is judged on the
           source label alone — the QEMU binary dir is derived from the same
-          label, not an independent factor):
+          label, not an independent factor; a missing manifest or empty
+          source_label fails closed, it never silently defaults to community):
           community lineage (community source label)
             → tests/baseline/<machine>   (community baseline, ships upstream)
           custom lineage (custom source label — any non-community source)
@@ -961,16 +984,30 @@ cmd_test_qemu() {
     esac
 
     # ── 前置 3: baseline 目录按谱系路由 (ADR-0026; community→tests/, custom→contexts/) ──
-    # 谱系 = source label 单维度(read_source_label; 缺失 fallback community)。label 是唯一
-    # 权威事实源: 一个 harness 绑定唯一 source, binary 目录由 label 派生(derive_qemu_paths:
-    # qemu-bin/$label), 共线非独立信号。custom 源 → custom 谱系, 必须测自己的 contexts 基线
-    # (fail 归因闭合); 不做跨谱系回退 — 本谱系目录缺失即 exit 3,
+    # 谱系 = source label 单维度。label 是唯一权威事实源: 一个 harness 绑定唯一 source,
+    # binary 目录由 label 派生(derive_qemu_paths: qemu-bin/$label), 共线非独立信号。
+    # 经 test_qemu_resolve_lineage strict 读取(ADR-0026 2026-08-18 修订): manifest 缺失/
+    # 字段空不 fallback community 而判 unknown(exit 3, 与写坏同档强防御) — 谱系是 baseline
+    # 路由的归因闸门, 缺失态 fail-closed; read_source_label 的 community fallback 保留给
+    # binary provisioning 等消费方(那里缺失是 fail-safe 方向)。custom 源 → custom 谱系,
+    # 必须测自己的 contexts 基线(fail 归因闭合); 不做跨谱系回退 — 本谱系目录缺失即 exit 3,
     # remedy 按谱系指名应建的目录。
     local _lineage=""
-    test_qemu_lineage "$(read_source_label)" _lineage
+    test_qemu_resolve_lineage _lineage
     if [[ "$_lineage" == "unknown" ]]; then
-        error "Cannot determine lineage for '$MACHINE': source label is neither 'community' nor 'custom'."
-        error "The manifest is externally corrupted — check via 'ob status' (Source label) or re-run ob init. See ADR-0026."
+        # 按成因分档 remedy(unknown = 缺失/字段空 或 写坏): 排查方向不同, 不共用文案
+        local _mlabel=""
+        if [[ -f "${SOURCE_MANIFEST_FILE:-}" ]]; then
+            _mlabel=$(read_manifest_field source_label 2>/dev/null || true)
+            _mlabel=$(trim_whitespace "$_mlabel")
+        fi
+        if [[ -z "$_mlabel" ]]; then
+            error "Cannot determine lineage for '$MACHINE': source manifest missing or source_label empty."
+            error "Restore ${SOURCE_MANIFEST_FILE:-workspace/configs/openbmc-source.manifest} or re-run 'ob init' to regenerate it. See ADR-0026."
+        else
+            error "Cannot determine lineage for '$MACHINE': source label is neither 'community' nor 'custom'."
+            error "The manifest is externally corrupted — check via 'ob status' (Source label) or re-run ob init. See ADR-0026."
+        fi
         exit 3
     fi
     local _dir=""

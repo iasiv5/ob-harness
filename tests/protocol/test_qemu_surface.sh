@@ -6,6 +6,8 @@
 #   (3) machine 必填(评审 🟡5): ob test-qemu 无 machine → exit 3
 #   (4) 谱系路由(评审 🔴2 → ADR-0026 改写, 直测 leaf-pure helper, 零 QEMU):
 #       test_qemu_lineage 判定(source label 单维度: custom→custom, community→community) +
+#       test_qemu_resolve_lineage strict 解析(ADR-0026 2026-08-18 修订: manifest 缺失/
+#       字段空 → unknown fail-closed, 不 fallback community) +
 #       test_qemu_resolve_baseline_dir 路由(community→tests/, custom→contexts/,
 #       不跨谱系回退, 缺 → MISSING)—— cmd 层的 "No baseline dir" remedy 需先过
 #       liveness, 属 integration, 不在此测。
@@ -45,6 +47,31 @@ _tq_helper_lineage_routing() {
     [[ "$out" == "unknown" ]] || { echo "lineage-unknown FAIL: got '$out'" >&2; return 1; }
     test_qemu_lineage "" out
     [[ "$out" == "unknown" ]] || { echo "lineage-empty FAIL: got '$out'" >&2; return 1; }
+
+    # 4a2. test_qemu_resolve_lineage strict 解析(ADR-0026 2026-08-18 修订): 谱系消费点
+    #      绕过 read_source_label 的 community fallback(它把缺失映射成 community 后真假
+    #      莫辨) — manifest 缺失/字段空 → unknown fail-closed; 字段非空 → 二值判定
+    local _saved_smf="${SOURCE_MANIFEST_FILE:-}"
+    printf 'source_label=custom\n' >"$TMP/mf.custom"
+    printf 'source_label=community\n' >"$TMP/mf.community"
+    printf 'source_label=garbage\n' >"$TMP/mf.garbage"
+    printf 'normalized_source=x\n' >"$TMP/mf.nofield"   # 文件在, source_label 字段缺
+    SOURCE_MANIFEST_FILE="$TMP/mf.custom"
+    test_qemu_resolve_lineage out
+    [[ "$out" == "custom" ]] || { echo "rl-custom FAIL: got '$out'" >&2; return 1; }
+    SOURCE_MANIFEST_FILE="$TMP/mf.community"
+    test_qemu_resolve_lineage out
+    [[ "$out" == "community" ]] || { echo "rl-community FAIL: got '$out'" >&2; return 1; }
+    SOURCE_MANIFEST_FILE="$TMP/mf.garbage"
+    test_qemu_resolve_lineage out
+    [[ "$out" == "unknown" ]] || { echo "rl-garbage FAIL: got '$out'" >&2; return 1; }
+    SOURCE_MANIFEST_FILE="$TMP/mf.nofield"
+    test_qemu_resolve_lineage out
+    [[ "$out" == "unknown" ]] || { echo "rl-empty-field FAIL: got '$out'" >&2; return 1; }
+    SOURCE_MANIFEST_FILE="$TMP/no-such-manifest"
+    test_qemu_resolve_lineage out
+    [[ "$out" == "unknown" ]] || { echo "rl-no-file FAIL: got '$out'" >&2; return 1; }
+    SOURCE_MANIFEST_FILE="$_saved_smf"
 
     # 4b. 路由: community 谱系 → tests/, 即使 contexts/ 也存在(不跨谱系回退/覆盖)
     mkdir -p "$TMP/contexts/baseline/fake-m" "$TMP/tests/baseline/fake-m"
