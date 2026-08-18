@@ -13,6 +13,11 @@
 #       不跨谱系回退, 缺 → MISSING)—— 重排后 cmd 层 baseline remedy 无 QEMU 即可测,
 #       见 (6); helper 直测保留覆盖路由分支细节。
 #   (5) cmd_test_qemu --help 直调: 语义断言(usage 含 Usage: 行)+ radar trace 补偿
+#       (6) baseline-first hermetic: fake 根 custom label 无 baseline dir → baseline
+#       remedy 先于 liveness; (7) dry-run 前置集豁免: 无 QEMU/无凭据 exit 0 列 AR;
+#       (8) probe 模式凭据前置: baseline 在 + auth/env 双缺 + 无 QEMU → 凭据 remedy
+#       先于 liveness。(6)(7)(8) 共同锁定前置排序: 本地可判定前置(baseline/凭据)
+#       先于 QEMU 运行态, dry-run 豁免 QEMU/凭据。
 #       (coverage_matrix 备注"exit 函数 radar 低估": "$OB" 子进程 xtrace 不穿透,
 #       当前进程直调对齐 bare_mirror 顶层调用补偿先例; 子 shell 封装防 exit 边界)。
 set -uo pipefail
@@ -112,7 +117,8 @@ assert_true "cmd_test_qemu -h renders usage (Usage: ob test-qemu)" grep -q "Usag
 #     openbmc-source.manifest(workspace/ gitignore, 干净 checkout 无此文件,
 #     宿主 label 环境相关 — 用例 (2) 的 remedy 文案因此不可断言)。
 #     env-prefix 只在函数执行期间生效; detect_harness_root 依它重设的路径全局
-#     会残留, (6)(7) 居文件尾部故无后继污染。
+#     会残留, (6)(7)(8) 均用 env-prefix 注入 fake root — 每个 case 独立重设
+#     detect_harness_root 所需路径, 后继 case 不依赖前 case 的残留。
 _tq_bf_root="$(mktemp -d)"
 mkdir -p "$_tq_bf_root/workspace/configs"
 printf 'source_label=custom\n' > "$_tq_bf_root/workspace/configs/openbmc-source.manifest"
@@ -147,5 +153,27 @@ assert_true "dry-run lists ARs (runner dry-run banner)" grep -q "dry-run: AR lis
 assert_false "dry-run touches no liveness" grep -q "No QEMU instance running" <<<"$out"
 assert_false "dry-run touches no credentials gate" grep -q "No Redfish user" <<<"$out"
 rm -rf "$_tq_dry_root"
+
+# (8) probe 模式凭据前置持久回归(凭据段前移): baseline 在 + auth 删除 + env unset +
+#     无 QEMU, 不带 --dry-run → 凭据 remedy 先于 liveness remedy。与 (7) 同构 fake 根
+#     但走 probe 模式: 若凭据段被挪回 QEMU liveness 之后, 此处会先报
+#     "No QEMU instance running" 而红 — 锁定"本地可判定前置先于 QEMU 运行态"。
+_tq_cred_root="$(mktemp -d)"
+mkdir -p "$_tq_cred_root/workspace/configs" "$_tq_cred_root/tests/baseline"
+printf 'source_label=community\n' > "$_tq_cred_root/workspace/configs/openbmc-source.manifest"
+cp -r "$OB_ENTRY_DIR/tests/baseline/romulus" "$_tq_cred_root/tests/baseline/fake-m"
+python3 - "$_tq_cred_root/tests/baseline/fake-m/ar_probes.yaml" <<'PY'
+import sys, yaml
+p = sys.argv[1]
+d = yaml.safe_load(open(p)) or {}
+d.pop("auth", None)
+yaml.safe_dump(d, open(p, "w"), allow_unicode=True, sort_keys=False)
+PY
+unset OB_TQ_USER OB_TQ_PASSWORD
+rc=0; out=$(MACHINE=fake-m OB_ENTRY_DIR="$_tq_cred_root" cmd_test_qemu 2>&1) || rc=$?
+assert_eq "probe no-creds no-QEMU → exit 3" "$rc" "3"
+assert_true "credentials remedy before liveness" grep -q "No Redfish user" <<<"$out"
+assert_false "liveness remedy not reached" grep -q "No QEMU instance running" <<<"$out"
+rm -rf "$_tq_cred_root"
 
 assert_summary
