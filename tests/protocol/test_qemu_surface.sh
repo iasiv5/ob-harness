@@ -5,7 +5,7 @@
 #       不被 "Unknown option" 拦, 到达 cmd_test_qemu 的 liveness 前置 → exit 3
 #   (3) machine 必填(评审 🟡5): ob test-qemu 无 machine → exit 3
 #   (4) 谱系路由(评审 🔴2 → ADR-0026 改写, 直测 leaf-pure helper, 零 QEMU):
-#       test_qemu_lineage 判定(任一 custom → custom, 否则 community) +
+#       test_qemu_lineage 判定(source label 单维度: custom→custom, community→community) +
 #       test_qemu_resolve_baseline_dir 路由(community→tests/, custom→contexts/,
 #       不跨谱系回退, 缺 → MISSING)—— cmd 层的 "No baseline dir" remedy 需先过
 #       liveness, 属 integration, 不在此测。

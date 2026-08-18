@@ -779,8 +779,8 @@ cmd_smoke() {
 #   与 smoke 正交姊妹: smoke 浅冒烟 5 哨兵 + 零 per-machine 守 per-push 绿灯; test-qemu 逐条深测
 #   per-machine baseline 的 QEMU 可仿真 AR 子集, 产 pass/fail/skip/xfail/xpass, nightly/PR-to-main 频率。
 # per-machine 全栈独立 (ADR-0025): 每 machine baseline 目录自包含 AR 数据 + probe 引擎, 不共享。
-#   落点二分 + 谱系路由 (ADR-0026): community 谱系(社区源+社区 QEMU binary)→ tests/baseline/<machine>/
-#   (随上游); custom 谱系(任一 custom)→ contexts/baseline/<machine>/ (不随上游)。各找各的,
+#   落点二分 + 谱系路由 (ADR-0026): community 谱系(community source label)→ tests/baseline/<machine>/
+#   (随上游); custom 谱系(custom source label)→ contexts/baseline/<machine>/ (不随上游)。各找各的,
 #   不做优先级覆盖 — 错配(custom 谱系测社区基线, fail 无法归因)在路由层不可能出现。
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -855,10 +855,12 @@ Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish
           With no running instance it exits 3 and will NOT boot one — run
           'ob start-qemu <machine>' first.
 
-baseline dir (lineage-routed, per ADR-0025/0026):
-          community lineage (community source + community QEMU binary)
+baseline dir (lineage-routed, per ADR-0025/0026; lineage is judged on the
+          source label alone — the QEMU binary dir is derived from the same
+          label, not an independent factor):
+          community lineage (community source label)
             → tests/baseline/<machine>   (community baseline, ships upstream)
-          custom lineage (custom source and/or custom QEMU binary)
+          custom lineage (custom source label — any non-community source)
             → contexts/baseline/<machine> (custom baseline, local only)
           No cross-lineage fallback: a custom build never probes the
           community baseline — fail attribution stays closed.
@@ -959,9 +961,10 @@ cmd_test_qemu() {
     esac
 
     # ── 前置 3: baseline 目录按谱系路由 (ADR-0026; community→tests/, custom→contexts/) ──
-    # 谱系 = source label(read_source_label; 缺失 fallback community) + QEMU binary(PID 文件)。
-    # 任一 custom → custom 谱系: fork 源或重编 binary 都使验证结果 custom 特有, 必须测
-    # 自己的 contexts 基线(fail 归因闭合); 不做跨谱系回退 — 本谱系目录缺失即 exit 3,
+    # 谱系 = source label 单维度(read_source_label; 缺失 fallback community)。label 是唯一
+    # 权威事实源: 一个 harness 绑定唯一 source, binary 目录由 label 派生(derive_qemu_paths:
+    # qemu-bin/$label), 共线非独立信号。custom 源 → custom 谱系, 必须测自己的 contexts 基线
+    # (fail 归因闭合); 不做跨谱系回退 — 本谱系目录缺失即 exit 3,
     # remedy 按谱系指名应建的目录。
     local _lineage=""
     test_qemu_lineage "$(read_source_label)" _lineage
@@ -975,7 +978,7 @@ cmd_test_qemu() {
     if [[ "$_dir" == "MISSING" ]]; then
         error "No baseline dir for '$MACHINE' (lineage: $_lineage)."
         if [[ "$_lineage" == "custom" ]]; then
-            error "Expected contexts/baseline/$MACHINE/ — this build is custom (custom source label and/or custom QEMU binary)."
+            error "Expected contexts/baseline/$MACHINE/ — this harness's source label is 'custom' (source other than github.com/openbmc/openbmc; lineage is judged on the source label alone)."
             error "A community baseline cannot own a custom build's verdict; provide contexts/baseline/$MACHINE/ (see tests/baseline/README.md, ADR-0026)."
         else
             error "Expected tests/baseline/$MACHINE/ (community lineage, ships with ob-harness)."
