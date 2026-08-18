@@ -35,13 +35,16 @@ _tq_helper_lineage_routing() {
     local out=""
     HARNESS_ROOT="$TMP"
 
-    # 4a. test_qemu_lineage 判定: 任一 custom → custom; 否则 community; 恒 rc 0
-    test_qemu_lineage "community" "/x/qemu-bin/community/qemu" out
-    [[ "$out" == "community" ]] || { echo "lineage-both-community FAIL: got '$out'" >&2; return 1; }
-    test_qemu_lineage "custom" "/x/qemu-bin/community/qemu" out
-    [[ "$out" == "custom" ]] || { echo "lineage-src-custom FAIL: got '$out'" >&2; return 1; }
-    test_qemu_lineage "community" "/x/qemu-bin/custom/qemu" out
-    [[ "$out" == "custom" ]] || { echo "lineage-binary-custom FAIL: got '$out'" >&2; return 1; }
+    # 4a. test_qemu_lineage 判定(单维度: source label 唯一权威; binary 目录由 label
+    #     派生完全共线, 不构成独立信号 — ADR-0026): 字面二值 + unknown 防御
+    test_qemu_lineage "community" out
+    [[ "$out" == "community" ]] || { echo "lineage-community FAIL: got '$out'" >&2; return 1; }
+    test_qemu_lineage "custom" out
+    [[ "$out" == "custom" ]] || { echo "lineage-custom FAIL: got '$out'" >&2; return 1; }
+    test_qemu_lineage "garbage" out
+    [[ "$out" == "unknown" ]] || { echo "lineage-unknown FAIL: got '$out'" >&2; return 1; }
+    test_qemu_lineage "" out
+    [[ "$out" == "unknown" ]] || { echo "lineage-empty FAIL: got '$out'" >&2; return 1; }
 
     # 4b. 路由: community 谱系 → tests/, 即使 contexts/ 也存在(不跨谱系回退/覆盖)
     mkdir -p "$TMP/contexts/baseline/fake-m" "$TMP/tests/baseline/fake-m"

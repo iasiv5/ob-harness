@@ -9,8 +9,9 @@ probe 引擎 + 本地 applicability，不与他机共享——组织权限边界
 - `contexts/baseline/<machine>/` — custom 基线本地目录（gitignored，不随上游）
 
 两者**不是优先级关系，是谱系路由**（ADR-0026）：被测对象的谱系决定查哪个目录——
-community 谱系（社区源 + 社区 QEMU binary）只查 `tests/`，custom 谱系（任一
-custom）只查 `contexts/`，各找各的、不跨谱系回退，本谱系目录缺失即 exit 3。
+谱系唯一事实源是 source label（`ob init` 判定并写入 manifest；QEMU binary 目录与
+provisioning 都由 label 派生，不构成独立信号）。community 谱系只查 `tests/`，
+custom 谱系只查 `contexts/`，各找各的、不跨谱系回退，本谱系目录缺失即 exit 3。
 社区基线**不会**被 custom 构建消费——custom build 的 fail 无法归因到上游，
 必须由自己的 contexts 基线拥有 verdict。
 
@@ -82,8 +83,8 @@ LLM 不参与 runtime 判定。
 
 ## 谱系（provenance）与 custom 路由
 
-被测对象的谱系 = OpenBMC 主仓 source（`ob init` 的 source label）+ QEMU
-binary（community / custom），任一 custom 即 custom 谱系。`ob test-qemu`
+被测对象的谱系 = OpenBMC 主仓 source（`ob init` 的 source label，唯一事实源；
+QEMU binary 目录与 provisioning 由 label 派生，不构成独立信号）。`ob test-qemu`
 按谱系**硬路由** baseline 目录（ADR-0026）：community 谱系 → `tests/`，
 custom 谱系 → `contexts/`，不跨谱系回退——custom build 测社区基线的错配
 （fail 无法归因：上游也这样？还是你 fork/build 特有？）在路由层不可能出现。

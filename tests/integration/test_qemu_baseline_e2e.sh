@@ -34,11 +34,11 @@ if [[ -z "$img" ]]; then
 fi
 echo "[integration] test-qemu machine=$MACHINE image=$img"
 
-# baseline 目录门(与 cmd_test_qemu 同序: 谱系路由 community→tests/, custom→contexts/; MISSING → SKIP 77)。
-# 预检在 liveness 前, binary 谱系未知 → 用 source-label 单维度宽预检(custom label→contexts,
-# 否则 tests/); cmd 层 liveness 后做 source+binary 双维度权威路由, 预检只是免起 QEMU 的优化。
+# baseline 目录门(与 cmd_test_qemu 同判定: 谱系路由 community→tests/, custom→contexts/;
+# MISSING → SKIP 77)。谱系单维度(source label, ADR-0026), 不依赖 liveness 的 PID 文件,
+# 预检即完整判定(非宽预检)。
 _lineage_pre=""
-test_qemu_lineage "$(read_source_label)" "" _lineage_pre
+test_qemu_lineage "$(read_source_label)" _lineage_pre
 _baseline_dir=""
 test_qemu_resolve_baseline_dir "$_lineage_pre" "$MACHINE" _baseline_dir
 if [[ "$_baseline_dir" == "MISSING" ]]; then

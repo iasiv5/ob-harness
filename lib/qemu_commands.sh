@@ -784,19 +784,22 @@ cmd_smoke() {
 #   不做优先级覆盖 — 错配(custom 谱系测社区基线, fail 无法归因)在路由层不可能出现。
 # ════════════════════════════════════════════════════════════════════════════
 
-# test_qemu_lineage <source_label> <binary_path> <outvar> — leaf-pure 谱系判定。
-# source_label: manifest 的 source_label(经 read_source_label, 缺失 fallback community);
-# binary_path:  QEMU PID 文件的 binary 字段(liveness 后的 PIDFILE_BINARY, 恒有值)。
-# 任一 custom → "custom"(fork 源或重编 binary 都使验证结果 custom 特有);
-# 否则 "community"。无 unknown 态(init 保证 label 二值 + read_source_label 有 fallback;
-# binary 路径总在 PID 文件)。恒 return 0 + outvar(对齐 ADR-0024 outvar 范式)。
+# test_qemu_lineage <source_label> <outvar> — leaf-pure 谱系判定(单维度: source label)。
+# source_label: manifest 的 source_label(经 read_source_label, 缺失 fallback community)。
+# label 是谱系唯一权威事实源: 一个 harness 绑定唯一 source(repo.sh source conflict 保护),
+# binary 目录由 label 派生(derive_qemu_paths: qemu-bin/$label), provisioning 由 label 分派
+# (ensure_qemu_binary), launch 无 binary override — (label, binary 路径)在 ob 体系内完全
+# 共线, binary 维度是冗余信号(且防不住真威胁: OB_QEMU_BINARY_URL 指向自编 URL 下载替换
+# community/ 内容时路径不变, 路径判定照样误判 community, 反成假安全感)。
+# 字面 "custom" → custom / "community" → community; 其他值 → "unknown"(manifest 被外力
+# 写坏的防御, cmd 层 exit 3, 不静默归类)。恒 return 0 + outvar(对齐 ADR-0024 范式)。
 test_qemu_lineage() {
-    local src_label="$1" binary_path="$2" outvar="$3"
-    if [[ "$src_label" == "custom" || "$binary_path" == */custom/* ]]; then
-        printf -v "$outvar" '%s' "custom"
-    else
-        printf -v "$outvar" '%s' "community"
-    fi
+    local src_label="$1" outvar="$2"
+    case "$src_label" in
+        custom)    printf -v "$outvar" '%s' "custom" ;;
+        community) printf -v "$outvar" '%s' "community" ;;
+        *)         printf -v "$outvar" '%s' "unknown" ;;
+    esac
     return 0
 }
 
@@ -961,7 +964,12 @@ cmd_test_qemu() {
     # 自己的 contexts 基线(fail 归因闭合); 不做跨谱系回退 — 本谱系目录缺失即 exit 3,
     # remedy 按谱系指名应建的目录。
     local _lineage=""
-    test_qemu_lineage "$(read_source_label)" "$PIDFILE_BINARY" _lineage
+    test_qemu_lineage "$(read_source_label)" _lineage
+    if [[ "$_lineage" == "unknown" ]]; then
+        error "Cannot determine lineage for '$MACHINE': source label is neither 'community' nor 'custom'."
+        error "The manifest is externally corrupted — check via 'ob status' (Source label) or re-run ob init. See ADR-0026."
+        exit 3
+    fi
     local _dir=""
     test_qemu_resolve_baseline_dir "$_lineage" "$MACHINE" _dir
     if [[ "$_dir" == "MISSING" ]]; then
