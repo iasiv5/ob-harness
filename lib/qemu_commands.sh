@@ -1,7 +1,42 @@
 #!/usr/bin/env bash
-# lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu/cmd_smoke). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu / QEMU instance.
+# lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu/cmd_smoke/cmd_test_qemu). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu / ob smoke / ob test-qemu / QEMU instance.
 # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
 # 形态对照: L1 exit-seam 命令族(顶层命令直接 exit, 无 dispatcher 收口), 区别于 lib/devtool_subcmd.sh 的 L3 leaf-pure handler(return exit-code, 由 cmd_dev 收口 exit)。
+
+_qemu_lifecycle_lock_or_exit() {
+    local machine="$1" fd_out="$2" owned_out="$3"
+    local _qll_fd="" _qll_owned="" _qll_status=""
+    qemu_instance_lifecycle_lock_enter "$machine" _qll_fd _qll_owned _qll_status
+    case "$_qll_status" in
+        ok)
+            printf -v "$fd_out" '%s' "$_qll_fd"
+            printf -v "$owned_out" '%s' "$_qll_owned"
+            ;;
+        busy)
+            error "Another QEMU lifecycle operation is active for '$machine'."
+            error "Wait for it to finish, then retry."
+            exit 3
+            ;;
+        *)
+            error "Cannot acquire QEMU lifecycle lock for '$machine'."
+            exit 1
+            ;;
+    esac
+}
+
+_qemu_lifecycle_lock_export_if_owned() {
+    local machine="$1" lock_fd="$2" lock_owned="$3"
+    [[ "$lock_owned" == "1" ]] || return 0
+    export OB_QEMU_LIFECYCLE_LOCK_FD="$lock_fd"
+    export OB_QEMU_LIFECYCLE_LOCK_MACHINE="$machine"
+}
+
+_qemu_lifecycle_lock_release_if_owned() {
+    local lock_fd="$1" lock_owned="$2"
+    [[ "$lock_owned" == "1" ]] || return 0
+    qemu_instance_lifecycle_lock_release "$lock_fd"
+    unset OB_QEMU_LIFECYCLE_LOCK_FD OB_QEMU_LIFECYCLE_LOCK_MACHINE
+}
 
 cmd_start_qemu() {
     detect_harness_root
@@ -68,6 +103,9 @@ cmd_start_qemu() {
     #     whose check_ports_available exits 3 on occupied ports; killing the old
     #     same-machine instance first avoids a spurious port-conflict exit) ──
     derive_qemu_paths
+    local _start_lock_fd="" _start_lock_owned=""
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _start_lock_fd _start_lock_owned
+    _qemu_lifecycle_lock_export_if_owned "$MACHINE" "$_start_lock_fd" "$_start_lock_owned"
     local _liv=""
     qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
     case "$_liv" in
@@ -154,6 +192,7 @@ cmd_start_qemu() {
 
     # ── Execute launch (Shape 2 half 2: setsid + PID write + BMC wait + summary) ──
     qemu_execute_launch
+    _qemu_lifecycle_lock_release_if_owned "$_start_lock_fd" "$_start_lock_owned"
 }
 
 cmd_stop_qemu() {
@@ -208,6 +247,17 @@ cmd_stop_qemu() {
         info "No QEMU instances to stop."
         exit 0
     fi
+
+    # Acquire every target before modifying any instance, so --all cannot stop a
+    # partial set before discovering a busy lifecycle writer.
+    local -a _stop_lock_fds=() _stop_lock_owned=()
+    local _stop_lock_fd _stop_owned
+    for target_machine in "${targets[@]}"; do
+        _stop_lock_fd=""; _stop_owned=""
+        _qemu_lifecycle_lock_or_exit "$target_machine" _stop_lock_fd _stop_owned
+        _stop_lock_fds+=("$_stop_lock_fd")
+        _stop_lock_owned+=("$_stop_owned")
+    done
 
     # ── Stop each target ──
     for target_machine in "${targets[@]}"; do
@@ -282,6 +332,12 @@ cmd_stop_qemu() {
                 ;;
         esac
     done
+
+    local _stop_lock_i
+    for (( _stop_lock_i=0; _stop_lock_i<${#_stop_lock_fds[@]}; _stop_lock_i++ )); do
+        _qemu_lifecycle_lock_release_if_owned \
+            "${_stop_lock_fds[$_stop_lock_i]}" "${_stop_lock_owned[$_stop_lock_i]}"
+    done
 }
 
 cmd_deploy_to_qemu() {
@@ -310,15 +366,23 @@ cmd_deploy_to_qemu() {
     fi
 
     derive_qemu_paths   # 算 QEMU_PID_FILE 等(qemu.sh:6)
+    local _deploy_lock_fd="" _deploy_lock_owned=""
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _deploy_lock_fd _deploy_lock_owned
+    _qemu_lifecycle_lock_export_if_owned "$MACHINE" "$_deploy_lock_fd" "$_deploy_lock_owned"
 
     # ── 探测 QEMU 在跑 + 预读旧端口(必须在 stop 前, 约束 2) ──
     local qemu_running=0
+    local old_qemu_pid="" old_qemu_started_at="" old_qemu_start_ticks="" old_qemu_serial_sock=""
     local old_ssh_port="" old_redfish_port="" old_ipmi_port="" old_http_port=""
     local _liv=""
     qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
     case "$_liv" in
         running)
             qemu_running=1
+            old_qemu_pid="$PIDFILE_PID"
+            old_qemu_started_at="$PIDFILE_STARTED_AT"
+            old_qemu_start_ticks="$PIDFILE_PROCESS_START_TICKS"
+            old_qemu_serial_sock="$PIDFILE_SERIAL_SOCK"
             old_ssh_port="$PIDFILE_SSH_PORT"
             old_redfish_port="$PIDFILE_REDFISH_PORT"
             old_ipmi_port="$PIDFILE_IPMI_PORT"
@@ -344,6 +408,12 @@ cmd_deploy_to_qemu() {
         [[ "$answer" == [yY] ]] || { info "Aborted."; exit 2; }
     fi
 
+    # Image build does not mutate QEMU lifecycle state and may take hours. Do
+    # not block other start/stop operations for the whole build; re-acquire and
+    # verify the snapshot before touching the instance.
+    _qemu_lifecycle_lock_release_if_owned "$_deploy_lock_fd" "$_deploy_lock_owned"
+    _deploy_lock_fd=""; _deploy_lock_owned=""
+
     # ── Step 1: build(build-first, 约束 3 — QEMU 在跑也不停) ──
     echo ""
     step_header "Building $MACHINE (image rebuild)"
@@ -365,6 +435,32 @@ cmd_deploy_to_qemu() {
     step_header "Image Rebuilt"
     echo "  Machine: $MACHINE"
     echo "  Image  : ${image_file:-<not found>}"
+
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _deploy_lock_fd _deploy_lock_owned
+    _qemu_lifecycle_lock_export_if_owned "$MACHINE" "$_deploy_lock_fd" "$_deploy_lock_owned"
+    local _deploy_liv_now=""
+    qemu_instance_liveness "$MACHINE" _deploy_liv_now
+    if [[ $qemu_running -eq 1 ]]; then
+          if [[ "$_deploy_liv_now" != "running" || "$PIDFILE_PID" != "$old_qemu_pid" || \
+              "$PIDFILE_STARTED_AT" != "$old_qemu_started_at" || \
+              "$PIDFILE_PROCESS_START_TICKS" != "$old_qemu_start_ticks" || \
+              "$PIDFILE_SERIAL_SOCK" != "$old_qemu_serial_sock" ]]; then
+            error "QEMU instance for '$MACHINE' changed while the image was building."
+            error "Review the current instance, then retry 'ob deploy-to-qemu $MACHINE'."
+            exit 3
+        fi
+    else
+        case "$_deploy_liv_now" in
+            running)
+                error "A QEMU instance for '$MACHINE' appeared while the image was building."
+                error "Review the current instance, then retry 'ob deploy-to-qemu $MACHINE'."
+                exit 3
+                ;;
+            exited|recycled)
+                qemu_instance_clean_stale "$MACHINE"
+                ;;
+        esac
+    fi
 
     # ── Step 2: stop 旧 QEMU(若在跑) + 端口复用注入(约束 2) ──
     if [[ $qemu_running -eq 1 ]]; then
@@ -389,6 +485,7 @@ cmd_deploy_to_qemu() {
     echo ""
 
     qemu_execute_launch        # setsid + PID 写 + BMC-ready 等待(超时仅 warn 不中止) + hostkey + summary
+    _qemu_lifecycle_lock_release_if_owned "$_deploy_lock_fd" "$_deploy_lock_owned"
     # 到此返回 0(QEMU 启动即成功, 约束 5); setsid 失败时 execute_launch 自己退出 1
 }
 
@@ -431,45 +528,51 @@ _smoke_wait_ssh_tcp() {
     return 1
 }
 
+# _smoke_curl_fetch <url> <code_ref> <body_ref> — curl 取一个 Redfish 资源, 经 nameref 回填
+# code/body。两个 Redfish probe(root/Managers)的公共底座: max-time + 传输失败单次重试。
+#   --max-time: bmcweb 偶发挂起时无上界 curl 会阻塞到对端断开(实测 >120s 才报 HTTP 000),
+#     挂死探测整体; 10s 对齐 test-qemu OB_TQ_TIMEOUT 默认, env OB_SMOKE_HTTP_TIMEOUT 可调。
+#   重试一次: 单次传输失败(连接 reset/TLS 握手超时/连接拒绝)常是瞬时抖动, 立即判 ✗ 会把
+#     infra 抖动冒充 α truth(实测同一实例一次 smoke Managers 000 ✗ / 重跑 1s 全绿)。连续
+#     两次失败才维持 "000" 交 judge 判 ✗ — 与 test-qemu "error=infra, 重跑" 语义对齐。
+# rc≠0(含部分传输后失败, 此时 -w 末行未产出, 解析只会得垃圾)→ code 留 "000", body 空。
+# 不 exit; set -e-safe(|| rc=$?)。
+_smoke_curl_fetch() {
+    local url="$1"
+    local -n _scf_code="$2"
+    local -n _scf_body="$3"
+    _scf_code="000"; _scf_body=""
+    local out="" rc=0
+    out=$(curl -sk --max-time "${OB_SMOKE_HTTP_TIMEOUT:-10}" -u root:0penBmc \
+          -w $'\n__OB_HTTP__%{http_code}' "$url" 2>/dev/null) || rc=$?
+    if [[ "$rc" -ne 0 ]]; then
+        rc=0
+        out=$(curl -sk --max-time "${OB_SMOKE_HTTP_TIMEOUT:-10}" -u root:0penBmc \
+              -w $'\n__OB_HTTP__%{http_code}' "$url" 2>/dev/null) || rc=$?
+    fi
+    if [[ "$rc" -eq 0 && -n "$out" ]]; then
+        _scf_code="${out##*$'\n'}"         # 末行 = __OB_HTTP__<code>
+        _scf_code="${_scf_code#__OB_HTTP__}"
+        _scf_body="${out%$'\n'*}"           # 去末行 = body
+    fi
+    # 两次 curl 都失败 → 维持 "000"(judge 据此判 fail)
+    return 0
+}
+
 # _smoke_probe_redfish <port> <code_ref> <body_ref> — curl 取 Redfish 根, 经 nameref 回填 code/body。
 # nameref 回填(非 _VF_* 全局), protocol 可测(对照 resolve_command_machine nameref 范式)。
-# curl 整体失败(连接拒绝)→ code 留 "000", body 空。不 exit; set -e-safe(|| rc=$?)。
+# curl 整体失败(连接拒绝)→ code 留 "000", body 空(经 _smoke_curl_fetch 的 max-time+重试)。
 _smoke_probe_redfish() {
     local port="$1"
-    local -n _spr_code="$2"
-    local -n _spr_body="$3"
-    _spr_code="000"; _spr_body=""
-    local out="" rc=0
-    out=$(curl -sk -u root:0penBmc -w $'\n__OB_HTTP__%{http_code}' \
-          "https://localhost:$port/redfish/v1" 2>/dev/null) || rc=$?
-    if [[ -n "$out" ]]; then
-        _spr_code="${out##*$'\n'}"        # 末行 = __OB_HTTP__<code>
-        _spr_code="${_spr_code#__OB_HTTP__}"
-        _spr_body="${out%$'\n'*}"          # 去末行 = body
-    fi
-    # curl 整体失败 → 维持 "000"(judge 据此判 fail)
-    return 0
+    _smoke_curl_fetch "https://localhost:$port/redfish/v1" "$2" "$3"
 }
 
 # _smoke_probe_redfish_managers <port> <code_ref> <body_ref> — curl 取 Redfish Managers/bmc
 # (OpenBMC 标准 manager id, 全 image 通用, 非 per-machine 知识), 经 nameref 回填 code/body。
 # 形态对照 _smoke_probe_redfish; 一次 probe 喂 managers + swversion 两个 judge(深一层接口)。
-# curl 整体失败(连接拒绝)→ code "000", body 空。不 exit; set -e-safe(|| rc=$?)。
 _smoke_probe_redfish_managers() {
     local port="$1"
-    local -n _sprm_code="$2"
-    local -n _sprm_body="$3"
-    _sprm_code="000"; _sprm_body=""
-    local out="" rc=0
-    out=$(curl -sk -u root:0penBmc -w $'\n__OB_HTTP__%{http_code}' \
-          "https://localhost:$port/redfish/v1/Managers/bmc" 2>/dev/null) || rc=$?
-    if [[ -n "$out" ]]; then
-        _sprm_code="${out##*$'\n'}"        # 末行 = __OB_HTTP__<code>
-        _sprm_code="${_sprm_code#__OB_HTTP__}"
-        _sprm_body="${out%$'\n'*}"          # 去末行 = body
-    fi
-    # curl 整体失败 → 维持 "000"(judge 据此判 fail)
-    return 0
+    _smoke_curl_fetch "https://localhost:$port/redfish/v1/Managers/bmc" "$2" "$3"
 }
 
 # _smoke_probe_ipmi <port> <rc_ref> <out_ref> — 一条 ipmitool mc info, 经 nameref 回填 rc/out。
@@ -523,6 +626,18 @@ _smoke_render_verdict() {
     # α 重申: exit 1 当下向 stderr 喂一行 α 语义, 防 caller 据全局 "1 = broken" 误判 smoke 坏。
     # warn 默认走 stdout, 显式 >&2 落 stderr(不污染 stdout 真相报告)。
     warn "exit 1 here is the α truth-reporter contract: the ✗ rows above report the BMC interface's ACTUAL state, NOT a smoke command failure — read the ✗ rows to see which interface and why (debug the BMC interface, not smoke)." >&2
+    # 调和提示(A1): Managers/SoftwareVersion ✗ 与 test-qemu 层 pass 同时成立有已知形态 —
+    # smoke 是固定哨兵(零 per-machine, 不能校准), 持久 image 缺口会让它对某 image 常红;
+    # per-machine baseline 曾以校准吸收同款缺口(romulus 先例, 记录在 tests/baseline/)。
+    # 这是信息索引非 remedy(解耦原则: peer 命令互相不做流程 nudge): 指出瞬时/持久的区分法
+    # 与校准历史落点, 不指使 caller 下一步跑哪条命令。
+    local _srv_cal=""
+    for _srv_cal in "${_srv_fn[@]}"; do
+        if [[ "$_srv_cal" == *"Managers"* || "$_srv_cal" == *"SoftwareVersion"* ]]; then
+            info "Managers/SoftwareVersion ✗ has two known shapes: (a) transient bmcweb hiccup — a re-run of smoke distinguishes it (each probe already retries once); (b) a persistent image gap — the romulus precedent was absorbed by per-machine baseline calibration (notes in tests/baseline/<machine>/applicability.yaml); the calibrated per-machine verdict lives in the test-qemu layer, orthogonal to this smoke row." >&2
+            break
+        fi
+    done
     return 1
 }
 
@@ -552,6 +667,8 @@ cmd_smoke() {
 
     # ── 前置 2: RUNNING QEMU instance(smoke 不 bring-up, 只探活实例——绝不探死端口, 防假"BMC 坏") ──
     derive_qemu_paths
+    local _smoke_lock_fd="" _smoke_lock_owned=""
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _smoke_lock_fd _smoke_lock_owned
     local _liv=""
     qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
     case "$_liv" in
@@ -649,8 +766,335 @@ cmd_smoke() {
     # 无 --allow-fail / 无 per-machine expected-profile / 无 baseline: 回归检测是 caller 的事(零 per-machine 知识)。
     local _vrc=0
     _smoke_render_verdict "$total" "$passed" failed_names failed_raws "$MACHINE" || _vrc=$?
+    _qemu_lifecycle_lock_release_if_owned "$_smoke_lock_fd" "$_smoke_lock_owned"
     case "$_vrc" in
         0) return 0 ;;            # smoke 不拥有 QEMU → 不 teardown, 直接 return
         *) exit 1 ;;              # smoke 不拥有 QEMU → 无 EXIT trap, 直接 exit 1
+    esac
+}
+
+# ════════════════════════════════════════════════════════════════════════════
+# ob test-qemu — baseline AR probe runner (probe-only)。术语见 CONTEXT.md baseline / ob test-qemu / exit-code 契约.
+# 形态对照 cmd_smoke: probe-only (不 boot/teardown, 无 EXIT trap), 读 PID 文件真实 Redfish 端口。
+#   与 smoke 正交姊妹: smoke 浅冒烟 5 哨兵 + 零 per-machine 守 per-push 绿灯; test-qemu 逐条深测
+#   per-machine baseline 的 QEMU 可仿真 AR 子集, 产 pass/fail/skip/xfail/xpass, nightly/PR-to-main 频率。
+# per-machine 全栈独立 (ADR-0025): 每 machine baseline 目录自包含 AR 数据 + probe 引擎, 不共享。
+#   落点二分 + 谱系路由 (ADR-0026): community 谱系(community source label)→ tests/baseline/<machine>/
+#   (随上游); custom 谱系(custom source label)→ contexts/baseline/<machine>/ (不随上游)。各找各的,
+#   不做优先级覆盖 — 错配(custom 谱系测社区基线, fail 无法归因)在路由层不可能出现。
+# ════════════════════════════════════════════════════════════════════════════
+
+# test_qemu_lineage <source_label> <outvar> — leaf-pure 谱系判定(单维度: source label)。
+# source_label: manifest 的 source_label(经 read_source_label, 缺失 fallback community)。
+# label 是谱系唯一权威事实源: 一个 harness 绑定唯一 source(repo.sh source conflict 保护),
+# binary 目录由 label 派生(derive_qemu_paths: qemu-bin/$label), provisioning 由 label 分派
+# (ensure_qemu_binary), launch 无 binary override — (label, binary 路径)在 ob 体系内完全
+# 共线, binary 维度是冗余信号(且防不住真威胁: OB_QEMU_BINARY_URL 指向自编 URL 下载替换
+# community/ 内容时路径不变, 路径判定照样误判 community, 反成假安全感)。
+# 字面 "custom" → custom / "community" → community; 其他值 → "unknown"(manifest 被外力
+# 写坏的防御, cmd 层 exit 3, 不静默归类)。恒 return 0 + outvar(对齐 ADR-0024 范式)。
+test_qemu_lineage() {
+    local src_label="$1" outvar="$2"
+    case "$src_label" in
+        custom)    printf -v "$outvar" '%s' "custom" ;;
+        community) printf -v "$outvar" '%s' "community" ;;
+        *)         printf -v "$outvar" '%s' "unknown" ;;
+    esac
+    return 0
+}
+
+# test_qemu_resolve_lineage <outvar> — leaf-pure 谱系解析(manifest strict 读取 → 谱系判定)。
+# 自读 manifest 而不经 read_source_label: 后者把 label 缺失(文件缺/字段空)静默 fallback
+# community, 调用方无法区分"真 community"与"fallback community" — 信息在该层已丢。
+# 谱系判定是 baseline 路由的归因闸门, 缺失态须 fail-closed(ADR-0026 2026-08-18 修订):
+# 文件缺失/source_label 字段空 → "unknown"(cmd 层 exit 3 + 按成因 remedy, 与"写坏"同档
+# 强防御); 字段非空 → 交 test_qemu_lineage 字面二值判定。恒 return 0 + outvar。
+# read_source_label 的 community fallback 本体保留 — binary provisioning 等其他消费方
+# 的缺失默认是 fail-safe 方向(下载社区 binary), 无归因问题, 不在本闸门管辖。
+test_qemu_resolve_lineage() {
+    local outvar="$1" label=""
+    if [[ -f "${SOURCE_MANIFEST_FILE:-}" ]]; then
+        label=$(read_manifest_field source_label 2>/dev/null || true)
+        label=$(trim_whitespace "$label")
+    fi
+    if [[ -z "$label" ]]; then
+        printf -v "$outvar" '%s' "unknown"
+    else
+        test_qemu_lineage "$label" "$outvar"
+    fi
+    return 0
+}
+
+# test_qemu_resolve_baseline_dir <lineage> <machine> <outvar> — leaf-pure helper: 按谱系路由 baseline 目录。
+# community 谱系 → tests/baseline/<machine>(社区基线, 随上游); custom 谱系 →
+# contexts/baseline/<machine>(custom 基线, 不随上游)。各找各的, 不做优先级覆盖 —
+# 谱系与基线的错配(custom 谱系测社区基线 → fail 无法归因)在路由层不可能出现。
+# 锚定 $HARNESS_ROOT (detect_harness_root 设置 = $OB_ENTRY_DIR; 从任意 cwd 调 ob 时相对路径会误报 MISSING)。
+# outvar 写命中目录绝对路径或 "MISSING"; 恒 return 0 (对齐 machine_selection_guard outvar+恒0 / ADR-0024)。
+# 抽出为独立 helper: 让 protocol 测谱系路由时不必构造 fake alive QEMU (cmd 层该 remedy 需先过 liveness)。
+test_qemu_resolve_baseline_dir() {
+    local lineage="$1" machine="$2" outvar="$3"
+    local root="${HARNESS_ROOT:-$OB_ENTRY_DIR}"
+    local dir=""
+    case "$lineage" in
+        community) dir="$root/tests/baseline/$machine" ;;
+        custom)    dir="$root/contexts/baseline/$machine" ;;
+        *)         printf -v "$outvar" '%s' "MISSING"; return 0 ;;
+    esac
+    if [[ -d "$dir" ]]; then
+        printf -v "$outvar" '%s' "$dir"
+    else
+        printf -v "$outvar" '%s' "MISSING"
+    fi
+    return 0
+}
+
+# test_qemu_usage — cmd_test_qemu 的 -h/--help 输出 (ob test-qemu --help)。自包含 test-qemu 专属说明。
+test_qemu_usage() {
+    cat <<EOF
+Usage: ob test-qemu <machine> [options]
+
+Run <machine>'s baseline AR probes on its RUNNING QEMU instance. Each AR
+(需求条目) is probed and verdicted pass/fail/skip/xfail/xpass.
+
+Options:
+  --suite <name>   Only run ARs in this suite
+  --ar <id>        Only run the named AR
+  --report <path>  Dump JSON report to PATH
+  -v, --verbose    Print per-AR status to stderr
+  -d, --dry-run    List ARs + applicability, no probe (runner-level)
+  -h, --help       Show this help
+
+Environment:
+  OB_TQ_USER / OB_TQ_PASSWORD   Redfish creds — env wins over argv flags and over
+                                ar_probes.yaml auth (keeps secrets out of 'ps';
+                                environ is owner-only). Missing ones fall back to
+                                ar_probes.yaml auth.redfish / auth.
+  OB_TQ_TIMEOUT                 Per-probe HTTP timeout seconds (default 10)
+
+Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish
+          port from the instance's PID file (no port overrides honored).
+          With no running instance it exits 3 and will NOT boot one — run
+          'ob start-qemu <machine>' first.
+
+baseline dir (lineage-routed, per ADR-0025/0026; lineage is judged on the
+          source label alone — the QEMU binary dir is derived from the same
+          label, not an independent factor; a missing manifest or empty
+          source_label fails closed, it never silently defaults to community):
+          community lineage (community source label)
+            → tests/baseline/<machine>   (community baseline, ships upstream)
+          custom lineage (custom source label — any non-community source)
+            → contexts/baseline/<machine> (custom baseline, local only)
+          No cross-lineage fallback: a custom build never probes the
+          community baseline — fail attribution stays closed.
+
+Verdict (per AR):
+  pass   applicable AR, probe matched the assert
+  fail   applicable AR, probe did NOT match (BMC misses baseline)
+  skip   not applicable / not QEMU-emulatable (no probe run)
+  xfail  expected fail: probe failed as expected
+  xpass  unexpected pass: an xfail AR surprisingly passed (improvement signal)
+  error  probe could not get a clean BMC answer (transport/timeout/schema) —
+         infra, NOT a baseline miss
+  skip/xfail/xpass do NOT affect the exit-code — only an applicable AR that
+  actually fails causes exit-code 1.
+
+Exit codes (test-qemu-specific):
+  0   All applicable ARs passed (skip/xfail/xpass do not count).
+  1   One or more applicable ARs failed — α truth: the BMC does not meet its
+      baseline. This is NOT "test-qemu broken"; read the fail rows + report.
+  3   Precondition missing (no running instance, machine not resolved, or no
+      baseline dir for <machine> — see remedy line), OR one or more probes hit
+      a transient infra error mid-run (VERDICT: ERROR) — the instance may be
+      fine; re-run / check connectivity rather than treat it as a baseline fail.
+EOF
+}
+
+cmd_test_qemu() {
+    detect_harness_root
+
+    # 先扫 -h/--help: parse_args 的 test-qemu) set -- 让 --help 进 TEST_QEMU_ARGS 而非全局 parser;
+    # 必须在 machine 必填/liveness 之前, 否则 './ob test-qemu --help' 因 MACHINE 空走 exit 3。
+    local _arg
+    for _arg in "$@"; do
+        case "$_arg" in
+            -h|--help) test_qemu_usage; return 0 ;;
+        esac
+    done
+
+    # 解析命令私有 flags (machine 由全局 $MACHINE 提供, parse_args 已设; argv 只含私有 flags)
+    local _suite="" _ar="" _report="" _verbose=0 _dry=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --suite) _suite="$2"; shift 2 ;;
+            --ar) _ar="$2"; shift 2 ;;
+            --report) _report="$2"; shift 2 ;;
+            -v|--verbose) _verbose=1; shift ;;
+            -d|--dry-run) _dry=1; shift ;;
+            -h|--help) test_qemu_usage; return 0 ;;
+            *) error "Unknown option: $1"; test_qemu_usage >&2; exit 1 ;;
+        esac
+    done
+
+    # ── 前置 1: machine 必填 (probe-only 命令不交互选号; 列 running candidates, 对齐 cmd_smoke) ──
+    if [[ -z "$MACHINE" ]]; then
+        error "No machine specified."
+        local -a _tq_targets=()
+        mapfile -t _tq_targets < <(qemu_instance_list)
+        if [[ ${#_tq_targets[@]} -eq 0 ]]; then
+            error "No QEMU instance is running. test-qemu probes a running instance — run 'ob start-qemu <machine>' first."
+        else
+            error "Running QEMU instances you can test:"
+            local _t
+            for _t in "${_tq_targets[@]}"; do
+                printf '  %-20s %s\n' "$_t" "$(qemu_instance_summarize_brief "$_t")" >&2
+            done
+        fi
+        error "Specify a machine: ob test-qemu <machine>"
+        exit 3
+    fi
+
+    # PyYAML 前置(runner/report/auth 解析 YAML; 缺失 → exit 3 + remedy, 计划全局约束 + 评审 🔴2)
+    if ! python3 -c "import yaml" 2>/dev/null; then
+        error "PyYAML not installed (test-qemu runner needs 'import yaml')."
+        error "Install: pip install pyyaml  (or your distro's python3-yaml)"
+        exit 3
+    fi
+
+    # ── 前置 2: RUNNING QEMU instance (probe-only, 对齐 cmd_smoke; 绝不探死端口防假"BMC 坏") ──
+    derive_qemu_paths
+    local _test_lock_fd="" _test_lock_owned=""
+    _qemu_lifecycle_lock_or_exit "$MACHINE" _test_lock_fd _test_lock_owned
+    local _liv=""
+    qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024)
+    case "$_liv" in
+        nopid)
+            error "No QEMU instance running for '$MACHINE' (no PID file)."
+            error "Run 'ob start-qemu $MACHINE' first."
+            exit 3
+            ;;
+        exited|recycled)
+            qemu_instance_clean_stale "$MACHINE"
+            error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
+            error "Run 'ob start-qemu $MACHINE' first."
+            exit 3
+            ;;
+        running)
+            ;;
+    esac
+
+    # ── 前置 3: baseline 目录按谱系路由 (ADR-0026; community→tests/, custom→contexts/) ──
+    # 谱系 = source label 单维度。label 是唯一权威事实源: 一个 harness 绑定唯一 source,
+    # binary 目录由 label 派生(derive_qemu_paths: qemu-bin/$label), 共线非独立信号。
+    # 经 test_qemu_resolve_lineage strict 读取(ADR-0026 2026-08-18 修订): manifest 缺失/
+    # 字段空不 fallback community 而判 unknown(exit 3, 与写坏同档强防御) — 谱系是 baseline
+    # 路由的归因闸门, 缺失态 fail-closed; read_source_label 的 community fallback 保留给
+    # binary provisioning 等消费方(那里缺失是 fail-safe 方向)。custom 源 → custom 谱系,
+    # 必须测自己的 contexts 基线(fail 归因闭合); 不做跨谱系回退 — 本谱系目录缺失即 exit 3,
+    # remedy 按谱系指名应建的目录。
+    local _lineage=""
+    test_qemu_resolve_lineage _lineage
+    if [[ "$_lineage" == "unknown" ]]; then
+        # 按成因分档 remedy(unknown = 缺失/字段空 或 写坏): 排查方向不同, 不共用文案
+        local _mlabel=""
+        if [[ -f "${SOURCE_MANIFEST_FILE:-}" ]]; then
+            _mlabel=$(read_manifest_field source_label 2>/dev/null || true)
+            _mlabel=$(trim_whitespace "$_mlabel")
+        fi
+        if [[ -z "$_mlabel" ]]; then
+            error "Cannot determine lineage for '$MACHINE': source manifest missing or source_label empty."
+            error "Restore ${SOURCE_MANIFEST_FILE:-workspace/configs/openbmc-source.manifest} or re-run 'ob init' to regenerate it. See ADR-0026."
+        else
+            error "Cannot determine lineage for '$MACHINE': source label is neither 'community' nor 'custom'."
+            error "The manifest is externally corrupted — check via 'ob status' (Source label) or re-run ob init. See ADR-0026."
+        fi
+        exit 3
+    fi
+    local _dir=""
+    test_qemu_resolve_baseline_dir "$_lineage" "$MACHINE" _dir
+    if [[ "$_dir" == "MISSING" ]]; then
+        error "No baseline dir for '$MACHINE' (lineage: $_lineage)."
+        if [[ "$_lineage" == "custom" ]]; then
+            error "Expected contexts/baseline/$MACHINE/ — this harness's source label is 'custom' (source other than github.com/openbmc/openbmc; lineage is judged on the source label alone)."
+            error "A community baseline cannot own a custom build's verdict; provide contexts/baseline/$MACHINE/ (see tests/baseline/README.md, ADR-0026)."
+        else
+            error "Expected tests/baseline/$MACHINE/ (community lineage, ships with ob-harness)."
+            error "Create it per tests/baseline/README.md, or verify lineage via 'ob status'. See ADR-0026."
+        fi
+        exit 3
+    fi
+
+    # ── 从 PID 文件读真实 Redfish 端口 (qemu_instance_liveness 已填 PIDFILE_*; 不假设默认值) ──
+    local _port="$PIDFILE_REDFISH_PORT"
+
+    # ── 凭据解析: env OB_TQ_USER/OB_TQ_PASSWORD 优先, 缺者从 ar_probes.yaml auth 补 ──
+    # (评审 🟡2 + 🟢1: 密码经 env 注入 runner/probe — argv 是 ps 全局可见的, environ owner-only;
+    #  双源校验防 env 与 YAML 打架: user/password 各满足 env 或 YAML 至少一源, 缺则 exit 3 指名。)
+    # $() 捕获 + || _arc=$? 显式判 rc(评审 🟡1): process substitution 的 read 在 set -e 下 EOF
+    # exit 1 会先于显式 exit 3 触发 errexit, 把 malformed YAML 误报成 exit 1(α truth 污染)。
+    local _auth_user="${OB_TQ_USER:-}" _auth_pass="${OB_TQ_PASSWORD:-}"
+    local _auth_out="" _arc=0
+    if [[ -z "$_auth_user" || -z "$_auth_pass" ]]; then
+        _auth_out=$(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
+import yaml, os, sys
+try:
+    d = yaml.safe_load(open(os.environ["OB_TQ_YAML"])) or {}
+except Exception as e:
+    sys.stderr.write("cmd_test_qemu: cannot parse %s: %s\n" % (os.environ["OB_TQ_YAML"], e))
+    sys.exit(3)
+a = d.get("auth") or {}
+rf = a.get("redfish") if isinstance(a.get("redfish"), dict) else None
+print((rf or {}).get("user") or a.get("user") or "")
+print((rf or {}).get("password") or a.get("password") or "")
+') || _arc=$?
+        if [[ $_arc -ne 0 ]]; then
+            error "Cannot parse $_dir/ar_probes.yaml auth (YAML malformed — see parse error above)."
+            exit 3
+        fi
+        # env 已设者胜, 只从 YAML 补缺(print 两行, $() 已去尾换行)
+        [[ -z "$_auth_user" ]] && _auth_user="${_auth_out%%$'\n'*}"
+        if [[ -z "$_auth_pass" ]]; then
+            _auth_pass="${_auth_out#*$'\n'}"
+            [[ "$_auth_pass" == "$_auth_out" ]] && _auth_pass=""   # 单行兜底(无第二行)
+        fi
+    fi
+    if [[ -z "$_auth_user" ]]; then
+        error "No Redfish user for '$MACHINE' baseline probes."
+        error "Set OB_TQ_USER env, or auth.redfish.user (fallback auth.user) in $_dir/ar_probes.yaml."
+        exit 3
+    fi
+    if [[ -z "$_auth_pass" ]]; then
+        error "No Redfish password for '$MACHINE' baseline probes."
+        error "Set OB_TQ_PASSWORD env, or auth.redfish.password (fallback auth.password) in $_dir/ar_probes.yaml."
+        exit 3
+    fi
+
+    # ── 调 per-machine runner (host/port argv + 凭据 env 注入; runner exit 0/1 透传为 ob exit 0/1) ──
+    # 凭据走 env 不走 argv(评审 🟡2): ob → bash run.sh → python probe 全链 ps 不可见;
+    # run.sh 侧"argv 或 env 至少一源"校验由 env 满足, probe _resolve_auth 的 env fallback 消费。
+    info "test-qemu: probing '$MACHINE' baseline at $_dir (lineage $_lineage, Redfish port $_port)."
+    export OB_TQ_USER="$_auth_user" OB_TQ_PASSWORD="$_auth_pass"
+    local -a _run_args=(bash "$_dir/runner/run.sh" --host 127.0.0.1 --port "$_port")
+    [[ -n "$_ar" ]] && _run_args+=(--ar "$_ar")
+    [[ -n "$_suite" ]] && _run_args+=(--suite "$_suite")
+    [[ -n "$_report" ]] && _run_args+=(--report "$_report")
+    [[ $_verbose -eq 1 ]] && _run_args+=(-v)
+    [[ $_dry -eq 1 ]] && _run_args+=(-d)
+
+    local _rrc=0
+    "${_run_args[@]}" || _rrc=$?
+    _qemu_lifecycle_lock_release_if_owned "$_test_lock_fd" "$_test_lock_owned"
+    # runner exit taxonomy(评审 🔴2): 0=无 applicable fail / 1=α truth(BMC fail) / 3=infra-config-data 前置缺失。
+    # 映射字面 exit(exit-contract X: 须字面 0/1/2/3)。unknown rc → exit 3(runner internal error),
+    # 不用 exit 1——test-qemu 的 exit 1 专属 α truth, 不混 broken。
+    case "$_rrc" in
+        0) exit 0 ;;
+        1) exit 1 ;;    # α truth: BMC 不满足 baseline(runner 的 fail 行已说明哪条 AR)
+        3) exit 3 ;;    # infra/config/data 前置缺失(runner 已输出 remedy: no-instance/YAML/0-AR 等)
+        *)
+            error "runner returned unexpected exit-code $_rrc (runner internal error)."
+            error "This is NOT a BMC baseline failure — report with the output above."
+            exit 3
+            ;;
     esac
 }

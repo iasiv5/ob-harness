@@ -87,7 +87,10 @@ smoke_judge_redfish_managers() {
 #   "我是谁/什么版本"), 比 root/Managers 的"结构可达"更深一层。
 #
 #   接受的版本属性(任一非空即可):
-#     FirmwareVersion  — DMTF Manager 资源标准属性(OpenBMC bmcweb 必发, 规范正名)
+#     FirmwareVersion  — DMTF Manager 资源标准属性(规范正名); 是否填充取决于 image, 非 bmcweb 必发
+#       (历史观测有漂移: 2026-08 前的 romulus QEMU image 曾不填(当时 test-qemu BMC-3-15-1
+#       以此 xfail 并把锚点降到 FirmwareInventory); 2026-08-17 实测 Managers/bmc 已稳定填
+#       FirmwareVersion 5/5, BMC-3-15-1 校准记录见 tests/baseline/romulus/applicability.yaml)
 #     SoftwareVersion  — 部分 image/overlay 在 Manager 资源上额外发的别名
 #   两者都属"BMC 上报固件版本"语义, 接受任一是 Redfish 协议规范知识(非 per-machine 期望画像,
 #   不违 α: 不预判某 image 发哪个键)。非空值判定(regex [^"]+ ≥1 字符): 防 "":"" 空串误判 pass。

@@ -20,6 +20,7 @@ VERBOSE=0
 DRY_RUN=0
 SKIP_DEPS=0
 DEV_ARGS=()
+TEST_QEMU_ARGS=()
 
 # QEMU-related (start-qemu / stop-qemu)
 QEMU_SSH_PORT=""
@@ -77,7 +78,8 @@ done
 # === 入口 (parse_args / usage / main) ===
 
 parse_args() {
-    DEV_ARGS=()   # 重置(OB_NO_MAIN 多次调用测试防残留)
+    DEV_ARGS=()        # 重置(OB_NO_MAIN 多次调用测试防残留)
+    TEST_QEMU_ARGS=()
     if [[ $# -lt 1 ]]; then
         COMMAND=""
         return 0
@@ -134,6 +136,16 @@ parse_args() {
                 MACHINE="$1"
                 shift
             fi
+            ;;
+        test-qemu)
+            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
+                MACHINE="$1"
+                shift
+            fi
+            # 命令私有参数(--suite/--ar/--report/-v/-d)透传给 cmd_test_qemu;
+            # set -- 清空,防全局 option while 把 --suite 当 Unknown option exit 1(对照 dev 分支)
+            TEST_QEMU_ARGS=("$@")
+            set --
             ;;
         dev)
             # dev 子命令的私有参数(--machine/二级子命令)透传给 cmd_dev;
@@ -200,6 +212,7 @@ Commands:
   stop-qemu    [<machine>]    Stop a running QEMU instance
   deploy-to-qemu [<machine>]  Rebuild image and restart QEMU for clean verification
   smoke        [<machine>]    Probe a running QEMU-backed BMC (read-only OOB probe; no bring-up/teardown)
+  test-qemu    [<machine>]    Run <machine>'s baseline AR probes on its running QEMU instance (probe-only; pass/fail/skip/xfail/xpass)
   dev          [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
 
 Global Options:
@@ -249,6 +262,37 @@ smoke Options:
             3   No running QEMU instance (precondition) — 'ob start-qemu' first.
   Environment:
     OB_SMOKE_READY_ATTEMPTS  Poll attempts for BMC SSH-port readiness (default 30, 5s each)
+
+test-qemu Options:
+  <machine>               Whose running QEMU instance to test (required positional)
+  --suite <name>          Only run ARs in this suite
+  --ar <id>               Only run the named AR
+  --report <path>         Dump JSON report to PATH
+  Environment:
+    OB_TQ_USER / OB_TQ_PASSWORD  Redfish creds — env wins over ar_probes.yaml
+                    auth (keeps secrets out of 'ps'; environ is owner-only)
+    OB_TQ_TIMEOUT  Per-probe HTTP timeout seconds (default 10)
+  Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish port
+            from the instance's PID file (no port overrides honored). With no
+            running instance it exits 3 and will NOT boot one — run
+            'ob start-qemu <machine>' first.
+  baseline dir (lineage-routed, per ADR-0025/0026): community lineage
+            (community source + community QEMU binary) → tests/baseline/<machine>;
+            custom lineage (either custom) → contexts/baseline/<machine>. No
+            cross-lineage fallback — attribution stays closed.
+  Verdict (per AR): pass / fail / skip / xfail / xpass / error. skip/xfail/xpass
+            do NOT affect the exit-code. error = a probe could not get a clean
+            BMC answer (transport/timeout/schema) — infra, NOT a baseline miss.
+            Only an applicable AR that actually fails causes exit-code 1.
+  Exit codes (test-qemu-specific — they OVERRIDE the global "1 = broken" line below):
+            0   All applicable ARs passed.
+            1   α truth: one or more applicable ARs failed — the BMC does not
+                meet its baseline. This is NOT "test-qemu broken"; read the
+                fail rows + report.
+            3   Precondition missing (no running instance / no baseline dir), OR
+                a probe hit a transient infra error mid-run (VERDICT: ERROR) —
+                the instance may be fine; re-run / check connectivity, do NOT
+                treat it as a baseline failure.
 
 Exit Codes:
   0   Success (or benign no-op)
@@ -336,6 +380,11 @@ main() {
 
     if [[ "$COMMAND" == "smoke" ]]; then
         cmd_smoke
+        return $?
+    fi
+
+    if [[ "$COMMAND" == "test-qemu" ]]; then
+        cmd_test_qemu "${TEST_QEMU_ARGS[@]}"
         return $?
     fi
 

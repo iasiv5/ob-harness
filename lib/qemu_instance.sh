@@ -6,6 +6,76 @@
 # module 内部路径拼接（caller 不直接用）；与 lib/qemu.sh derive_qemu_paths 的 QEMU_PIDS_DIR 同源。
 _qemu_instance_pid_file() { echo "$WORKSPACE_DIR/qemu-bin/.pids/$1.pid"; }
 
+# per-machine lifecycle lock: serialize instance check/start/stop/manifest writes
+# across users. The persistent lock file carries no state; flock ownership does.
+_qemu_instance_lifecycle_lock_file() {
+    echo "$WORKSPACE_DIR/qemu-bin/.locks/$1.lock"
+}
+
+# qemu_instance_lifecycle_lock_acquire <machine> <fd_out> <status_out>
+# status: ok / busy / error. Always returns 0; caller owns exit/remedy mapping.
+qemu_instance_lifecycle_lock_acquire() {
+    local machine="$1" fd_out="$2" status_out="$3"
+    local _qila_file _qila_dir _qila_fd=""
+    _qila_file="$(_qemu_instance_lifecycle_lock_file "$machine")"
+    _qila_dir="$(dirname "$_qila_file")"
+    if ! mkdir -p "$_qila_dir"; then
+        printf -v "$fd_out" '%s' ""
+        printf -v "$status_out" '%s' error
+        return 0
+    fi
+    if ! exec {_qila_fd}>"$_qila_file"; then
+        printf -v "$fd_out" '%s' ""
+        printf -v "$status_out" '%s' error
+        return 0
+    fi
+    if ! flock -n "$_qila_fd"; then
+        exec {_qila_fd}>&- || true
+        printf -v "$fd_out" '%s' ""
+        printf -v "$status_out" '%s' busy
+        return 0
+    fi
+    printf -v "$fd_out" '%s' "$_qila_fd"
+    printf -v "$status_out" '%s' ok
+    return 0
+}
+
+# qemu_instance_lifecycle_lock_enter <machine> <fd_out> <owned_out> <status_out>
+# Reuses a lock inherited from a parent orchestration process (E2E), otherwise
+# acquires one. The child writer retains its inherited copy for the command;
+# qemu_execute_launch closes only the daemon-side copy before setsid.
+qemu_instance_lifecycle_lock_enter() {
+    local machine="$1" fd_out="$2" owned_out="$3" status_out="$4"
+    local _qile_inherited_fd="${OB_QEMU_LIFECYCLE_LOCK_FD:-}"
+    local _qile_inherited_machine="${OB_QEMU_LIFECYCLE_LOCK_MACHINE:-}"
+    local _qile_expected_file _qile_actual_file=""
+    _qile_expected_file="$(_qemu_instance_lifecycle_lock_file "$machine")"
+    if [[ "$_qile_inherited_machine" == "$machine" && "$_qile_inherited_fd" =~ ^[0-9]+$ ]]; then
+        _qile_actual_file="$(readlink "/proc/$$/fd/$_qile_inherited_fd" 2>/dev/null || true)"
+        if [[ "$_qile_actual_file" == "$_qile_expected_file" ]]; then
+            printf -v "$fd_out" '%s' ""
+            printf -v "$owned_out" '%s' 0
+            printf -v "$status_out" '%s' ok
+            return 0
+        fi
+    fi
+
+    local _qile_acquired_fd="" _qile_acquire_status=""
+    qemu_instance_lifecycle_lock_acquire "$machine" _qile_acquired_fd _qile_acquire_status
+    printf -v "$fd_out" '%s' "$_qile_acquired_fd"
+    printf -v "$owned_out" '%s' 1
+    printf -v "$status_out" '%s' "$_qile_acquire_status"
+    return 0
+}
+
+qemu_instance_lifecycle_lock_release() {
+    local lock_fd="$1"
+    [[ "$lock_fd" =~ ^[0-9]+$ ]] || return 0
+    flock -u "$lock_fd" 2>/dev/null || true
+    exec {lock_fd}>&- || true
+    return 0
+}
+
 # shellcheck disable=SC2034  # PIDFILE_* 字段供 caller（lib/commands.sh）跨文件读取
 qemu_instance_load() {
     local machine="${1:-}"
@@ -23,11 +93,13 @@ qemu_instance_load() {
     PIDFILE_MACHINE=""
     PIDFILE_BINARY=""
     PIDFILE_STARTED_AT=""
+    PIDFILE_PROCESS_START_TICKS=""
     PIDFILE_SSH_PORT=""
     PIDFILE_REDFISH_PORT=""
     PIDFILE_IPMI_PORT=""
     PIDFILE_HTTP_PORT=""
     PIDFILE_SERIAL_LOG=""
+    PIDFILE_SERIAL_SOCK=""
 
     while IFS='=' read -r key value; do
         case "$key" in
@@ -36,18 +108,32 @@ qemu_instance_load() {
             machine)      PIDFILE_MACHINE="$value" ;;
             binary)       PIDFILE_BINARY="$value" ;;
             started_at)   PIDFILE_STARTED_AT="$value" ;;
+            process_start_ticks) PIDFILE_PROCESS_START_TICKS="$value" ;;
             ssh_port)     PIDFILE_SSH_PORT="$value" ;;
             redfish_port) PIDFILE_REDFISH_PORT="$value" ;;
             ipmi_port)    PIDFILE_IPMI_PORT="$value" ;;
             http_port)    PIDFILE_HTTP_PORT="$value" ;;
             serial_log)   PIDFILE_SERIAL_LOG="$value" ;;
+            serial_sock)  PIDFILE_SERIAL_SOCK="$value" ;;
         esac
     done < "$QEMU_PID_FILE"
 
     return 0
 }
 
-# _qemu_instance_probe_alive <pid> <expected_binary> <expected_machine> — 私有 leaf-pure seam。
+# _qemu_process_start_ticks <pid> — Linux process generation identifier。
+# /proc/<pid>/stat 字段 2 (comm, 带括号) 可含空格/括号, 直接按空白取 field 22 会错位
+# (comm 含空格时返回垃圾值)。先 sub 到最后一个 ')' (comm 收括号; 字段 3+ 无括号故贪心
+# 匹配即 comm 闭合括号), 之后从 state (field 3) 起算, starttime (field 22) = 第 20 个字段
+# —— comm 无空格时与朴素 $22 等价 (实测 /proc/self/stat 两者同值)。
+_qemu_process_start_ticks() {
+    local pid="$1"
+    awk '{sub(/.*\)/, ""); print $20}' "/proc/$pid/stat" 2>/dev/null || true
+    return 0
+}
+
+# _qemu_instance_probe_alive <pid> <expected_binary> <expected_machine> [expected_start_ticks] [expected_serial_sock]
+# 私有 leaf-pure seam。
 # return 0=running&match, 1=exited, 2=pid recycled。供 qemu_instance_liveness 内部消费（不污染公开面）。
 # 输入有效性防线先于 /proc 检查：空字段 PID file 今天会误判 running（空 string 是任意 cmdline 子串），
 # 防线让 corrupt/空字段落 1=exited → clean_stale（ADR-0024 评审 🔴1，bug 修正非行为保持）。
@@ -55,6 +141,8 @@ _qemu_instance_probe_alive() {
     local pid="$1"
     local expected_binary="$2"
     local expected_machine="$3"
+    local expected_start_ticks="${4:-}"
+    local expected_serial_sock="${5:-}"
 
     # 防线：pid 非空且纯数字、binary/machine 非空，否则 return 1（exited）
     [[ -z "$pid" || ! "$pid" =~ ^[0-9]+$ || -z "$expected_binary" || -z "$expected_machine" ]] && return 1
@@ -67,6 +155,12 @@ _qemu_instance_probe_alive() {
     cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null) || true
 
     if [[ "$cmdline" != *"$expected_binary"* ]] || [[ "$cmdline" != *"$expected_machine"* ]]; then
+        return 2  # PID recycled — different process
+    fi
+    if [[ -n "$expected_serial_sock" && "$cmdline" != *"$expected_serial_sock"* ]]; then
+        return 2
+    fi
+    if [[ -n "$expected_start_ticks" && "$(_qemu_process_start_ticks "$pid")" != "$expected_start_ticks" ]]; then
         return 2  # PID recycled — different process
     fi
 
@@ -83,8 +177,9 @@ qemu_instance_liveness() {
 
     # 清空 PIDFILE_*（nopid 路径保持清空：qemu_instance_load 失败时不重置这些字段）
     PIDFILE_PID=""; PIDFILE_USER=""; PIDFILE_MACHINE=""; PIDFILE_BINARY=""
-    PIDFILE_STARTED_AT=""; PIDFILE_SSH_PORT=""; PIDFILE_REDFISH_PORT=""
-    PIDFILE_IPMI_PORT=""; PIDFILE_HTTP_PORT=""; PIDFILE_SERIAL_LOG=""
+    PIDFILE_STARTED_AT=""; PIDFILE_PROCESS_START_TICKS=""; PIDFILE_SSH_PORT=""
+    PIDFILE_REDFISH_PORT=""; PIDFILE_IPMI_PORT=""; PIDFILE_HTTP_PORT=""
+    PIDFILE_SERIAL_LOG=""; PIDFILE_SERIAL_SOCK=""
 
     if ! qemu_instance_load "$machine"; then
         printf -v "$status_outvar" '%s' nopid
@@ -92,7 +187,8 @@ qemu_instance_liveness() {
     fi
 
     local _rc=0
-    _qemu_instance_probe_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE" || _rc=$?
+    _qemu_instance_probe_alive "$PIDFILE_PID" "$PIDFILE_BINARY" "$PIDFILE_MACHINE" \
+        "$PIDFILE_PROCESS_START_TICKS" "$PIDFILE_SERIAL_SOCK" || _rc=$?
     case "$_rc" in
         0) printf -v "$status_outvar" '%s' running ;;
         2) printf -v "$status_outvar" '%s' recycled ;;

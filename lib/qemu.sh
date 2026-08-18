@@ -118,11 +118,31 @@ qemu_prepare_launch() {
 # BMC-ready 等待 + hostkey 检测 + 连接 summary。读 prepare 产出的 QEMU_LAUNCH_* 全局。
 # 副作用重(setsid 真启动、写 PID 文件、ssh 轮询);启动失败 exit 1。调用者负责 DRY_RUN 短路与 exit 收口。
 qemu_execute_launch() {
-    mkdir -p "$(dirname "$QEMU_LAUNCH_SERIAL_LOG")"
+    if ! mkdir -p "$(dirname "$QEMU_LAUNCH_SERIAL_LOG")" "$QEMU_PIDS_DIR"; then
+        error "Cannot prepare QEMU runtime directories for '$MACHINE'."
+        exit 1
+    fi
 
-    local qemu_stderr
-    qemu_stderr=$(mktemp "${TMPDIR:-/tmp}/qemu-stderr-XXXXXX")
-    if ! setsid "${QEMU_CMD[@]}" >"$qemu_stderr" 2>&1; then
+    local pid_manifest_tmp=""
+    if ! pid_manifest_tmp=$(mktemp "$QEMU_PIDS_DIR/.${MACHINE}.pid.XXXXXX"); then
+        error "Cannot create QEMU PID manifest for '$MACHINE'."
+        exit 1
+    fi
+
+    local qemu_stderr=""
+    if ! qemu_stderr=$(mktemp "${TMPDIR:-/tmp}/qemu-stderr-XXXXXX"); then
+        rm -f "$pid_manifest_tmp"
+        error "Cannot create QEMU launch diagnostic file."
+        exit 1
+    fi
+    local lifecycle_lock_fd="${OB_QEMU_LIFECYCLE_LOCK_FD:-}"
+    if ! (
+        # The command shell keeps the lock; the QEMU daemon must not inherit it.
+        if [[ "$lifecycle_lock_fd" =~ ^[0-9]+$ ]]; then
+            exec {lifecycle_lock_fd}>&- || true
+        fi
+        setsid "${QEMU_CMD[@]}"
+    ) >"$qemu_stderr" 2>&1; then
         error "QEMU failed to start."
         local qemu_err_msg
         qemu_err_msg=$(grep -v "^qemu-system.*: warning:" "$qemu_stderr" 2>/dev/null || true)
@@ -131,29 +151,45 @@ qemu_execute_launch() {
         fi
         error "Check serial log: $QEMU_LAUNCH_SERIAL_LOG"
         error "Verify QEMU binary: $QEMU_BIN_FILE"
-        rm -f "$qemu_stderr"
+        rm -f "$qemu_stderr" "$pid_manifest_tmp"
         exit 1
     fi
     rm -f "$qemu_stderr"
 
-    # ── Write PID file ──
-    sleep 1
-    local qemu_pid=""
-    # 用 serial socket 路径(每实例唯一)+ 当前用户过滤定位 PID,避免多用户同 SoC
-    # (如 ast2700a1-evb)machine 名相同导致 pgrep 误匹配到他人 QEMU。fallback 用 binary 路径。
-    qemu_pid=$(pgrep -u "$(whoami)" -f "$QEMU_LAUNCH_SERIAL_SOCK" 2>/dev/null | head -1 || true)
-    if [[ -z "$qemu_pid" ]]; then
-        qemu_pid=$(pgrep -u "$(whoami)" -f "$QEMU_BIN_FILE" 2>/dev/null | head -1 || true)
+    # ── Resolve daemon PID from this launch's unique serial socket ──
+    local qemu_pid="" qemu_start_ticks="" _pid_attempt candidate_pid
+    for _pid_attempt in $(seq 1 20); do
+        while IFS= read -r candidate_pid || [[ -n "$candidate_pid" ]]; do
+            [[ "$candidate_pid" =~ ^[0-9]+$ ]] || continue
+            if _qemu_instance_probe_alive "$candidate_pid" "$QEMU_BIN_FILE" \
+                "$QEMU_LAUNCH_MACHINE_NAME" "" "$QEMU_LAUNCH_SERIAL_SOCK"; then
+                qemu_pid="$candidate_pid"
+                break
+            fi
+        done < <(pgrep -u "$(whoami)" -f "$QEMU_LAUNCH_SERIAL_SOCK" 2>/dev/null || true)
+        [[ "$qemu_pid" =~ ^[0-9]+$ ]] && break
+        sleep 0.1
+    done
+    if [[ ! "$qemu_pid" =~ ^[0-9]+$ ]]; then
+        error "QEMU started but its daemon PID could not be resolved."
+        rm -f "$QEMU_PID_FILE" "$pid_manifest_tmp"
+        exit 1
+    fi
+    qemu_start_ticks="$(_qemu_process_start_ticks "$qemu_pid")"
+    if [[ ! "$qemu_start_ticks" =~ ^[0-9]+$ ]]; then
+        qemu_instance_stop "$qemu_pid" "$pid_manifest_tmp"
+        error "QEMU daemon process generation could not be resolved."
+        exit 1
     fi
 
-    mkdir -p "$QEMU_PIDS_DIR"
-    cat > "$QEMU_PID_FILE" <<PIDFILE_EOF
+    if ! cat > "$pid_manifest_tmp" <<PIDFILE_EOF
 pid=$qemu_pid
 user=$(whoami)
 machine=$MACHINE
 binary=$QEMU_BIN_FILE
 qemu_machine=$QEMU_LAUNCH_MACHINE_NAME
 started_at=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+process_start_ticks=$qemu_start_ticks
 ssh_port=$QEMU_LAUNCH_SSH_PORT
 redfish_port=$QEMU_LAUNCH_REDFISH_PORT
 ipmi_port=$QEMU_LAUNCH_IPMI_PORT
@@ -161,6 +197,16 @@ http_port=${QEMU_LAUNCH_HTTP_PORT:-none}
 serial_log=$QEMU_LAUNCH_SERIAL_LOG
 serial_sock=$QEMU_LAUNCH_SERIAL_SOCK
 PIDFILE_EOF
+    then
+        qemu_instance_stop "$qemu_pid" "$pid_manifest_tmp"
+        error "Cannot write QEMU PID manifest for '$MACHINE'."
+        exit 1
+    fi
+    if ! mv -f "$pid_manifest_tmp" "$QEMU_PID_FILE"; then
+        qemu_instance_stop "$qemu_pid" "$pid_manifest_tmp"
+        error "Cannot publish QEMU PID manifest for '$MACHINE'."
+        exit 1
+    fi
 
     verbose "PID file written: $QEMU_PID_FILE (PID: $qemu_pid)"
 

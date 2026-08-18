@@ -78,6 +78,7 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | binary 下载链 | download_qemu_binary_core;ensure_qemu_binary_community | orchestration/qemu_binary_download.sh | flat-binary 路径;原 #1 盲区 |
 | binary 更新/URL 决策 | qemu_binary_update_decision;qemu_binary_resolve_url | unit/qemu_binary_decision.sh | 纯决策 |
 | 实例四行显示 | qemu_instance_summarize_full | unit/qemu_instance.sh | start↔stop 复用；status 走 summarize_brief |
+| baseline 谱系判定/路由纯函数链 | test_qemu_resolve_lineage;test_qemu_lineage;test_qemu_resolve_baseline_dir | protocol/test_qemu_surface.sh | leaf-pure(ADR-0026);resolve_lineage strict 读取(manifest 缺失/字段空→unknown, 2026-08-18 修订);cmd 层 MISSING/成因 remedy 属 integration(e2e 预检同链) |
 | instance module（list/load/liveness/summarize_brief/clean_stale） | qemu_instance_list;qemu_instance_load;qemu_instance_liveness;qemu_instance_summarize_brief;qemu_instance_clean_stale | unit/qemu_instance.sh | start/stop/status 共用；caller 不碰 .pids 物理布局 |
 | binary 更新(flock+回滚) | download_and_replace_community_qemu;_dlqbc_stage_binary;_replace_community_binary | orchestration/qemu_binary_replace.sh | acquire/commit 切面; flock 留 wrapper; swap-fail-rollback 不变量 stateful mv 锁 |
 | custom binary 配置 | ensure_qemu_binary_custom;resolve_custom_binary_candidate;resolve_custom_pcbios_candidate | unit/qemu_binary_resolve.sh | 路径解析 leaf-pure(outvar 编码); 交互循环留 wrapper; 非 TTY exit 3 仍靠 .exp |
