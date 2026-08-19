@@ -82,6 +82,8 @@ cases = {
            "actual": None, "reason": "ok"}, 0),
   "good-fail": ({"pass": False, "code": 500, "body": "{}",
            "actual": 500, "reason": "bad"}, 1),
+  "good-fail-multiline": ({"pass": False, "code": 500, "body": "{}",
+           "actual": 500, "reason": "line1\nline2 bad"}, 1),
 }
 payload, rc = cases[mode]
 print(json.dumps(payload))
@@ -131,6 +133,55 @@ assert_rc 0 "valid probe pass remains pass" \
   _run_protocol_case good-pass "$_tmp/applicable.yaml"
 assert_rc 1 "valid probe fail remains alpha fail" \
   _run_protocol_case good-fail "$_tmp/applicable.yaml"
+
+# 流式 UX 回归: live 行默认开(run.sh 恒打 '  <AR> <status>' 到 stderr), VERDICT 恒为
+# stdout 最后一行, -v 时 fail/error 行尾追加 reason 摘要(一行化: 转字符串 + 换行替空格
+# + 截断 120 — 与 report.py 逐条行同规则)。
+_run_protocol_capture() {
+  # 同 _run_protocol_case 的 fixture 注入, 但保留输出供断言: 函数 stdout 即 captured
+  # output(2>&1 合并), 调用侧用 command substitution 捕获, rc 由调用侧 || rc=$? 保存。
+  local mode="$1"; shift
+  OB_TQ_STUB_MODE="$mode" OB_TQ_PROBE="$_tmp/probe-stub.py" \
+    OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$_tmp/applicable.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x "$@" 2>&1
+}
+
+# 1+2: 流式默认 + VERDICT 末行(不加 -v; live 行格式 printf '  %-14s %s\n', 行尾锚定)
+out=""; rc=0; out=$(_run_protocol_capture good-pass) || rc=$?
+assert_eq "live pass streams by default, runner still rc=0" "$rc" "0"
+assert_true "live AR line streams by default (no -v)" grep -Eq '^  TEST-A[[:space:]]+pass$' <<<"$out"
+assert_true "VERDICT is the last line" grep -q '^VERDICT: PASS' <<<"$(tail -1 <<<"$out")"
+
+# 3: -v 追加 reason(一行化: 换行替空格, 锁 '每条 AR 一行' 契约)
+out=""; rc=0; out=$(_run_protocol_capture good-fail-multiline -v) || rc=$?
+assert_eq "verbose fail run keeps alpha rc=1" "$rc" "1"
+assert_true "verbose live line carries flattened reason" \
+  grep -Eq '^  TEST-A[[:space:]]+fail line1 line2 bad$' <<<"$out"
+
+# 4: 不带 -v 无行内 reason
+out=""; rc=0; out=$(_run_protocol_capture good-fail-multiline) || rc=$?
+assert_eq "non-verbose fail run keeps alpha rc=1" "$rc" "1"
+assert_true "non-verbose live line has no inline reason" \
+  grep -Eq '^  TEST-A[[:space:]]+fail$' <<<"$out"
+
+# 5: 通道分工(live→stderr / report→stdout), 分离捕获锁全局约束
+_sstdout="$_tmp/split.out"; _sstderr="$_tmp/split.err"
+rc=0; OB_TQ_STUB_MODE=good-pass OB_TQ_PROBE="$_tmp/probe-stub.py" \
+    OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$_tmp/applicable.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x \
+    >"$_sstdout" 2>"$_sstderr" || rc=$?
+assert_eq "split-stream pass run rc=0" "$rc" "0"
+assert_true "live pass line is on stderr" grep -Eq '^  TEST-A[[:space:]]+pass$' "$_sstderr"
+assert_true "stdout (compact-rows) carries no pass AR row" bash -c "! grep -q 'TEST-A' '$_sstdout'"
+assert_true "stdout last line is VERDICT" grep -q '^VERDICT: PASS' <<<"$(tail -1 "$_sstdout")"
+rc=0; OB_TQ_STUB_MODE=good-fail-multiline OB_TQ_PROBE="$_tmp/probe-stub.py" \
+    OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$_tmp/applicable.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x \
+    >"$_sstdout" 2>"$_sstderr" || rc=$?
+assert_eq "split-stream fail run rc=1" "$rc" "1"
+assert_true "live fail line is on stderr" grep -Eq '^  TEST-A[[:space:]]+fail$' "$_sstderr"
+assert_true "stdout keeps fail detail row" grep -Eq 'TEST-A[[:space:]]+fail \| code=' "$_sstdout"
+assert_true "stdout last line is VERDICT: FAIL" grep -q '^VERDICT: FAIL' <<<"$(tail -1 "$_sstdout")"
 
 # 编码回归(评审 🟢4 + 🟡1, 四轮对撞定稿): 敌意 stdio 预设(PYTHONIOENCODING=ascii, UTF-8 mode
 # 仍开) + 树内同构中文 reason → run.sh 头部双 export 免疫: xpass 中文正常渲染, rc=0。

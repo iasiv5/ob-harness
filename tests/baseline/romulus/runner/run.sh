@@ -44,7 +44,8 @@ Usage: run.sh --host H --port P [--user U] [--password W] [options]
   --ar ID         only run AR with this id
   --suite NAME    only run ARs in this suite
   --report PATH   dump JSON report to PATH
-  -v, --verbose   print per-AR status to stderr
+  -v, --verbose   per-AR lines also carry fail/error reason (live status
+                  lines are always on)
   -d, --dry-run   list ARs + applicability, no probe, exit 0
   --timeout SE    per-probe HTTP timeout (default 10; env OB_TQ_TIMEOUT)
   -h, --help      show this help
@@ -131,12 +132,16 @@ trap 'rm -f "$results_file"' EXIT
 
 # ── ③ 主循环: 计划行逐条分派。skip/cascade_skip 不调 probe; xfail/applicable 调 probe,
 # 输出经 assemble.py 协议校验 + 五态判定装成 JSONL record。
+# 流式 UX(默认开): 每条 AR 完成即向 stderr 打一行 '  <AR> <status>' — 探测全程可见,
+# 不再等 report 一次性吐出; -v 时 fail/error 行尾追加 reason 摘要(一行化规则与
+# report.py 逐条行一致: 转字符串 + 换行替空格 + 截断 120, 保证每条 AR 恒一行)。
+echo "probing $_ar_count ARs (timeout ${TIMEOUT}s per probe) — results stream below" >&2
 while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
   [[ -z "$ar" ]] && continue
   case "$status" in
     skip|cascade_skip)
       python3 "$ASSEMBLE" --skip "$ar" "$reason" "$source" >> "$results_file"
-      [[ $VERBOSE -eq 1 ]] && printf '  %-14s skip\n' "$ar" >&2
+      printf '  %-14s %s\n' "$ar" "skip" >&2
       ;;
     xfail|applicable)
       # method/path 原字符串(planner 白名单/控制字符校验保证无 \n, 评审 🟡1)
@@ -162,9 +167,15 @@ while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
           _rec=$(python3 "$ASSEMBLE" --fallback "$ar")
       fi
       echo "$_rec" >> "$results_file"
-      if [[ $VERBOSE -eq 1 ]]; then
-          printf '  %-14s %s\n' "$ar" "$(python3 -c 'import json,sys; print(json.loads(sys.argv[1]).get("status","?"))' "$_rec")" >&2
-      fi
+      printf '  %-14s %s\n' "$ar" "$(python3 -c '
+import json, sys
+r = json.loads(sys.argv[1])
+st = r.get("status", "?")
+if sys.argv[2] == "1" and st in ("fail", "error"):
+    # reason 摘要同 report.py 逐条行: 转字符串 + 换行替空格 + 截断 120
+    st += " " + str(r.get("reason", "") or "").replace("\n", " ")[:120]
+print(st)
+' "$_rec" "$VERBOSE")" >&2
       ;;
     *)
       echo "run.sh: unknown applicability status '$status' for $ar" >&2
@@ -173,13 +184,13 @@ while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
   esac
 done <<< "$plan"
 
-# ── ④ report: 汇总 VERDICT + 逐条行 + 可选 JSON; exit 0(无 applicable fail)/1(α truth)/3(infra)。
+# ── ④ report: 逐条行 + 可选 JSON + 末行 VERDICT; exit 0(无 applicable fail)/1(α truth)/3(infra)。
 report_args=(python3 "$REPORT" --results "$results_file")
 if [[ -n "$REPORT_PATH" ]]; then
   report_args+=(--report "$REPORT_PATH")
 fi
-# verbose 时 pass 行已实时流过 stderr(run.sh -v), report 跳过 pass 行防双打(A4);
+# 流式行已默认实时流过 stderr(见 ③ 段), report 恒跳过 pass 行防双打(A4);
 # 非 pass 行(code/reason/source)仍全量保留。
-[[ $VERBOSE -eq 1 ]] && report_args+=(--compact-rows)
+report_args+=(--compact-rows)
 if "${report_args[@]}"; then rc=0; else rc=$?; fi
 exit "$rc"
