@@ -390,7 +390,7 @@ ars:
     suite: t
     request: {method: GET, path: /redfish/v1}
     assert:
-      - {type: status_in, values: [200]}
+      - {type: status_in, value: [200]}
 YAML
 cat > "$_tmp3/appl.yaml" <<'YAML'
 default: applicable
@@ -421,7 +421,7 @@ ars:
     suite: t
     request: {method: POST, path: /redfish/v1/Actions, body: {}}
     assert:
-      - {type: status_in, values: [200]}
+      - {type: status_in, value: [200]}
 YAML
 rc=0
 OB_TQ_AR_PROBES="$_tmp3/ars2.yaml" OB_TQ_APPL="$_tmp3/appl.yaml" OB_TQ_PROBE="$_tmp3/probe2.py" \

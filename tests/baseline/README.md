@@ -53,15 +53,20 @@ cp -r tests/baseline/romulus tests/baseline/<new-machine>   # 社区机
 runner 探测是确定性脚本 + assert 原语（状态断言非计时断言，零 flake），
 LLM 不参与 runtime 判定。
 
-`runner/` 文件构成（4 件，各管一段，可独立单测）：
-- `run.sh` — bash 编排：参数/凭据前置 → planner → 逐 AR 分派 → report。
-  顶部"结构地图"注释是接入者的阅读入口。
+`runner/` 文件构成（6 件，各管一段，可独立单测）：
+- `run.sh` — 薄 shim：编码钉死双 export + `exec python3 runner.py "$@"`。
+  编排结构地图与 rc 纪律见 `runner.py` docstring（接入者的阅读入口）。
+- `runner.py` — python 编排：参数/凭据前置 → planner → 逐 AR 分派 →
+  report；in-process import plan/assemble/report，record 以 list[dict]
+  内存流转，live 行经 `report.live_line`（与逐条行同源 `oneline`）。
 - `plan.py` — planner：两份 YAML → schema 校验（数据错 exit 3 不进
-  α truth）→ `--ar`/`--suite` 过滤 → cascade-skip 传播 → 计划行。
+  α truth）→ `--ar`/`--suite` 过滤 → cascade-skip 传播 → 计划行
+  list[dict]（函数形态，无 CLI）。
 - `assemble.py` — record 装配层：probe 输出协议校验（不一致记 error
-  不假 PASS）+ 五态判定 + skip record 组装。
+  不假 PASS）+ 五态判定 + skip record 组装（函数形态，无 CLI）。
 - `probe_redfish.py` — Redfish probe 引擎 + assert 原语（`--selftest`
-  无网络自检）；`report.py` — VERDICT 汇总 + 逐条行 + JSON report。
+  无网络自检）；`report.py` — VERDICT 汇总 + 逐条行 + JSON report
+  （含 `oneline`/`live_line`/`run_report` 供 runner import；CLI 形态保留）。
 
 ## applicability 维护规则（xfail 不是永久停车场；降级锚点不是永久降级）
 
