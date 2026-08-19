@@ -67,6 +67,9 @@ LLM 不参与 runtime 判定。
 
 - 新 AR 默认 `applicable`；仅在**该机已验证**不适用（skip）或当前不符
   （xfail）时加 override，`reason` 写实测证据，`source: manual`。
+- `source` 枚举：`manual`（人工校准实测）/ `agent`（coding agent 依只读探测
+  与类别保守判定，如定制机型 2026-08-18 全量重建的批量 skip）/ `auto`
+  （runner cascade-skip 运行时传播，仅出现在 report，不落 YAML）。
 - **xfail 是对"当前验证过的 image"的假设**：image 升级后假设可能失效。
 - **稳定 xpass 后必须移除 override、恢复 applicable**——否则后续回归会被
   xfail 静默吞掉（又变 fail 时记 xfail、不 exit 1，回归不可见）。

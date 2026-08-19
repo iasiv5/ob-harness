@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""romulus baseline report: read JSONL results, emit VERDICT + per-AR rows.
+"""romulus baseline report: read JSONL results, emit per-AR rows + final VERDICT.
 
 Input: JSONL (one record per line) where each record carries at least
   {"ar", "status" in {pass,fail,skip,xfail,xpass,error}, "reason", ...}
 Output (stdout):
+  + per-AR rows first (default: non-pass ARs with id + status + detail; pass rows
+    are skipped under --compact-rows because run.sh streams live status lines —
+    always on) — review 🟡7 (default fail rows, not appendix-only).
   VERDICT: PASS|FAIL|ERROR (N pass / N fail / N skip / N xfail / N xpass / N error)
-  + per-AR rows (default: every AR with id + status; fail/error + reason + code;
-    skip/xfail/xpass + reason + source) — review 🟡7 (default fail rows, not appendix-only).
+  as the LAST line (summary reads after the rows it summarizes).
 Optional --report PATH: dump full JSON report (atomic write).
 
 exit: 0 no applicable fail; 1 alpha-truth fail (BMC misses baseline);
@@ -44,8 +46,8 @@ def main():
     p.add_argument("--report", default=None,
                    help="optional path to dump full JSON report")
     p.add_argument("--compact-rows", action="store_true",
-                   help="print only non-pass AR rows (pass rows were already "
-                        "streamed live by run.sh -v; avoids double printing)")
+                   help="print only non-pass AR rows (pass rows are already "
+                        "streamed live by run.sh — always on; avoids double printing)")
     args = p.parse_args()
 
     records = load_records(args.results)
@@ -83,27 +85,12 @@ def main():
         verdict = "FAIL"
     else:
         verdict = "PASS"
-    print("VERDICT: {} ({} pass / {} fail / {} skip / {} xfail / {} xpass / {} error)".format(
-        verdict, counts["pass"], counts["fail"], counts["skip"],
-        counts["xfail"], counts["xpass"], counts["error"]))
 
-    # 401 hint (B1): 全部 fail 都是 401 而 BMC 在正常应答(其余 AR 有 pass)时, 最大嫌疑是
-    # 凭据配错(infra)而非 BMC 不满足 baseline — exit 语义仍是 α truth(fail 是 BMC 对这些
-    # 凭据的真实回答, 拒绝错误凭据恰是正确行为), 但把"先查凭据"指出来, 防止用户按 fail
-    # 行方向去 debug BMC 接口。probe 无法自证所给凭据是否正确, 故只 hint 不重分类。
-    if counts["fail"] > 0 and counts["pass"] > 0:
-        fails = [r for r in records
-                 if isinstance(r, dict) and r.get("status") == "fail"]
-        if fails and all(r.get("code") == 401 for r in fails):
-            print("HINT: all {} failing ARs returned HTTP 401 while {} other AR(s) passed —".format(
-                len(fails), counts["pass"]))
-            print("      likely wrong credentials (OB_TQ_USER / OB_TQ_PASSWORD env or ar_probes.yaml")
-            print("      auth), not a baseline miss. Verify creds and re-run before debugging the BMC.")
-
-    # 逐条五态(评审 🟡7): 默认打印每条 AR(含 pass/fail), fail/error 带 code + reason;
-    # skip/xfail/xpass 带 reason + source。help "read the fail rows" 才名副其实。
-    # --compact-rows(A4): run.sh -v 已在 stderr 实时流过每条 AR 状态(含 pass), report
-    # 再全量打一遍是双打 — 跳过 pass 行(reason 恒 "ok", 无信息损失), 非 pass 行保留
+    # 逐条五态(评审 🟡7): 逐条行在前、VERDICT 最后(行序 UX: 用户先看明细, 汇总结论收尾)。
+    # 默认打印非 pass AR 详情; fail/error 带 code + reason; skip/xfail/xpass 带 reason +
+    # source。help "read the fail rows" 才名副其实。
+    # --compact-rows: run.sh 恒已向 stderr 实时流过每条 AR 状态(含 pass), report 再全量
+    # 打一遍是双打 — 跳过 pass 行(reason 恒 "ok", 无信息损失), 非 pass 行保留
     # code/reason/source 详情。
     for r in records:
         if not isinstance(r, dict):
@@ -122,6 +109,24 @@ def main():
             print("  {:<14} {} | {} [{}]".format(ar, st, reason, src))
         else:
             print("  {:<14} {}".format(ar, st))
+
+    # 401 hint (B1): 全部 fail 都是 401 而 BMC 在正常应答(其余 AR 有 pass)时, 最大嫌疑是
+    # 凭据配错(infra)而非 BMC 不满足 baseline — exit 语义仍是 α truth(fail 是 BMC 对这些
+    # 凭据的真实回答, 拒绝错误凭据恰是正确行为), 但把"先查凭据"指出来, 防止用户按 fail
+    # 行方向去 debug BMC 接口。probe 无法自证所给凭据是否正确, 故只 hint 不重分类。
+    if counts["fail"] > 0 and counts["pass"] > 0:
+        fails = [r for r in records
+                 if isinstance(r, dict) and r.get("status") == "fail"]
+        if fails and all(r.get("code") == 401 for r in fails):
+            print("HINT: all {} failing ARs returned HTTP 401 while {} other AR(s) passed —".format(
+                len(fails), counts["pass"]))
+            print("      likely wrong credentials (OB_TQ_USER / OB_TQ_PASSWORD env or ar_probes.yaml")
+            print("      auth), not a baseline miss. Verify creds and re-run before debugging the BMC.")
+
+    # VERDICT 收尾(行序 UX): 逐条行 + 401 HINT 之后, 汇总结论作 stdout 最后一行。
+    print("VERDICT: {} ({} pass / {} fail / {} skip / {} xfail / {} xpass / {} error)".format(
+        verdict, counts["pass"], counts["fail"], counts["skip"],
+        counts["xfail"], counts["xpass"], counts["error"]))
 
     if args.report:
         # 原子写(评审 🟡2): 临时文件 + os.replace; I/O 失败 → return 3(不冒充 BMC fail rc=1);
