@@ -189,9 +189,9 @@ Expected: 六个运行时 runner 文件逐字节一致（`cmp -s` 全过、退�
 Run:
 ```bash
 ! grep -rn 'run.sh 编排' CONTEXT.md tests/baseline/README.md rules/03_WORKSPACE.md
-grep -n 'runner.py 编排' CONTEXT.md tests/baseline/README.md rules/03_WORKSPACE.md
+grep -ln '薄 shim' CONTEXT.md tests/baseline/README.md rules/03_WORKSPACE.md
 ```
-Expected: 第一条退出 0（无残留旧表述），第二条三处命中。
+Expected: 第一条退出 0（无残留旧表述），第二条三文件各命中（执行时按实际文案把锚点从字面 `runner.py 编排` 校正为 `薄 shim`——三处措辞各自成文，不共享同一连续子串）。
 
 ### Task 9: 最终验证
 
