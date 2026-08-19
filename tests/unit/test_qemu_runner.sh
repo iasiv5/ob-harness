@@ -192,19 +192,22 @@ assert_eq "big-body pass run rc=0" "$rc" "0"
 assert_true "live line survives >128KB body (record via stdin, not argv)" \
   grep -Eq '^  TEST-A[[:space:]]+pass$' <<<"$out"
 
-# 7: skip live 行带 reason(用户可读: 即答"为何 skip", 非 -v 专属)
+# 7: skip live 行带 reason 且解码为可读中文(回归: planner \x1f 字段是 json.dumps 的
+#    ASCII 转义形态, 曾直接拼进行里打出 \uXXXX 转义串; 解码走 assemble record)
 cat > "$_tmp/skip-appl.yaml" <<'YAML'
 default: applicable
 overrides:
-  TEST-A: {status: skip, reason: not emulatable in QEMU, source: unit}
+  TEST-A: {status: skip, reason: "纯硬件/规格条目, QEMU 不可仿真", source: unit}
 YAML
 out=""; rc=0
 out=$(OB_TQ_STUB_MODE=good-pass OB_TQ_PROBE="$_tmp/probe-stub.py" \
     OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$_tmp/skip-appl.yaml" \
     bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x 2>&1) || rc=$?
 assert_eq "skip run rc=0" "$rc" "0"
-assert_true "skip live line carries reason" \
-  grep -Eq '^  TEST-A[[:space:]]+skip \| not emulatable in QEMU$' <<<"$out"
+assert_true "skip live line carries decoded Chinese reason" \
+  grep -Eq '^  TEST-A[[:space:]]+skip \| 纯硬件/规格条目, QEMU 不可仿真$' <<<"$out"
+assert_true "skip live line has no \\\\uXXXX escapes" \
+  bash -c "! grep -E 'skip \\\\\\\\u[0-9a-f]{4}' <<<'$out'"
 
 # 编码回归(评审 🟢4 + 🟡1, 四轮对撞定稿): 敌意 stdio 预设(PYTHONIOENCODING=ascii, UTF-8 mode
 # 仍开) + 树内同构中文 reason → run.sh 头部双 export 免疫: xpass 中文正常渲染, rc=0。

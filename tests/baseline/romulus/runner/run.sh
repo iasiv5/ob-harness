@@ -140,11 +140,17 @@ while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
   [[ -z "$ar" ]] && continue
   case "$status" in
     skip|cascade_skip)
-      python3 "$ASSEMBLE" --skip "$ar" "$reason" "$source" >> "$results_file"
-      # skip 带 reason(planner 字段, \x1f 行已保证无换行; 字段值带 JSON 引号, 两步剥掉):
-      # live 行即答"为何 skip"
-      _sreason="${reason#\"}"
-      printf '  %-14s skip | %s\n' "$ar" "${_sreason%\"}" >&2
+      # record 先捕获再 append(assemble 恒 exit 0); live 行的 reason 从 record 解码 —
+      # planner 的 \x1f 字段是 json.dumps 的 ASCII 转义形态(中文 → \uXXXX), 直接拼
+      # 会打出转义串; 解码走 stdin(与 probe 分支 live 行同通道规则)。
+      _rec="$(python3 "$ASSEMBLE" --skip "$ar" "$reason" "$source")"
+      echo "$_rec" >> "$results_file"
+      printf '  %-14s skip | %s\n' "$ar" "$(printf '%s' "$_rec" | python3 -c '
+import json, sys
+r = json.load(sys.stdin)
+# reason 摘要同 report.py 逐条行: 转字符串 + 换行替空格 + 截断 120
+print(str(r.get("reason", "") or "").replace("\n", " ")[:120])
+')" >&2
       ;;
     xfail|applicable)
       # method/path 原字符串(planner 白名单/控制字符校验保证无 \n, 评审 🟡1)
