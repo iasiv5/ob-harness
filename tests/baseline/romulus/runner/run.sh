@@ -133,7 +133,7 @@ trap 'rm -f "$results_file"' EXIT
 # ── ③ 主循环: 计划行逐条分派。skip/cascade_skip 不调 probe; xfail/applicable 调 probe,
 # 输出经 assemble.py 协议校验 + 五态判定装成 JSONL record。
 # 流式 UX(默认开): 每条 AR 完成即向 stderr 打一行 '  <AR> <status>' — 探测全程可见,
-# 不再等 report 一次性吐出; -v 时 fail/error 行尾追加 reason 摘要(一行化规则与
+# 不再等 report 一次性吐出; -v 时 fail/error/skip 行尾追加 reason 摘要(一行化规则与
 # report.py 逐条行一致: 转字符串 + 换行替空格 + 截断 120, 保证每条 AR 恒一行)。
 echo "probing $_ar_count ARs (timeout ${TIMEOUT}s per probe) — results stream below" >&2
 while IFS=$'\x1f' read -r ar status method path body asserts reason source; do

@@ -37,7 +37,7 @@ runner 是 per-machine 资产（ADR-0025），现有两份**逐字节相同**的
 - exit-code 契约不变：run.sh/report.py 0/1/2/3 语义、`cmd_test_qemu` 的 rc 映射（lib/qemu_commands.sh:1108-1117）全部不动。
 - report.py 仍输出到 stdout，run.sh 流式行仍走 stderr（保持 stdout 纯 report 语义；ob/测试均 2>&1 捕获，用户体验不受影响）。
 - 流式行不得携带凭据或 response body（沿用现有 `  %-14s %s` ar+status 格式）。
-- `-v` 语义收窄并保留：默认已流式，`-v` 追加效果 = 流式行带 fail/error 的 reason 摘要。usage 文案同步更新，不删 flag。
+- `-v` 语义收窄并保留：默认已流式，`-v` 追加效果 = 流式行带 fail/error/skip 的 reason 摘要。usage 文案同步更新，不删 flag。
 - heredoc 文案避开 "exit code"（exit+空格）字样，用 "exit-code"（EXIT_RE 不解析 heredoc 的防误匹配约束）。
 - 现有测试对输出格式的断言面：unit 测试断言 exit-code 与 `No AR matched`/中文 reason 等 stderr 文案（不锁行序）；protocol 测试只锁 `Usage: ob test-qemu` 行；integration 断言 rc + JSON report（stdout 行序无关）。VERDICT 移位与流式行新增均不破坏现有断言 —— 以跑通为准。
 
@@ -87,10 +87,10 @@ tail -1 /tmp/tq-report.out | grep -q '^VERDICT: FAIL (1 pass / 1 fail / 0 skip /
 
 修改 ③段主循环：
 - skip/cascade_skip 分支：`[[ $VERBOSE -eq 1 ]] && printf ...` 改为恒 `printf '  %-14s %s\n' "$ar" "skip" >&2`。
-- probe 分支：同理恒打印；`-v` 时（且 status 为 fail/error）行尾追加 reason。**reason 一行化摘要规则与 report.py 逐条行完全一致**：转字符串、换行替空格、截断 120 字符（`str(r).replace("\n"," ")[:120]` 的 bash 等价实现，在拼行的 python3 -c 内做）——保证"每条 AR 一行"契约不被换行 reason 撕裂，也不被超长 reason 冲刷。拼行仍用现有 `python3 -c 'import json,sys; ...'` 一次性取 status 与 reason，避免二次解析。
+- probe 分支：同理恒打印；`-v` 时（且 status 为 fail/error/skip）行尾追加 reason。**reason 一行化摘要规则与 report.py 逐条行完全一致**：转字符串、换行替空格、截断 120 字符（`str(r).replace("\n"," ")[:120]` 的 bash 等价实现，在拼行的 python3 -c 内做）——保证"每条 AR 一行"契约不被换行 reason 撕裂，也不被超长 reason 冲刷。拼行仍用现有 `python3 -c 'import json,sys; ...'` 一次性取 status 与 reason，避免二次解析。
 - ④段：`[[ $VERBOSE -eq 1 ]] && report_args+=(--compact-rows)` 改为恒 `report_args+=(--compact-rows)`（流式已默认，pass 行双打回归）。
 - 主循环前加一行开始提示（stderr）：`echo "probing N ARs (timeout ${TIMEOUT}s per probe) — results stream below" >&2`，N 用已有 `_ar_count`。
-- usage() 的 `-v` 行改为：`-v, --verbose   per-AR lines also carry fail/error reason (live status lines are always on)`。
+- usage() 的 `-v` 行改为：`-v, --verbose   per-AR lines also carry fail/error/skip reason (live status lines are always on)`。
 
 验证：
 
@@ -139,7 +139,7 @@ git -C contexts/baseline commit -m "runner: stream per-AR lines by default, VERD
 `-v, --verbose    Print per-AR status to stderr` 改为与 run.sh usage 同义的一行，例如：
 
 ```
-  -v, --verbose    Per-AR live lines also carry fail/error reason (live
+  -v, --verbose    Per-AR live lines also carry fail/error/skip reason (live
                    status lines are always streamed to stderr; verdict prints last)
 ```
 
@@ -215,7 +215,7 @@ bash tests/protocol/test_qemu_surface.sh
 
 ## 任务间接口契约
 
-- Task 1/2 都在 romulus 副本内，Task 3 `cp` 消费其产物同步到 contexts；Task 4 文案与 Task 2 的 usage 措辞保持同义；Task 5 消费 Task 1/2 定下的输出契约：流式行格式 `  %-14s %s\n`（stderr）、`-v` 时 fail/error 行尾追加 reason、VERDICT 恒为 stdout 最后一行、`--compact-rows` 恒传。
+- Task 1/2 都在 romulus 副本内，Task 3 `cp` 消费其产物同步到 contexts；Task 4 文案与 Task 2 的 usage 措辞保持同义；Task 5 消费 Task 1/2 定下的输出契约：流式行格式 `  %-14s %s\n`（stderr）、`-v` 时 fail/error/skip 行尾追加 reason、VERDICT 恒为 stdout 最后一行、`--compact-rows` 恒传。
 
 ## 执行纪律
 
