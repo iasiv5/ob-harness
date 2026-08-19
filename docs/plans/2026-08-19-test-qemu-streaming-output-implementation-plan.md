@@ -1,7 +1,7 @@
 # ob test-qemu 输出流式化 — 实施计划
 
 日期：2026-08-19
-状态：待用户审阅
+状态：已实施并验证（含两轮执行中修订：live 行 record 走 stdin 防大 body E2BIG；`-v` 语义按用户后续诉求扩为 fail/error/skip 行均可带 reason，默认 live 行恒为 `<AR> <status>` 两段式，skip 原因默认见 report 非 pass detail 行）
 
 ## 目标
 

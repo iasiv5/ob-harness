@@ -192,8 +192,10 @@ assert_eq "big-body pass run rc=0" "$rc" "0"
 assert_true "live line survives >128KB body (record via stdin, not argv)" \
   grep -Eq '^  TEST-A[[:space:]]+pass$' <<<"$out"
 
-# 7: skip live 行带 reason 且解码为可读中文(回归: planner \x1f 字段是 json.dumps 的
-#    ASCII 转义形态, 曾直接拼进行里打出 \uXXXX 转义串; 解码走 assemble record)
+# 7: skip live 行默认只打 '  <AR> skip'(契约: reason 是 -v 语义, 与 fail/error 对称;
+#    默认原因在 report 非 pass detail 行)。-v 时 skip 行带解码后的 reason —
+#    planner \x1f 字段是 json.dumps 的 ASCII 转义形态(中文 → \uXXXX), 直接拼会打出
+#    转义串(回归); 解码走 assemble record。
 cat > "$_tmp/skip-appl.yaml" <<'YAML'
 default: applicable
 overrides:
@@ -204,7 +206,16 @@ out=$(OB_TQ_STUB_MODE=good-pass OB_TQ_PROBE="$_tmp/probe-stub.py" \
     OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$_tmp/skip-appl.yaml" \
     bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x 2>&1) || rc=$?
 assert_eq "skip run rc=0" "$rc" "0"
-assert_true "skip live line carries decoded Chinese reason" \
+assert_true "default skip live line is bare (no reason)" \
+  grep -Eq '^  TEST-A[[:space:]]+skip$' <<<"$out"
+assert_true "default skip reason still in report detail row" \
+  grep -Eq 'TEST-A[[:space:]]+skip \| 纯硬件/规格条目, QEMU 不可仿真 \[unit\]' <<<"$out"
+out=""; rc=0
+out=$(OB_TQ_STUB_MODE=good-pass OB_TQ_PROBE="$_tmp/probe-stub.py" \
+    OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$_tmp/skip-appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x -v 2>&1) || rc=$?
+assert_eq "verbose skip run rc=0" "$rc" "0"
+assert_true "verbose skip live line carries decoded Chinese reason" \
   grep -Eq '^  TEST-A[[:space:]]+skip \| 纯硬件/规格条目, QEMU 不可仿真$' <<<"$out"
 assert_true "skip live line has no \\\\uXXXX escapes" \
   bash -c "! grep -E 'skip \\\\\\\\u[0-9a-f]{4}' <<<'$out'"

@@ -44,8 +44,8 @@ Usage: run.sh --host H --port P [--user U] [--password W] [options]
   --ar ID         only run AR with this id
   --suite NAME    only run ARs in this suite
   --report PATH   dump JSON report to PATH
-  -v, --verbose   per-AR lines also carry fail/error reason (live status
-                  lines are always on)
+  -v, --verbose   per-AR lines also carry fail/error/skip reason (live
+                  status lines are always on)
   -d, --dry-run   list ARs + applicability, no probe, exit 0
   --timeout SE    per-probe HTTP timeout (default 10; env OB_TQ_TIMEOUT)
   -h, --help      show this help
@@ -140,17 +140,23 @@ while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
   [[ -z "$ar" ]] && continue
   case "$status" in
     skip|cascade_skip)
-      # record 先捕获再 append(assemble 恒 exit 0); live 行的 reason 从 record 解码 —
-      # planner 的 \x1f 字段是 json.dumps 的 ASCII 转义形态(中文 → \uXXXX), 直接拼
-      # 会打出转义串; 解码走 stdin(与 probe 分支 live 行同通道规则)。
+      # record 先捕获再 append(assemble 恒 exit 0)。默认 live 行只打 '  <AR> skip'
+      # (契约: reason 是 -v 语义, 与 fail/error 对称; 默认原因仍在末尾 report 的
+      # 非 pass detail 行)。-v 时 reason 从 record 解码 — planner 的 \x1f 字段是
+      # json.dumps 的 ASCII 转义形态(中文 → \uXXXX), 直接拼会打出转义串; 解码走
+      # stdin(与 probe 分支 live 行同通道规则)。
       _rec="$(python3 "$ASSEMBLE" --skip "$ar" "$reason" "$source")"
       echo "$_rec" >> "$results_file"
-      printf '  %-14s skip | %s\n' "$ar" "$(printf '%s' "$_rec" | python3 -c '
+      if [[ $VERBOSE -eq 1 ]]; then
+        printf '  %-14s skip | %s\n' "$ar" "$(printf '%s' "$_rec" | python3 -c '
 import json, sys
 r = json.load(sys.stdin)
 # reason 摘要同 report.py 逐条行: 转字符串 + 换行替空格 + 截断 120
 print(str(r.get("reason", "") or "").replace("\n", " ")[:120])
 ')" >&2
+      else
+        printf '  %-14s %s\n' "$ar" "skip" >&2
+      fi
       ;;
     xfail|applicable)
       # method/path 原字符串(planner 白名单/控制字符校验保证无 \n, 评审 🟡1)

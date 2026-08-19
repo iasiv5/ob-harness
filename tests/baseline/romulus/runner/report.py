@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""romulus baseline report: read JSONL results, emit VERDICT + per-AR rows.
+"""romulus baseline report: read JSONL results, emit per-AR rows + final VERDICT.
 
 Input: JSONL (one record per line) where each record carries at least
   {"ar", "status" in {pass,fail,skip,xfail,xpass,error}, "reason", ...}
