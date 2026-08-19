@@ -104,6 +104,12 @@ def build_plan(a, st):
         if x.get("type") not in _ALLOWED_ASSERT:
             die("AR '{}' unknown assert type '{}'; allowed: {}".format(
                 a["ar"], x.get("type"), ", ".join(_ALLOWED_ASSERT)))
+        # status_in.value 必须非空 list: probe 读 a.get("value", []) — 字段写错
+        # (如 values typo)或空列表会静默拿 [], 任何 HTTP code 都 fail, 冒充 BMC 缺陷。
+        if x.get("type") == "status_in":
+            v = x.get("value")
+            if not isinstance(v, list) or not v:
+                die("AR '{}' status_in.value must be a non-empty list (got {!r})".format(a["ar"], v))
     # request 缺省容忍(评审配套⑤): 仅实际将 skip 的 AR 可省略 request — 无可执行
     # 探测定义就不该编造占位请求(如 Web banner AR 挂 GET /redfish/v1 的语义错位);
     # request 存在则无条件过白名单校验(数据要合法, applicability 改回 applicable 后即跑)。

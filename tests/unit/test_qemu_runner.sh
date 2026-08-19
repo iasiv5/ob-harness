@@ -437,4 +437,27 @@ assert "BODY-ARG=[{}]" in r.get("reason", ""), r.get("reason")
 ' "$_tmp3/report.json"
 rm -rf "$_tmp3"
 
+# status_in.value schema 校验: 写坏(values typo / 空 / 非 list)→ planner exit 3,
+# 不进 α truth(probe 读 a.get("value", []) 会静默拿 [] → 全 fail 冒充 BMC 缺陷)
+_tmp4=$(mktemp -d)
+cat > "$_tmp4/appl.yaml" <<'YAML'
+default: applicable
+YAML
+for badval in 'values: [200]' 'value: []' 'value: 200'; do
+  cat > "$_tmp4/ars.yaml" <<YAML
+ars:
+  - ar: T-BADASSERT
+    suite: t
+    request: {method: GET, path: /redfish/v1}
+    assert:
+      - {type: status_in, $badval}
+YAML
+  rc=0; OB_TQ_AR_PROBES="$_tmp4/ars.yaml" OB_TQ_APPL="$_tmp4/appl.yaml" \
+      bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run \
+      >/dev/null 2>"$_tmp4/err" || rc=$?
+  assert_eq "status_in 写坏($badval) → exit 3" "$rc" "3"
+  assert_true "remedy 指名 status_in.value($badval)" grep -q "status_in.value" "$_tmp4/err"
+done
+rm -rf "$_tmp4"
+
 assert_summary
