@@ -44,8 +44,8 @@ Usage: run.sh --host H --port P [--user U] [--password W] [options]
   --ar ID         only run AR with this id
   --suite NAME    only run ARs in this suite
   --report PATH   dump JSON report to PATH
-  -v, --verbose   per-AR lines also carry fail/error/skip reason (live
-                  status lines are always on)
+  -v, --verbose   per-AR live lines also carry fail/error reason (skip
+                  lines always carry reason [source]; live lines always on)
   -d, --dry-run   list ARs + applicability, no probe, exit 0
   --timeout SE    per-probe HTTP timeout (default 10; env OB_TQ_TIMEOUT)
   -h, --help      show this help
@@ -133,30 +133,30 @@ trap 'rm -f "$results_file"' EXIT
 # ── ③ 主循环: 计划行逐条分派。skip/cascade_skip 不调 probe; xfail/applicable 调 probe,
 # 输出经 assemble.py 协议校验 + 五态判定装成 JSONL record。
 # 流式 UX(默认开): 每条 AR 完成即向 stderr 打一行 '  <AR> <status>' — 探测全程可见,
-# 不再等 report 一次性吐出; -v 时 fail/error/skip 行尾追加 reason 摘要(一行化规则与
-# report.py 逐条行一致: 转字符串 + 换行替空格 + 截断 120, 保证每条 AR 恒一行)。
+# 不再等 report 一次性吐出; skip 行恒带 reason [source], -v 时 fail/error 行尾追加
+# reason 摘要(一行化规则与 report.py 逐条行一致: 转字符串 + 换行替空格 + 截断 120,
+# 保证每条 AR 恒一行)。
 echo "probing $_ar_count ARs (timeout ${TIMEOUT}s per probe) — results stream below" >&2
 while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
   [[ -z "$ar" ]] && continue
   case "$status" in
     skip|cascade_skip)
-      # record 先捕获再 append(assemble 恒 exit 0)。默认 live 行只打 '  <AR> skip'
-      # (契约: reason 是 -v 语义, 与 fail/error 对称; 默认原因仍在末尾 report 的
-      # 非 pass detail 行)。-v 时 reason 从 record 解码 — planner 的 \x1f 字段是
+      # record 先捕获再 append(assemble 恒 exit 0)。live 行恒打 '  <AR> skip | reason'
+      # (每条 AR 只出现一次: reason 在 live 行给全, report --compact-rows 相应跳过
+      # skip 行, 不再双打)。reason 从 record 解码 — planner 的 \x1f 字段是
       # json.dumps 的 ASCII 转义形态(中文 → \uXXXX), 直接拼会打出转义串; 解码走
-      # stdin(与 probe 分支 live 行同通道规则)。
+      # stdin(与 probe 分支 live 行同通道规则)。-v 只影响 fail/error 行(追加 reason)。
       _rec="$(python3 "$ASSEMBLE" --skip "$ar" "$reason" "$source")"
       echo "$_rec" >> "$results_file"
-      if [[ $VERBOSE -eq 1 ]]; then
-        printf '  %-14s skip | %s\n' "$ar" "$(printf '%s' "$_rec" | python3 -c '
+      printf '  %-14s skip | %s\n' "$ar" "$(printf '%s' "$_rec" | python3 -c '
 import json, sys
 r = json.load(sys.stdin)
-# reason 摘要同 report.py 逐条行: 转字符串 + 换行替空格 + 截断 120
-print(str(r.get("reason", "") or "").replace("\n", " ")[:120])
+# reason 摘要同 report.py 逐条行: 转字符串 + 换行替空格 + 截断 120;
+# source 一并给出(report --compact-rows 跳过 skip 行, [source] 只在此处出现)
+reason = str(r.get("reason", "") or "").replace("\n", " ")[:120]
+src = str(r.get("source", "") or "")
+print(reason + " [" + src + "]" if src else reason)
 ')" >&2
-      else
-        printf '  %-14s %s\n' "$ar" "skip" >&2
-      fi
       ;;
     xfail|applicable)
       # method/path 原字符串(planner 白名单/控制字符校验保证无 \n, 评审 🟡1)

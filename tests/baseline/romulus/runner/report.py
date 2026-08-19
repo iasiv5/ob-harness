@@ -46,8 +46,9 @@ def main():
     p.add_argument("--report", default=None,
                    help="optional path to dump full JSON report")
     p.add_argument("--compact-rows", action="store_true",
-                   help="print only non-pass AR rows (pass rows are already "
-                        "streamed live by run.sh — always on; avoids double printing)")
+                   help="print only non-pass/non-skip AR rows (pass and skip "
+                        "rows are already streamed live with reason by run.sh "
+                        "— always on; avoids double printing)")
     args = p.parse_args()
 
     records = load_records(args.results)
@@ -89,15 +90,15 @@ def main():
     # 逐条五态(评审 🟡7): 逐条行在前、VERDICT 最后(行序 UX: 用户先看明细, 汇总结论收尾)。
     # 默认打印非 pass AR 详情; fail/error 带 code + reason; skip/xfail/xpass 带 reason +
     # source。help "read the fail rows" 才名副其实。
-    # --compact-rows: run.sh 恒已向 stderr 实时流过每条 AR 状态(含 pass), report 再全量
-    # 打一遍是双打 — 跳过 pass 行(reason 恒 "ok", 无信息损失), 非 pass 行保留
-    # code/reason/source 详情。
+    # --compact-rows: run.sh 恒已向 stderr 实时流过每条 AR 状态(pass 裸状态, skip 带
+    # reason), report 再打一遍是双打 — 跳过 pass 与 skip 行(信息无损失; skip 的 source
+    # 也随 live 行给出), fail/error/xfail/xpass 行保留 code/reason/source 详情。
     for r in records:
         if not isinstance(r, dict):
             print("  <non-dict>    error | {!r}".format(r))
             continue
         st = r.get("status", "?")
-        if args.compact_rows and st == "pass":
+        if args.compact_rows and st in ("pass", "skip"):
             continue
         ar = str(r.get("ar", "?"))   # coerce(评审 🟡2: ar 非 str 不 format 崩)
         # 字段 coerce 到 str(评审 🟡4: reason/source 非 str 不 AttributeError; 仅显示用)

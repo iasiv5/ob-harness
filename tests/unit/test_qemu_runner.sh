@@ -192,10 +192,10 @@ assert_eq "big-body pass run rc=0" "$rc" "0"
 assert_true "live line survives >128KB body (record via stdin, not argv)" \
   grep -Eq '^  TEST-A[[:space:]]+pass$' <<<"$out"
 
-# 7: skip live 行默认只打 '  <AR> skip'(契约: reason 是 -v 语义, 与 fail/error 对称;
-#    默认原因在 report 非 pass detail 行)。-v 时 skip 行带解码后的 reason —
-#    planner \x1f 字段是 json.dumps 的 ASCII 转义形态(中文 → \uXXXX), 直接拼会打出
-#    转义串(回归); 解码走 assemble record。
+# 7: skip live 行恒打 '  <AR> skip | reason [source]'(每条 AR 只出现一次: reason/source
+#    在 live 行给全, report --compact-rows 相应跳过 skip 行)。planner \x1f 字段是
+#    json.dumps 的 ASCII 转义形态(中文 → \uXXXX), 直接拼会打出转义串(回归);
+#    解码走 assemble record。skip 行不区分 -v/-v-default(此前 -v 才带 reason)。
 cat > "$_tmp/skip-appl.yaml" <<'YAML'
 default: applicable
 overrides:
@@ -206,17 +206,17 @@ out=$(OB_TQ_STUB_MODE=good-pass OB_TQ_PROBE="$_tmp/probe-stub.py" \
     OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$_tmp/skip-appl.yaml" \
     bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x 2>&1) || rc=$?
 assert_eq "skip run rc=0" "$rc" "0"
-assert_true "default skip live line is bare (no reason)" \
-  grep -Eq '^  TEST-A[[:space:]]+skip$' <<<"$out"
-assert_true "default skip reason still in report detail row" \
-  grep -Eq 'TEST-A[[:space:]]+skip \| 纯硬件/规格条目, QEMU 不可仿真 \[unit\]' <<<"$out"
+assert_true "default skip live line carries decoded Chinese reason [source]" \
+  grep -Eq '^  TEST-A[[:space:]]+skip \| 纯硬件/规格条目, QEMU 不可仿真 \[unit\]$' <<<"$out"
+assert_eq "skip line appears exactly once (live only, no report duplicate)" \
+  "$(grep -Ec 'TEST-A[[:space:]]+skip \|' <<<"$out")" "1"
 out=""; rc=0
 out=$(OB_TQ_STUB_MODE=good-pass OB_TQ_PROBE="$_tmp/probe-stub.py" \
     OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$_tmp/skip-appl.yaml" \
     bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x -v 2>&1) || rc=$?
 assert_eq "verbose skip run rc=0" "$rc" "0"
-assert_true "verbose skip live line carries decoded Chinese reason" \
-  grep -Eq '^  TEST-A[[:space:]]+skip \| 纯硬件/规格条目, QEMU 不可仿真$' <<<"$out"
+assert_true "verbose skip live line carries decoded Chinese reason [source]" \
+  grep -Eq '^  TEST-A[[:space:]]+skip \| 纯硬件/规格条目, QEMU 不可仿真 \[unit\]$' <<<"$out"
 assert_true "skip live line has no \\\\uXXXX escapes" \
   bash -c "! grep -E 'skip \\\\\\\\u[0-9a-f]{4}' <<<'$out'"
 
