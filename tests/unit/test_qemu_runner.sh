@@ -84,6 +84,8 @@ cases = {
            "actual": 500, "reason": "bad"}, 1),
   "good-fail-multiline": ({"pass": False, "code": 500, "body": "{}",
            "actual": 500, "reason": "line1\nline2 bad"}, 1),
+  "big-body-pass": ({"pass": True, "code": 200, "body": "{}" * 131072,
+           "actual": None, "reason": "ok"}, 0),
 }
 payload, rc = cases[mode]
 print(json.dumps(payload))
@@ -182,6 +184,27 @@ assert_eq "split-stream fail run rc=1" "$rc" "1"
 assert_true "live fail line is on stderr" grep -Eq '^  TEST-A[[:space:]]+fail$' "$_sstderr"
 assert_true "stdout keeps fail detail row" grep -Eq 'TEST-A[[:space:]]+fail \| code=' "$_sstdout"
 assert_true "stdout last line is VERDICT: FAIL" grep -q '^VERDICT: FAIL' <<<"$(tail -1 "$_sstdout")"
+
+# 6: 大 body record(>128KB 单参数上限)走 stdin 不走 argv — live 行不 E2BIG(回归:
+#     曾以 argv 传整 record, python3 "参数列表过长" 致 live 行丢失)
+out=""; rc=0; out=$(_run_protocol_capture big-body-pass) || rc=$?
+assert_eq "big-body pass run rc=0" "$rc" "0"
+assert_true "live line survives >128KB body (record via stdin, not argv)" \
+  grep -Eq '^  TEST-A[[:space:]]+pass$' <<<"$out"
+
+# 7: skip live 行带 reason(用户可读: 即答"为何 skip", 非 -v 专属)
+cat > "$_tmp/skip-appl.yaml" <<'YAML'
+default: applicable
+overrides:
+  TEST-A: {status: skip, reason: not emulatable in QEMU, source: unit}
+YAML
+out=""; rc=0
+out=$(OB_TQ_STUB_MODE=good-pass OB_TQ_PROBE="$_tmp/probe-stub.py" \
+    OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$_tmp/skip-appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x 2>&1) || rc=$?
+assert_eq "skip run rc=0" "$rc" "0"
+assert_true "skip live line carries reason" \
+  grep -Eq '^  TEST-A[[:space:]]+skip \| not emulatable in QEMU$' <<<"$out"
 
 # 编码回归(评审 🟢4 + 🟡1, 四轮对撞定稿): 敌意 stdio 预设(PYTHONIOENCODING=ascii, UTF-8 mode
 # 仍开) + 树内同构中文 reason → run.sh 头部双 export 免疫: xpass 中文正常渲染, rc=0。

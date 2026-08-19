@@ -141,7 +141,10 @@ while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
   case "$status" in
     skip|cascade_skip)
       python3 "$ASSEMBLE" --skip "$ar" "$reason" "$source" >> "$results_file"
-      printf '  %-14s %s\n' "$ar" "skip" >&2
+      # skip 带 reason(planner 字段, \x1f 行已保证无换行; 字段值带 JSON 引号, 两步剥掉):
+      # live 行即答"为何 skip"
+      _sreason="${reason#\"}"
+      printf '  %-14s skip | %s\n' "$ar" "${_sreason%\"}" >&2
       ;;
     xfail|applicable)
       # method/path 原字符串(planner 白名单/控制字符校验保证无 \n, 评审 🟡1)
@@ -167,15 +170,18 @@ while IFS=$'\x1f' read -r ar status method path body asserts reason source; do
           _rec=$(python3 "$ASSEMBLE" --fallback "$ar")
       fi
       echo "$_rec" >> "$results_file"
-      printf '  %-14s %s\n' "$ar" "$(python3 -c '
+      # record 走 stdin 不走 argv(回归修复): record 含完整 HTTP body, 大响应超
+      # MAX_ARG_STRLEN → python3 E2BIG("参数列表过长") live 行丢失; 且 argv 是 ps
+      # 全局可见, body 不该落命令行。
+      printf '  %-14s %s\n' "$ar" "$(printf '%s' "$_rec" | python3 -c '
 import json, sys
-r = json.loads(sys.argv[1])
+r = json.load(sys.stdin)
 st = r.get("status", "?")
-if sys.argv[2] == "1" and st in ("fail", "error"):
+if sys.argv[1] == "1" and st in ("fail", "error"):
     # reason 摘要同 report.py 逐条行: 转字符串 + 换行替空格 + 截断 120
     st += " " + str(r.get("reason", "") or "").replace("\n", " ")[:120]
 print(st)
-' "$_rec" "$VERBOSE")" >&2
+' "$VERBOSE")" >&2
       ;;
     *)
       echo "run.sh: unknown applicability status '$status' for $ar" >&2
