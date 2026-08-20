@@ -320,4 +320,144 @@ assert_rc 3 "report duplicate AR results are infra error" _report_stdin_case \
   $'{"ar":"A","status":"pass"}\n{"ar":"A","status":"pass"}\n'
 rm -rf "$_tmp"
 
+# ── runner.py 函数级直调段(下沉后 live 行格式成为可 import 的测试面) ──
+RUNNER_DIR="$(dirname "$RUNNER")"
+_py() { python3 - "$RUNNER_DIR" "$@"; }
+
+# oneline: 截断 120 / 换行替空格 / 非 str coerce
+_py "$RUNNER_DIR" <<'PY' && _fn_ok=1 || _fn_ok=0
+import sys
+sys.path.insert(0, sys.argv[1])
+import report
+assert report.oneline("多行\nreason") == "多行 reason"
+assert report.oneline("x" * 200) == "x" * 120
+assert report.oneline(None) == ""
+assert report.oneline(7) == "7"
+print("fn-ok")
+PY
+assert_eq "report.oneline 直调(截断/换行/coerce)" "$_fn_ok" "1"
+
+# live_line: skip 裸行带 [source] / -v=0 fail 裸状态 / -v=1 fail 追加 reason
+_py "$RUNNER_DIR" <<'PY' && _live_ok=1 || _live_ok=0
+import sys
+sys.path.insert(0, sys.argv[1])
+import report
+ll = report.live_line({"ar": "A", "status": "skip", "reason": "r", "source": "unit"}, 0)
+assert ll == "  A              skip | r [unit]", ll
+ll = report.live_line({"ar": "A", "status": "skip", "reason": "r", "source": ""}, 1)
+assert ll.endswith("skip | r"), ll
+ll = report.live_line({"ar": "A", "status": "fail", "reason": "boom"}, 0)
+assert ll.endswith("fail") and "boom" not in ll, ll
+ll = report.live_line({"ar": "A", "status": "fail", "reason": "boom\nx" * 100}, 1)
+exp = "  {:<14} {}".format("A", "fail " + "boom x" * 20)  # 合并后每单元 6 字符 ×20 = 120
+assert ll == exp, (ll, exp)
+print("live-ok")
+PY
+assert_eq "report.live_line 直调(skip/-v 语义/截断)" "$_live_ok" "1"
+
+# 共用不变量: 同一 skip record 过 live_line(stderr 流)与 run_report 逐条行(stdout),
+# reason 片段一致(同源 oneline, 防未来分叉)
+_tmp2=$(mktemp -d)
+_py "$RUNNER_DIR" "$_tmp2" <<'PY' && _inv_ok=1 || _inv_ok=0
+import io, sys, contextlib
+sys.path.insert(0, sys.argv[1])
+import report
+rec = {"ar": "INV", "status": "skip", "reason": "共享\nreason", "source": "unit"}
+live = report.live_line(rec, 0)
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    report.run_report([rec], None, False)  # 非 compact, skip 逐条行也打
+row = buf.getvalue().splitlines()[0]
+assert "共享 reason" in live and "共享 reason" in row, (live, row)
+print("inv-ok")
+PY
+assert_eq "live 行与逐条行共用 oneline 不变量" "$_inv_ok" "1"
+rm -rf "$_tmp2"
+
+# probe stderr 透传: stub probe 向 stderr 打诊断标记, runner stderr 须可见
+# (防 subprocess 形态只捕 stdout 后把诊断吞掉)。stub 是 python 形态 —
+# runner 沿旧惯例以 python3 调 probe。
+_tmp3=$(mktemp -d)
+cat > "$_tmp3/probe.py" <<'EOF'
+import sys
+sys.stderr.write("PROBE-STDERR-DIAG\n")
+sys.stdout.write('{"pass": true, "code": 200, "body": "b", "actual": null, "reason": "", "error": false}')
+sys.exit(0)
+EOF
+cat > "$_tmp3/ars.yaml" <<'YAML'
+ars:
+  - ar: T-STDERR
+    suite: t
+    request: {method: GET, path: /redfish/v1}
+    assert:
+      - {type: status_in, value: [200]}
+YAML
+cat > "$_tmp3/appl.yaml" <<'YAML'
+default: applicable
+YAML
+OB_TQ_AR_PROBES="$_tmp3/ars.yaml" OB_TQ_APPL="$_tmp3/appl.yaml" OB_TQ_PROBE="$_tmp3/probe.py" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --timeout 2 \
+    >"$_tmp3/out" 2>"$_tmp3/err" || true
+assert_true "probe stderr 诊断透传到 runner stderr" grep -q "PROBE-STDERR-DIAG" "$_tmp3/err"
+
+# body 空 JSON 透传: POST body {} 的 AR, stub probe 回显 --body argv 进 record
+# reason, 经 --report JSON 断言(pass record 会被 --compact-rows 隐藏, 不走 stderr)
+cat > "$_tmp3/probe2.py" <<'EOF'
+import json, sys
+body = ""
+prev = ""
+for a in sys.argv[1:]:
+    if prev == "--body":
+        body = a
+    prev = a
+sys.stdout.write(json.dumps({"pass": True, "code": 200, "body": "got --body " + body,
+                             "actual": None, "reason": "BODY-ARG=[" + body + "]",
+                             "error": False}))
+sys.exit(0)
+EOF
+cat > "$_tmp3/ars2.yaml" <<'YAML'
+ars:
+  - ar: T-BODY
+    suite: t
+    request: {method: POST, path: /redfish/v1/Actions, body: {}}
+    assert:
+      - {type: status_in, value: [200]}
+YAML
+rc=0
+OB_TQ_AR_PROBES="$_tmp3/ars2.yaml" OB_TQ_APPL="$_tmp3/appl.yaml" OB_TQ_PROBE="$_tmp3/probe2.py" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --timeout 2 \
+    --report "$_tmp3/report.json" >/dev/null 2>&1 || rc=$?
+assert_eq "body {} 用例 runner exit 0" "$rc" "0"
+assert_true "body {} 经 --body {} 透传(present iff not None)" \
+    python3 -c '
+import json, sys
+recs = json.load(open(sys.argv[1]))["records"]
+r = [x for x in recs if x["ar"] == "T-BODY"][0]
+assert "BODY-ARG=[{}]" in r.get("reason", ""), r.get("reason")
+' "$_tmp3/report.json"
+rm -rf "$_tmp3"
+
+# status_in.value schema 校验: 写坏(values typo / 空 / 非 list)→ planner exit 3,
+# 不进 α truth(probe 读 a.get("value", []) 会静默拿 [] → 全 fail 冒充 BMC 缺陷)
+_tmp4=$(mktemp -d)
+cat > "$_tmp4/appl.yaml" <<'YAML'
+default: applicable
+YAML
+for badval in 'values: [200]' 'value: []' 'value: 200'; do
+  cat > "$_tmp4/ars.yaml" <<YAML
+ars:
+  - ar: T-BADASSERT
+    suite: t
+    request: {method: GET, path: /redfish/v1}
+    assert:
+      - {type: status_in, $badval}
+YAML
+  rc=0; OB_TQ_AR_PROBES="$_tmp4/ars.yaml" OB_TQ_APPL="$_tmp4/appl.yaml" \
+      bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run \
+      >/dev/null 2>"$_tmp4/err" || rc=$?
+  assert_eq "status_in 写坏($badval) → exit 3" "$rc" "3"
+  assert_true "remedy 指名 status_in.value($badval)" grep -q "status_in.value" "$_tmp4/err"
+done
+rm -rf "$_tmp4"
+
 assert_summary

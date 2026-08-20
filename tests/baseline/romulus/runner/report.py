@@ -21,6 +21,35 @@ import sys
 STATUSES = ("pass", "fail", "skip", "xfail", "xpass", "error")
 
 
+def oneline(value):
+    """reason 摘要一行化: 转字符串 + 换行替空格 + 截断 120。
+
+    live 行(runner 流式)与逐条行(--compact-rows 保留的 fail/error 等)共用本函数,
+    两条输出路径的 reason 形态永远一致(一致性靠代码, 不靠注释约定)。
+    """
+    return str(value or "").replace("\n", " ")[:120]
+
+
+def live_line(record, verbose):
+    """record → stderr 流式 live 行(每条 AR 完成即打一行)。
+
+    与旧 run.sh 两段内联 python 输出逐字节一致:
+      skip 行    '  <AR 留空补齐 14> skip | <reason 摘要>'(+ ' [source]' 有则拼接;
+                 -v 不影响 skip 行, reason 恒给全)
+      probe 行   '  <AR> <status>'; verbose=1 且 status ∈ fail/error 时行尾追加
+                 ' ' + reason 摘要
+    """
+    ar = str(record.get("ar", "?"))
+    st = record.get("status", "?")
+    if st == "skip":
+        reason = oneline(record.get("reason", ""))
+        src = str(record.get("source", "") or "")
+        return "  {:<14} skip | {}".format(ar, reason + " [" + src + "]" if src else reason)
+    if verbose and st in ("fail", "error"):
+        st += " " + oneline(record.get("reason", ""))
+    return "  {:<14} {}".format(ar, st)
+
+
 def load_records(path):
     records = []
     try:
@@ -39,20 +68,12 @@ def load_records(path):
     return records
 
 
-def main():
-    p = argparse.ArgumentParser(add_help=True)
-    p.add_argument("--results", required=True,
-                   help="JSONL results file (use '-' for stdin)")
-    p.add_argument("--report", default=None,
-                   help="optional path to dump full JSON report")
-    p.add_argument("--compact-rows", action="store_true",
-                   help="print only non-pass/non-skip AR rows (pass and skip "
-                        "rows are already streamed live with reason by run.sh "
-                        "— always on; avoids double printing)")
-    args = p.parse_args()
+def run_report(records, report_path, compact_rows):
+    """汇总 + 逐条行 + 可选 JSON report; 返回 exit code(0/1/3)。
 
-    records = load_records(args.results)
-
+    runner.py in-process 直调(内存 list[dict] 流转); CLI main() 经 load_records
+    读 JSONL 后同样收口到这里 — 两条入口的输出与 exit 语义恒一致。
+    """
     counts = {s: 0 for s in STATUSES}
     if not records:
         sys.stderr.write("report: empty results -> error\n")
@@ -90,7 +111,7 @@ def main():
     # 逐条五态(评审 🟡7): 逐条行在前、VERDICT 最后(行序 UX: 用户先看明细, 汇总结论收尾)。
     # 默认打印非 pass AR 详情; fail/error 带 code + reason; skip/xfail/xpass 带 reason +
     # source。help "read the fail rows" 才名副其实。
-    # --compact-rows: run.sh 恒已向 stderr 实时流过每条 AR 状态(pass 裸状态, skip 带
+    # --compact-rows: runner 恒已向 stderr 实时流过每条 AR 状态(pass 裸状态, skip 带
     # reason), report 再打一遍是双打 — 跳过 pass 与 skip 行(信息无损失; skip 的 source
     # 也随 live 行给出), fail/error/xfail/xpass 行保留 code/reason/source 详情。
     for r in records:
@@ -98,11 +119,11 @@ def main():
             print("  <non-dict>    error | {!r}".format(r))
             continue
         st = r.get("status", "?")
-        if args.compact_rows and st in ("pass", "skip"):
+        if compact_rows and st in ("pass", "skip"):
             continue
         ar = str(r.get("ar", "?"))   # coerce(评审 🟡2: ar 非 str 不 format 崩)
         # 字段 coerce 到 str(评审 🟡4: reason/source 非 str 不 AttributeError; 仅显示用)
-        reason = str(r.get("reason", "") or "").replace("\n", " ")[:120]
+        reason = oneline(r.get("reason", ""))
         src = str(r.get("source", "") or "")
         if st in ("fail", "error"):
             print("  {:<14} {} | code={} | {}".format(ar, st, r.get("code"), reason))
@@ -129,21 +150,21 @@ def main():
         verdict, counts["pass"], counts["fail"], counts["skip"],
         counts["xfail"], counts["xpass"], counts["error"]))
 
-    if args.report:
+    if report_path:
         # 原子写(评审 🟡2): 临时文件 + os.replace; I/O 失败 → return 3(不冒充 BMC fail rc=1);
         # finally 删未 rename 的临时文件(评审 🟡1: 不残留)
         import os, tempfile
         blob = {"verdict": verdict, "counts": counts, "records": records}
         fd = tmp = None
         try:
-            d = os.path.dirname(os.path.abspath(args.report)) or "."
+            d = os.path.dirname(os.path.abspath(report_path)) or "."
             fd, tmp = tempfile.mkstemp(dir=d, suffix=".tmp")
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 json.dump(blob, f, ensure_ascii=False, indent=2)
-            os.replace(tmp, args.report)
+            os.replace(tmp, report_path)
             tmp = None  # 已 rename, 不删
         except OSError as e:
-            sys.stderr.write("report: cannot write --report {}: {}\n".format(args.report, e))
+            sys.stderr.write("report: cannot write --report {}: {}\n".format(report_path, e))
             return 3
         finally:
             if tmp is not None:
@@ -157,6 +178,20 @@ def main():
     if counts["fail"] > 0:
         return 1
     return 0
+
+
+def main():
+    p = argparse.ArgumentParser(add_help=True)
+    p.add_argument("--results", required=True,
+                   help="JSONL results file (use '-' for stdin)")
+    p.add_argument("--report", default=None,
+                   help="optional path to dump full JSON report")
+    p.add_argument("--compact-rows", action="store_true",
+                   help="print only non-pass/non-skip AR rows (pass and skip "
+                        "rows are already streamed live with reason by the "
+                        "runner — always on; avoids double printing)")
+    args = p.parse_args()
+    return run_report(load_records(args.results), args.report, args.compact_rows)
 
 
 if __name__ == "__main__":

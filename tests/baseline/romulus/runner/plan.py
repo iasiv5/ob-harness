@@ -2,27 +2,21 @@
 """romulus baseline planner: ar_probes.yaml × applicability.yaml → 执行计划。
 
 从 run.sh 抽出(B3 结构化; 逻辑与内嵌时期逐行等价, 防御原样保留):
-读两份 YAML → schema 校验 → --ar/--suite 过滤 → cascade-skip 传播 →
-输出 \x1f 分隔的计划行(bash 主循环逐行消费)。
+读两份 YAML → schema 校验 → --ar/--suite 过滤 → cascade-skip 传播。
+runner.py in-process import 消费(旧 \x1f 分隔 stdout 帧已随 bash 主循环消亡,
+现为 list[dict] 返回; plan() 是唯一入口, CLI 形态已删——无外部消费方)。
 
-Env 接口(沿内嵌时期, run.sh 注入):
-  AR_PROBES    ar_probes.yaml 路径(可被 OB_TQ_AR_PROBES 重定向, 单测用)
-  APPL         applicability.yaml 路径(可被 OB_TQ_APPL 重定向)
-  AR_FILTER    只保留该 AR ID(--ar)
-  SUITE_FILTER 只保留该 suite(--suite)
+plan() 返回 list[dict], 元素字段:
+  ar / status / method / path / body / asserts / reason / source
+  status ∈ applicable / skip / xfail / cascade_skip(runner 把 cascade_skip
+  归并读作 skip); method/path 为原字符串(schema 校验保证无控制字符);
+  body/asserts 为已解析对象; reason/source 为原字符串。
 
-stdout 每行: ar \x1f status \x1f method \x1f path \x1f body_json \x1f
-             asserts_json \x1f reason_json \x1f source_json
-  status ∈ applicable / skip / xfail / cascade_skip(主循环把 cascade_skip
-  归并读作 skip); method/path 为原字符串(schema 校验保证无控制字符)。
-
-exit: 0 正常; 3 YAML 语法/schema 违规(default status 白名单 / AR ID 空
+plan() 内 sys.exit(3)(YAML 语法/schema 违规: default status 白名单 / AR ID 空
   或含控制字符或重复 / depends_on 未知 / orphan override / 未知 assert
   type / 缺 request 且非 skip / method 白名单外 / path 含控制字符) —
-  baseline 数据错 ≠ BMC fail, 不进 α truth。
+  baseline 数据错 ≠ BMC fail, 不进 α truth; runner 捕 SystemExit 补 remedy。
 """
-import json
-import os
 import sys
 
 import yaml
@@ -41,10 +35,10 @@ def die(msg):
     sys.exit(3)
 
 
-def load_inputs():
+def load_inputs(ar_probes, appl_path):
     try:
-        d = yaml.safe_load(open(os.environ["AR_PROBES"]))
-        appl = yaml.safe_load(open(os.environ["APPL"]))
+        d = yaml.safe_load(open(ar_probes))
+        appl = yaml.safe_load(open(appl_path))
     except Exception as e:  # yaml 语法/open 失败 → 数据错 exit 3, 不 traceback
         sys.stderr.write("plan.py: cannot parse baseline YAML: {}\n".format(e))
         sys.exit(3)
@@ -103,13 +97,19 @@ def resolve_status(ars, appl):
     return stat
 
 
-def validate_and_emit(a, st):
-    """单 AR 的 assert/request schema 校验 + 计划行输出。"""
+def build_plan(a, st):
+    """单 AR 的 assert/request schema 校验 → 计划行 dict。"""
     # 未知 assert type = baseline 数据错(评审二轮 🟡), 不当 BMC fail
     for x in a.get("assert", []):
         if x.get("type") not in _ALLOWED_ASSERT:
             die("AR '{}' unknown assert type '{}'; allowed: {}".format(
                 a["ar"], x.get("type"), ", ".join(_ALLOWED_ASSERT)))
+        # status_in.value 必须非空 list: probe 读 a.get("value", []) — 字段写错
+        # (如 values typo)或空列表会静默拿 [], 任何 HTTP code 都 fail, 冒充 BMC 缺陷。
+        if x.get("type") == "status_in":
+            v = x.get("value")
+            if not isinstance(v, list) or not v:
+                die("AR '{}' status_in.value must be a non-empty list (got {!r})".format(a["ar"], v))
     # request 缺省容忍(评审配套⑤): 仅实际将 skip 的 AR 可省略 request — 无可执行
     # 探测定义就不该编造占位请求(如 Web banner AR 挂 GET /redfish/v1 的语义错位);
     # request 存在则无条件过白名单校验(数据要合法, applicability 改回 applicable 后即跑)。
@@ -120,37 +120,30 @@ def validate_and_emit(a, st):
         method = ""
         path = ""
     else:
-        # method 白名单 + path 拒控制字符: 两者直接进入 framing/HTTP argv。
+        # method 白名单 + path 拒控制字符: 两者直接进入 HTTP argv。
         method = req.get("method", "")
         path = req.get("path", "")
         if not isinstance(method, str) or method not in _ALLOWED_METHODS:
             die("AR '{}' bad HTTP method '{}'; allowed: {}".format(a["ar"], method, ", ".join(_ALLOWED_METHODS)))
         if not isinstance(path, str) or has_control_chars(path):
             die("AR '{}' request.path has control chars or non-str".format(a["ar"]))
-    body = req.get("body")
-    body_json = json.dumps(body) if body is not None else ""
-    asserts_json = json.dumps(a.get("assert", []))
     status, reason, source = st
-    # framing: method/path 原字符串(白名单/控制字符校验保证无 \n);
-    # reason/src json.dumps(多行允许)
-    print("\x1f".join([a["ar"], status, method, path,
-                       body_json, asserts_json, json.dumps(reason), json.dumps(source)]))
+    return {"ar": a["ar"], "status": status, "method": method, "path": path,
+            "body": req.get("body"), "asserts": a.get("assert", []),
+            "reason": reason, "source": source}
 
 
-def main():
-    af = os.environ.get("AR_FILTER", "")
-    sf = os.environ.get("SUITE_FILTER", "")
-    d, appl = load_inputs()
+def plan(ar_probes, appl_path, ar_filter, suite_filter):
+    """两份 YAML → list[dict] 执行计划(数据错 sys.exit(3), 不进 α truth)。"""
+    d, appl = load_inputs(ar_probes, appl_path)
     ars = d["ars"]
     validate_ar_ids(ars)
     stat = resolve_status(ars, appl)
+    rows = []
     for a in ars:
-        if af and a["ar"] != af:
+        if ar_filter and a["ar"] != ar_filter:
             continue
-        if sf and a.get("suite") != sf:
+        if suite_filter and a.get("suite") != suite_filter:
             continue
-        validate_and_emit(a, stat[a["ar"]])
-
-
-if __name__ == "__main__":
-    main()
+        rows.append(build_plan(a, stat[a["ar"]]))
+    return rows
