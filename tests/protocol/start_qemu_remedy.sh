@@ -82,21 +82,21 @@ run_start_qemu_case() {
 
 run_start_qemu_case setup_no_marker start-qemu
 assert_eq "start-qemu without init-done rc" "$START_QEMU_CASE_RC" "3"
-assert_contains "start-qemu without init-done remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob init <machine>' first."
+assert_contains "start-qemu without init-done remedy" "$START_QEMU_CASE_OUTPUT" "Run './ob init <machine>' first."
 assert_false "start-qemu without init-done remedy is single-command" grep -Fq "then 'ob build'" <<< "$START_QEMU_CASE_OUTPUT"
 
 run_start_qemu_case setup_legacy_lock_only start-qemu romulus
 assert_eq "start-qemu legacy lock only rc" "$START_QEMU_CASE_RC" "3"
-assert_contains "start-qemu legacy lock only remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob init romulus' first."
+assert_contains "start-qemu legacy lock only remedy" "$START_QEMU_CASE_OUTPUT" "Run './ob init romulus' first."
 
 run_start_qemu_case setup_orphan_artifact start-qemu romulus
 assert_eq "start-qemu orphan artifact explicit rc" "$START_QEMU_CASE_RC" "3"
-assert_contains "start-qemu orphan artifact explicit remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob init romulus' first."
+assert_contains "start-qemu orphan artifact explicit remedy" "$START_QEMU_CASE_OUTPUT" "Run './ob init romulus' first."
 
 run_start_qemu_case setup_init_done_only start-qemu
 assert_eq "start-qemu init-done without build rc" "$START_QEMU_CASE_RC" "3"
 assert_contains "start-qemu init-done without build diagnosis" "$START_QEMU_CASE_OUTPUT" "No firmware-image-ready machines found."
-assert_contains "start-qemu init-done without build remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob build <machine>' first."
+assert_contains "start-qemu init-done without build remedy" "$START_QEMU_CASE_OUTPUT" "Run './ob build <machine>' first."
 stale_built_prefix="No built"
 stale_built_suffix=" machines"
 assert_false "start-qemu init-done without build avoids built wording" grep -Fq "${stale_built_prefix}${stale_built_suffix}" <<< "$START_QEMU_CASE_OUTPUT"
@@ -104,7 +104,7 @@ assert_false "start-qemu init-done without build avoids built wording" grep -Fq 
 run_start_qemu_case setup_init_done_build_dir_no_image start-qemu
 assert_eq "start-qemu build dir without image rc" "$START_QEMU_CASE_RC" "3"
 assert_contains "start-qemu build dir without image diagnosis" "$START_QEMU_CASE_OUTPUT" "No firmware-image-ready machines found."
-assert_contains "start-qemu build dir without image remedy" "$START_QEMU_CASE_OUTPUT" "Run 'ob build <machine>' first."
+assert_contains "start-qemu build dir without image remedy" "$START_QEMU_CASE_OUTPUT" "Run './ob build <machine>' first."
 
 # nontty: 有 firmware-image-ready + 无 MACHINE + 非 TTY → exit 3 + terminal remedy(N1)
 run_start_qemu_case setup_firmware_image_ready start-qemu

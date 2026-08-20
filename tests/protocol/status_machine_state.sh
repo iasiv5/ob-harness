@@ -31,11 +31,11 @@ assert_contains "marker-only row shows initialized state" "$markeronly_line" "�
 assert_contains "failed build machine listed" "$output" "failm"
 assert_contains "missing firmware image state listed" "$output" "— missing"
 assert_contains "ready firmware image listed" "$output" "📦 ready"
-assert_contains "init-done without firmware image shows build tip" "$output" "Run 'ob build <machine>' to produce a firmware image."
+assert_contains "init-done without firmware image shows build tip" "$output" "Run './ob build <machine>' to produce a firmware image."
 assert_contains "diagnostics section listed" "$output" "Diagnostics"
 assert_contains "orphan diagnostics title listed" "$output" "Orphan firmware image artifacts"
 assert_contains "orphan artifact listed" "$output" "orphan"
-assert_contains "orphan next step listed" "$output" "Next step : ob init orphan"
+assert_contains "orphan next step listed" "$output" "Next step : ./ob init orphan"
 assert_false "orphan not in main machine table" grep -Eq '^  orphan[[:space:]]' <<< "$output"
 assert_false "status avoids invalid image wording" grep -Fq "invalid image" <<< "$output"
 qemu_word="QEMU"
@@ -58,6 +58,6 @@ output="$(cmd_status 2>&1)"; rc=$?
 assert_eq "status built+partial rc" "$rc" 0
 status_records_calls=$(wc -l < "$status_records_calls_file")
 assert_eq "status does not call machine records after state change" "$status_records_calls" 0
-assert_false "partial machine does not trigger build tip" grep -Fq "Run 'ob build <machine>' to produce a firmware image." <<< "$output"
+assert_false "partial machine does not trigger build tip" grep -Fq "Run './ob build <machine>' to produce a firmware image." <<< "$output"
 
 assert_summary

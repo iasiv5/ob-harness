@@ -174,7 +174,7 @@ EOF
 ensure_bootstrap_local_conf() {
     local local_conf="$BUILD_DIR/conf/local.conf"
 
-    require_path "$local_conf" "local.conf" "Run 'ob init' first." 3
+    require_path "$local_conf" "local.conf" "Run '$OB_CMD init' first." 3
 
     # Detect GitLab IP for recipes that use ${GITLAB_IP} in SRC_URI(via runtime Git mirror host).
     # direct call:函数内全局缓存不穿透 $() subshell(clone_sub_repos 循环复用同一缓存)。
@@ -271,7 +271,7 @@ verify_source() {
                     error "  Current harness source: $current_source"
                     error "  Requested source:       $requested_source"
                     error "A harness may only bind to one OpenBMC main repository source."
-                    error "To use a different source, copy ob-harness and run ob init in the new copy."
+                    error "To use a different source, copy ob-harness and run $OB_CMD init in the new copy."
                     exit 1
                 fi
             fi
@@ -307,7 +307,7 @@ verify_source() {
             error "  Current harness source: $lock_source${lock_label:+  ($lock_label)}"
             error "  Requested source:       $requested_source"
             error "A harness may only bind to one OpenBMC main repository source."
-            error "To use a different source, copy ob-harness and run ob init in the new copy."
+            error "To use a different source, copy ob-harness and run $OB_CMD init in the new copy."
             exit 1
         fi
     fi
@@ -330,7 +330,7 @@ select_openbmc_repo_url() {
         OPENBMC_REPO_URL="$OB_OPENBMC_URL"
         if ! is_valid_repo_url "$OPENBMC_REPO_URL"; then
             error "Invalid OpenBMC repository URL from OB_OPENBMC_URL: $OPENBMC_REPO_URL"
-            error "Set OB_OPENBMC_URL to a valid URL, or rerun 'ob init' interactively."
+            error "Set OB_OPENBMC_URL to a valid URL, or rerun '$OB_CMD init' interactively."
             exit 3
         fi
         return 0

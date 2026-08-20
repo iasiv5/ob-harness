@@ -52,7 +52,7 @@ orphan_recs=( "orphan1|/tmp/orphan.static.mtd" )
 out=$(status_render_diagnostics orphan_recs)
 assert_contains "diag title" "$out" "Orphan firmware image artifacts"
 assert_contains "diag name" "$out" "orphan1"
-assert_contains "diag next step" "$out" "Next step : ob init orphan1"
+assert_contains "diag next step" "$out" "Next step : ./ob init orphan1"
 
 empty_orphan=()
 out=$(status_render_diagnostics empty_orphan); rc=$?
@@ -62,7 +62,7 @@ assert_false "diag empty no section" grep -Fq "Orphan firmware" <<< "$out"
 # ---- tips (4 分支全断言 rc=0——bp07 set -e 陷阱点:tips 空 tip 时末句若返回非 0 会在 cmd_status set -e 下炸;unit 虽 set +e,显式 assert rc 把这个契约钉进单测) ----
 out=$(status_render_tips 0 0 0); rc=$?
 assert_eq "tips no repo rc" "$rc" 0
-assert_contains "tips no repo" "$out" "Run 'ob init' to get started."
+assert_contains "tips no repo" "$out" "Run './ob init' to get started."
 out=$(status_render_tips 1 0 0); rc=$?
 assert_eq "tips has_init rc" "$rc" 0
 assert_contains "tips no init machine" "$out" "to initialize a machine."

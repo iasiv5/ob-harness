@@ -83,7 +83,7 @@ status_render_diagnostics() {
         echo "    $_name"
         echo "      Path      : ${_path:-<unknown>}"
         echo "      Reason    : firmware image artifact exists, but machine init is incomplete"
-        echo "      Next step : ob init $_name"
+        echo "      Next step : $OB_CMD init $_name"
     done
 }
 
@@ -91,9 +91,9 @@ status_render_diagnostics() {
 status_render_tips() {
     local repo_exists="$1" has_init="$2" has_init_no_fw="$3"
     local tip=""
-    if   [[ "$repo_exists"  -eq 0 ]]; then tip="💡 Run 'ob init' to get started."
-    elif [[ "$has_init"     -eq 0 ]]; then tip="💡 Run 'ob init' to initialize a machine."
-    elif [[ "$has_init_no_fw" -eq 1 ]]; then tip="💡 Run 'ob build <machine>' to produce a firmware image."
+    if   [[ "$repo_exists"  -eq 0 ]]; then tip="💡 Run '$OB_CMD init' to get started."
+    elif [[ "$has_init"     -eq 0 ]]; then tip="💡 Run '$OB_CMD init' to initialize a machine."
+    elif [[ "$has_init_no_fw" -eq 1 ]]; then tip="💡 Run '$OB_CMD build <machine>' to produce a firmware image."
     fi
     # 用 if 不用 `[[ -n $tip ]] && {...}`:后者 tip 为空时返回非零,作为函数末句会使 renderer
     # 返回 1,在 cmd_status 的 set -e 上下文里触发退出(bestpractice_07 短路 && 陷阱)。

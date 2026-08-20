@@ -280,7 +280,7 @@ bare_mirror_print_status() {
         done
         echo ""
         echo "[WARN] Troubleshooting guide:"
-        echo "  A) Network flakiness      -> retry: ob init $machine"
+        echo "  A) Network flakiness      -> retry: $OB_CMD init $machine"
         echo "  B) Server network block   -> specific domains (e.g. infradead.org) may be unreachable"
         echo "  C) BitBake will fetch from remote during build if mirror is missing"
         echo ""

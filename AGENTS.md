@@ -38,7 +38,7 @@ Don't ask permission. Just do it.
 
 ## ob 优先（OpenBMC 环境动作的统一前门）
 
-做 OpenBMC 环境生命周期动作（初始化、编译、状态、QEMU 起停等）前，先 `ob --help` 查 ob 是否提供对应能力；提供就走 `ob <cmd>`，不要先手动。`ob --help` 是唯一权威能力清单，随 ob 增长更新。
+做 OpenBMC 环境生命周期动作（初始化、编译、状态、QEMU 起停等）前，先 `./ob --help` 查 ob 是否提供对应能力；提供就走 `./ob <cmd>`（ob 未装 PATH，在仓库根目录以 `./ob` 调用），不要先手动。`./ob --help` 是唯一权威能力清单，随 ob 增长更新。
 
 退出码判读：`exit 1` 才是真失败、才考虑手动兜底；`exit 2`（用户取消）和 `exit 3`（前置缺失，按提示用 ob 补前置再重试）都不是失败，不要据此绕过 ob。完整 exit-code 契约、按码回退和手动兜底规则见 `rules/knowhow/bestpractice_06-ob_first.md`。
 

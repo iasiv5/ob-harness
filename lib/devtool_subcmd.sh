@@ -29,8 +29,8 @@ _dev_recipe_precondition() {
     if [[ -z "$recipe" ]]; then
         error "ob dev $subcmd: no recipe specified." >&2
         case "$subcmd" in
-            modify|reset) error "Run 'ob dev --machine $machine list [pattern]' to discover recipes first." >&2 ;;
-            finish|build) error "Run 'ob dev --machine $machine status' to list modified recipes first." >&2 ;;
+            modify|reset) error "Run '$OB_CMD dev --machine $machine list [pattern]' to discover recipes first." >&2 ;;
+            finish|build) error "Run '$OB_CMD dev --machine $machine status' to list modified recipes first." >&2 ;;
         esac
         return 3
     fi
@@ -94,7 +94,7 @@ dev_subcmd_build() {
         cat -- "$_b_stderr" >&2 2>/dev/null || true
         rm -f -- "$_b_stderr" 2>/dev/null || true
         error "Recipe '$recipe' is not modified (not in devtool workspace)." >&2
-        error "Run 'ob dev --machine $machine modify $recipe' first." >&2
+        error "Run '$OB_CMD dev --machine $machine modify $recipe' first." >&2
         return 3
     fi
     dev_relay_result build "$_b_stderr" "$_b_stage" "" "${_b_rc:-0}" || return 1
@@ -159,7 +159,7 @@ dev_subcmd_list() {
             ;;
         stale)
             error "Recipe cache is stale (bblayers/commit changed)." >&2
-            error "Run 'ob dev --machine $machine refresh' first." >&2
+            error "Run '$OB_CMD dev --machine $machine refresh' first." >&2
             return 3
             ;;
         fresh) ;;
@@ -181,7 +181,7 @@ dev_dispatch_subcmd() {
         build)   dev_subcmd_build   "$machine" "$build_dir" "$recipe" "$pattern" "$dry_run" ;;
         "")
             error "ob dev: no subcommand." >&2
-            error "Run 'ob dev --machine $machine list [pattern]' to discover recipes first." >&2
+            error "Run '$OB_CMD dev --machine $machine list [pattern]' to discover recipes first." >&2
             return 3
             ;;
         *)

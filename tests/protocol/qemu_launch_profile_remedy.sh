@@ -34,7 +34,8 @@ QB_SYSTEM_NAME=\"$qb_system\""
 run_profile_case() {
     local machine="$1"
 
-    with_stub "$DB" -- bash -c 'OB_NO_MAIN=1 source "$1"; OPENBMC_DIR="$2"; BUILD_DIR="$3"; MACHINE="$4"; resolve_qemu_launch_profile "$4"' _ "$OB" "$OPENBMC_DIR" "$BUILD_DIR" "$machine" 2>&1
+    # OB_CMD=./ob: 本 case 直跑 child bash(不经 ob_loader), 注入与其它测试一致的前缀, remedy 断言才对齐
+    with_stub "$DB" -- bash -c 'OB_NO_MAIN=1 OB_CMD=./ob source "$1"; OPENBMC_DIR="$2"; BUILD_DIR="$3"; MACHINE="$4"; resolve_qemu_launch_profile "$4"' _ "$OB" "$OPENBMC_DIR" "$BUILD_DIR" "$machine" 2>&1
 }
 
 assert_single_remedy() {
@@ -42,7 +43,7 @@ assert_single_remedy() {
     local output="$2"
 
     local remedy_count=0
-    remedy_count=$(grep -Ec "Run 'ob |Define QB_" <<< "$output" || true)
+    remedy_count=$(grep -Ec "Run './ob |Define QB_" <<< "$output" || true)
     assert_eq "$label remedy count" "$remedy_count" "1"
 }
 
@@ -52,7 +53,7 @@ stub_bitbake_vars "-machine romulus" "" "qemu-system-arm"
 out="$(run_profile_case romulus)"; rc=$?
 assert_eq "missing build dir rc" "$rc" "3"
 assert_contains "missing build dir diagnosis" "$out" "Build directory not found"
-assert_contains "missing build dir remedy" "$out" "Run 'ob init romulus' first."
+assert_contains "missing build dir remedy" "$out" "Run './ob init romulus' first."
 assert_single_remedy "missing build dir" "$out"
 cleanup_env
 
@@ -72,7 +73,7 @@ stub_bitbake_vars "-machine ast2700a1-evb" "" "qemu-system-aarch64"
 out="$(run_profile_case ast2700a1-evb)"; rc=$?
 assert_eq "missing bootloader rc" "$rc" "3"
 assert_contains "missing bootloader diagnosis" "$out" "AST2700 bootloader files are missing"
-assert_contains "missing bootloader remedy" "$out" "Run 'ob build ast2700a1-evb' first."
+assert_contains "missing bootloader remedy" "$out" "Run './ob build ast2700a1-evb' first."
 assert_single_remedy "missing bootloader" "$out"
 cleanup_env
 
@@ -98,8 +99,8 @@ EOF
 out="$(run_profile_case romulus)"; rc=$?
 assert_eq "conflict rc" "$rc" "1"
 assert_contains "conflict diagnosis" "$out" "SoC type conflict"
-assert_false "conflict no init remedy" grep -Fq "Run 'ob init" <<< "$out"
-assert_false "conflict no build remedy" grep -Fq "Run 'ob build" <<< "$out"
+assert_false "conflict no init remedy" grep -Fq "Run './ob init" <<< "$out"
+assert_false "conflict no build remedy" grep -Fq "Run './ob build" <<< "$out"
 cleanup_env
 
 assert_summary

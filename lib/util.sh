@@ -3,6 +3,10 @@
 # Exit: leaf-no-exit（leaf-pure module; 例外 fn_quit/resolve_npm_registry/require_path 可 direct exit, require_path 使用 caller code）; 调用者负责 exit-code/remedy.
 
 
+# invocation prefix(remedy/Tip 文案回显用户敲法): OB_CMD 由 ob 入口(OB_NO_MAIN 分流)或
+# tests/lib/ob_loader.sh(export ./ob)在 source lib 前定义——本文件三段纯函数检查不允许顶层赋值,
+# 且无单独 source 本文件的消费方, 故不在此兜底。
+
 log()   { echo -e "$*"; }
 
 info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
@@ -364,11 +368,11 @@ resolve_npm_registry() {
             echo ""
             echo "  To override manually:"
             echo "    export OB_NPM_REGISTRY=https://registry.npmmirror.com/"
-            echo "    ob build"
+            echo "    $OB_CMD build"
             echo ""
             echo "  To skip npm configuration entirely:"
             echo "    export OB_NPM_REGISTRY="
-            echo "    ob build"
+            echo "    $OB_CMD build"
             echo ""
             exit 1
         fi

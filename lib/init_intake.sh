@@ -40,7 +40,7 @@ init_intake() {
     fi
 
     if [[ ! -t 0 ]]; then
-        error "No valid machine and no interactive terminal. Pass a valid machine: ob init <machine>"
+        error "No valid machine and no interactive terminal. Pass a valid machine: $OB_CMD init <machine>"
         return 3
     fi
 

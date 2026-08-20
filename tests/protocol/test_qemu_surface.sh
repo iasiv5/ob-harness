@@ -109,7 +109,7 @@ assert_eq "helper lineage routing (community→tests/, custom→contexts/, no cr
 #     子进程的调用 xtrace 不可见, 当前进程子 shell 直调可见 — PS4 FUNCNAME 正常展开;
 #     detect_harness_root 消费 OB_ENTRY_DIR 全局, 与 cwd 无关)
 out=$(cmd_test_qemu -h 2>&1)
-assert_true "cmd_test_qemu -h renders usage (Usage: ob test-qemu)" grep -q "Usage: ob test-qemu" <<<"$out"
+assert_true "cmd_test_qemu -h renders usage (Usage: ob test-qemu)" grep -q "Usage: ./ob test-qemu" <<<"$out"
 
 # (6) cmd 层 baseline-first hermetic 直测(前置重排): fake 根注入 OB_ENTRY_DIR
 #     (用例 (5) 已验证的全局注入模式), custom label + 无 baseline dir + 无 QEMU →

@@ -103,7 +103,7 @@ run_repo_init_script() {
         cd "$prev_dir"
         error "init_openbmc_repo.sh failed — the OpenBMC repository is incomplete."
         error "Please fix the errors above and re-run: cd $OPENBMC_DIR && bash init_openbmc_repo.sh"
-        error "Then re-run: ob init $MACHINE"
+        error "Then re-run: $OB_CMD init $MACHINE"
         exit 1
     fi
 
@@ -237,7 +237,7 @@ clone_sub_repos() {
         return 0
     fi
 
-    require_path "$deps_json" "deps.json" "Run 'ob init' first." 3
+    require_path "$deps_json" "deps.json" "Run '$OB_CMD init' first." 3
 
     local effective_dl_dir=""
     if ! effective_dl_dir=$(resolve_effective_dl_dir); then

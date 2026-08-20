@@ -343,7 +343,7 @@ _READ_CALL=0; MOCK_READ_RC=0; MOCK_READ_STATE="stale"; _err="$(mktemp)"
 dev_subcmd_list "$MACHINE" "$TMP/build" "" "" 0 2>"$_err" >/dev/null
 rc=$?
 assert_eq "㉚ list stale: return 3" "$rc" "3"
-assert_contains "㉚ list stale: stderr refresh" "$(cat "$_err")" "Run 'ob dev --machine $MACHINE refresh' first."
+assert_contains "㉚ list stale: stderr refresh" "$(cat "$_err")" "Run './ob dev --machine $MACHINE refresh' first."
 rm -f "$_err"
 
 # === ㉛ list missing + refresh rc≠0 → return 1 ===

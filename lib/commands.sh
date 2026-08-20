@@ -106,9 +106,9 @@ cmd_status() {
 
 cmd_build() {
     # === Prerequisites ===
-    require_path "$OPENBMC_DIR/.git" "OpenBMC main repository" "Run 'ob init' first." 3
+    require_path "$OPENBMC_DIR/.git" "OpenBMC main repository" "Run '$OB_CMD init' first." 3
 
-    require_path "$SOURCE_MANIFEST_FILE" "Source manifest" "Run 'ob init' first." 3
+    require_path "$SOURCE_MANIFEST_FILE" "Source manifest" "Run '$OB_CMD init' first." 3
 
     local interactive_selection=0
     # resolve_command_machine 据 $MACHINE 判 given/empty（与 caller 同源）。记 had_explicit 保 confirm 门:
@@ -116,7 +116,7 @@ cmd_build() {
     local had_explicit=0
     [[ -n "$MACHINE" ]] && had_explicit=1
     local _rc=0
-    resolve_command_machine machine_state_initialized_machines "Build" stdout "No machine specified and no interactive terminal. Run 'ob status' to list initialized machines. Specify a machine: ob build <machine>" || _rc=$?
+    resolve_command_machine machine_state_initialized_machines "Build" stdout "No machine specified and no interactive terminal. Run '$OB_CMD status' to list initialized machines. Specify a machine: $OB_CMD build <machine>" || _rc=$?
     # 字面 case 收口（exit_contract X 禁 exit $?, || _rc=$? 防 set -e; _rc=0 前置是 set -u 必需）;
     # 1) 的 error 同时作 3) exit 3 的 exit_contract Z(b) 静态锚点（同 cmd_init）。
     case "$_rc" in
@@ -215,7 +215,7 @@ PY
         echo "  BitBake error details are shown above."
         echo ""
         echo "  Common fixes:"
-        echo "    1. Re-run:         ob build  -- select same machine -- retry"
+        echo "    1. Re-run:         $OB_CMD build  -- select same machine -- retry"
         echo "    2. Clean & retry:  cd $OPENBMC_DIR && source setup $MACHINE"
         echo "                       bitbake -c cleansstate <failed-recipe>"
         echo "    3. Full log:       $BUILD_DIR/tmp/log/cooker/$MACHINE/"
@@ -353,7 +353,7 @@ cmd_dev() {
     # 条件版留 stale $MACHINE 是 footgun）。pick_stream=stderr 护 ob dev porcelain stdout 契约。
     MACHINE="$dev_machine"
     local _rc=0
-    resolve_command_machine machine_state_initialized_machines "Develop" stderr "No --machine specified and no interactive terminal. Specify a machine: ob dev --machine <machine> ${dev_subcmd:-list}" || _rc=$?
+    resolve_command_machine machine_state_initialized_machines "Develop" stderr "No --machine specified and no interactive terminal. Specify a machine: $OB_CMD dev --machine <machine> ${dev_subcmd:-list}" || _rc=$?
     # 字面 case 收口（同 cmd_build; 1) error 作 3) exit 3 的 Z(b) 锚点）。
     case "$_rc" in
         0) ;;
@@ -408,7 +408,7 @@ cmd_menu() {
         echo "    C - Clear terminal screen  (c/C)"
         echo "    Q - Quit this 'ob' session (q/Q)"
         echo ""
-        echo "Tip: CLI mode — ./ob init <machine> | ./ob build | ./ob start-qemu <machine> | ./ob --help"
+        echo "Tip: CLI mode — $OB_CMD init <machine> | $OB_CMD build | $OB_CMD start-qemu <machine> | $OB_CMD --help"
         echo ""
 
         local choice

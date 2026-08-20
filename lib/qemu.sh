@@ -258,7 +258,7 @@ PIDFILE_EOF
     echo "  PID file: $QEMU_PID_FILE"
     echo ""
     echo "Stop:"
-    echo "  ob stop-qemu $MACHINE"
+    echo "  $OB_CMD stop-qemu $MACHINE"
     echo ""
 }
 
@@ -290,7 +290,7 @@ check_ports_available() {
         done
         echo ""
         echo "  Set a different port:"
-        echo "    ob start-qemu $MACHINE --ssh-port <port> --redfish-port <port> --ipmi-port <port>"
+        echo "    $OB_CMD start-qemu $MACHINE --ssh-port <port> --redfish-port <port> --ipmi-port <port>"
         echo "  Or export:"
         echo "    export OB_QEMU_SSH_PORT=<port>"
         echo "    export OB_QEMU_REDFISH_PORT=<port>"

@@ -97,7 +97,7 @@ dev_intake_tty() {
             fi
             if [[ -z "$_it_recipe" ]]; then
                 error "ob dev modify: no recipe specified." >&2
-                error "Run 'ob dev --machine $machine list [pattern]' to discover recipes first." >&2
+                error "Run '$OB_CMD dev --machine $machine list [pattern]' to discover recipes first." >&2
                 return 3
             fi
             ;;
@@ -110,7 +110,7 @@ dev_intake_tty() {
                     _it_recipe="${_pick_st#ok:}" ;;
                 empty)
                     warn "No modified recipes for $machine." >&2
-                    error "Run 'ob dev --machine $machine modify <recipe>' first." >&2
+                    error "Run '$OB_CMD dev --machine $machine modify <recipe>' first." >&2
                     return 3 ;;
                 cancel)
                     return 2 ;;

@@ -32,7 +32,7 @@ assert_eq "(2) ob 引用 cmd_smoke 恰好 1 次(dispatcher)" "$(grep -c "cmd_smo
 _obsmoke_files=$(grep -rl "ob smoke" ob lib/*.sh 2>/dev/null | sort)
 assert_eq "(3a) ob smoke 字面量文件集 = smoke 自有边界三件套" \
     "$_obsmoke_files" \
-    "$(printf 'lib/qemu_commands.sh\nlib/smoke_assertions.sh\nob' | sort)"
+    "$(printf 'lib/qemu_commands.sh\nlib/smoke_assertions.sh' | sort)"
 
 # ── (3b) 3 个 peer QEMU 命令同住 qemu_commands.sh, 文件集判定够不着 ──
 # 逐个抽函数体(同 smoke_surface.sh:60 的 awk 范式), 断言 "ob smoke" 不出现 → 无 peer→smoke nudge。
@@ -61,7 +61,7 @@ test "$call_files" = "ob"
 test "$(grep -c "cmd_smoke" ob)" -eq 1
 # (3a) "ob smoke" literal confined to smoke-owning file trio.
 obsmoke_files=$(grep -rl "ob smoke" ob lib/*.sh 2>/dev/null | sort)
-test "$obsmoke_files" = "$(printf "lib/qemu_commands.sh\nlib/smoke_assertions.sh\nob" | sort)"
+test "$obsmoke_files" = "$(printf "lib/qemu_commands.sh\nlib/smoke_assertions.sh" | sort)"
 # (3b) peer QEMU cmd bodies (co-located in qemu_commands.sh) must not nudge toward smoke.
 for fn in cmd_start_qemu cmd_stop_qemu cmd_deploy_to_qemu; do
     body=$(awk -v f="$fn" "index(\$0, f \"()\")==1{g=1} g{print; if(\$0==\"}\") exit}" lib/qemu_commands.sh)

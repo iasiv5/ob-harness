@@ -10,18 +10,18 @@
 
 ## 目标
 
-agent 做 OpenBMC 环境动作时，以 `ob` 为唯一前门：先查 `ob` 是否提供该能力，提供就调用 `ob <cmd>`，仅在真实失败且 `ob` 确无此能力时才手动兜底。这样能力随 `ob` 集中演进，避免 agent 各自手搓导致行为发散、难维护。
+agent 做 OpenBMC 环境动作时，以 `ob` 为唯一前门：先查 `ob` 是否提供该能力，提供就调用 `./ob <cmd>`，仅在真实失败且 `ob` 确无此能力时才手动兜底。这样能力随 `ob` 集中演进，避免 agent 各自手搓导致行为发散、难维护。
 
 ## 适用边界
 
-- **适用**：OpenBMC 环境生命周期动作——`ob --help` 列出的子命令所覆盖的意图（当前 `init` / `build` / `status` / `start-qemu` / `stop-qemu` / `deploy-to-qemu` / `dev`（recipe 源码开发））。
+- **适用**：OpenBMC 环境生命周期动作——`./ob --help` 列出的子命令所覆盖的意图（当前 `init` / `build` / `status` / `start-qemu` / `stop-qemu` / `deploy-to-qemu` / `dev`（recipe 源码开发））。
 - **不适用**：`ob` 显然不涉足的动作（手改 recipe、解析 D-Bus 日志、写 know-how、分析 BitBake 日志等）。这些是 agent 自由发挥区，不必先问 `ob`。
-- **判定入口**：`ob --help`。凡 help 列出的子命令覆盖的意图，一律走 ob 优先；help 没有的，才是自由区。
+- **判定入口**：`./ob --help`（ob 未装 PATH，在仓库根目录以 `./ob` 调用）。凡 help 列出的子命令覆盖的意图，一律走 ob 优先；help 没有的，才是自由区。
 
-## 能力发现：`ob --help` 是唯一权威清单
+## 能力发现：`./ob --help` 是唯一权威清单
 
-- `ob --help`（`usage()`）是 `ob` 能力的唯一权威清单，随 `ob` 增长更新；`tests/protocol/usage_dispatch_sync.sh` 断言它与 dispatch 子命令集合一致，防止漂移。
-- 不要凭记忆假设 `ob` 有或没有某能力——`ob --help` 现查现用。
+- `./ob --help`（`usage()`）是 `ob` 能力的唯一权威清单，随 `ob` 增长更新；`tests/protocol/usage_dispatch_sync.sh` 断言它与 dispatch 子命令集合一致，防止漂移。
+- 不要凭记忆假设 `ob` 有或没有某能力——`./ob --help` 现查现用。
 - planned 但未发布的命令（未在 `usage()` 列出）**不进** `--help`；发现规则只回答"现在能调什么"，不回答路线图。
 
 ## exit-code 契约
@@ -39,13 +39,13 @@ agent 做 OpenBMC 环境动作时，以 `ob` 为唯一前门：先查 `ob` 是�
 
 `ob smoke`（probe-only 只读探测，ADR-0020）是 exit 1 语义的**唯一例外**：它的 exit 1 **不是**"`ob` 坏了"，而是 **α truth-reporter** —— 探测成功完成，但被测 BMC 接口如实报告了 ✗（某条断言发现接口异常）。典型：image 缺 RMCP+/LAN responder → IPMI 断言 ✗ → smoke exit 1（坏的是 **BMC 接口**，不是 smoke）。
 
-**处置**：见 smoke 的 exit 1 时，先读它的 ✗ 行 + stderr α warn（`exit 1 here is the α truth-reporter contract...`）；只有当信号指向 smoke 自身（QEMU 未起 / curl 失败 / 用法错误）时，才按通用 exit 1 回退。详见 `ob --help` smoke Options 的 "Exit codes (smoke-specific — they OVERRIDE...)" 段。
+**处置**：见 smoke 的 exit 1 时，先读它的 ✗ 行 + stderr α warn（`exit 1 here is the α truth-reporter contract...`）；只有当信号指向 smoke 自身（QEMU 未起 / curl 失败 / 用法错误）时，才按通用 exit 1 回退。详见 `./ob --help` smoke Options 的 "Exit codes (smoke-specific — they OVERRIDE...)" 段。
 
 ## 按码回退协议
 
 1. **exit 0** → 完成。
 2. **exit 2** → 用户取消，停下回报，不重试、不转手动。（非交互场景几乎只在确认被 wrapper 拒时出现；用显式参数 + `--force` 可绕过 prompt。）
-3. **exit 3** → 读 `ob` 打印的 **remedy line**（exit 3 必带的一行 imperative 提示，内含字面的下一条 `ob` 命令），照它补前置再重跑（典型链：`ob init <machine>` → `ob build <machine>` → `ob start-qemu <machine>`），或补全 CLI 参数。**禁止**因 exit 3 转手动。
+3. **exit 3** → 读 `ob` 打印的 **remedy line**（exit 3 必带的一行 imperative 提示，内含字面的下一条 `ob` 命令），照它补前置再重跑（典型链：`./ob init <machine>` → `./ob build <machine>` → `./ob start-qemu <machine>`），或补全 CLI 参数。**禁止**因 exit 3 转手动。
 4. **exit 1 / 其他** → 真实失败才触发回退。（**例外：`ob smoke` 的 exit 1 多为 α truth-reporter —— 先按下文"exit 1 的 smoke α 例外"小节判定，勿误判 smoke 坏了。**）先读 `ob` 自己的报错 + 相关 `ob` 源码定位根因 → 根因在 scope 内就改掉重跑 `ob` → **只有当 `ob` 确实没这能力、或 `ob` 自身坏在 agent scope 之外时，才手动兜底**。
 
 ## 手动兜底：严格度与确认
@@ -57,8 +57,8 @@ agent 做 OpenBMC 环境动作时，以 `ob` 为唯一前门：先查 `ob` 是�
 
 一个无上下文 agent 据此即可自检是否守约：
 
-1. 动手 OpenBMC 环境动作前，是否先查过 `ob --help`？
-2. 命中 `ob` 能力时，是否先 `ob <cmd>` 而非手搓？
+1. 动手 OpenBMC 环境动作前，是否先查过 `./ob --help`？
+2. 命中 `ob` 能力时，是否先 `./ob <cmd>` 而非手搓？
 3. 遇 exit 2 / exit 3 时，是否**没有**错误地转手动绕过 `ob`？
 4. 真实失败（exit 1）确需手动兜底时，是否记录了绕过 + `ob` 待补项？
 

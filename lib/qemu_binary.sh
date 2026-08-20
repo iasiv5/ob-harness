@@ -497,7 +497,7 @@ ensure_qemu_binary_custom() {
     # Need interactive terminal for prompts
     if [[ ! -t 0 ]]; then
         error "QEMU binary not found at $QEMU_BIN_FILE"
-        error "Run 'ob start-qemu $MACHINE' in an interactive terminal to set up the binary."
+        error "Run '$OB_CMD start-qemu $MACHINE' in an interactive terminal to set up the binary."
         exit 3
     fi
 

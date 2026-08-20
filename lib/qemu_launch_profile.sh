@@ -189,7 +189,7 @@ qemu_launch_profile_resolve_ast2700_bootloaders() {
         for missing_file in "${missing[@]}"; do
             error "  Missing: $missing_file"
         done
-        error "Run 'ob build $MACHINE' first."
+        error "Run '$OB_CMD build $MACHINE' first."
         exit 3
     fi
 
@@ -242,8 +242,8 @@ resolve_qemu_launch_profile() {
     MACHINE="$machine_name"
     reset_qemu_launch_profile
 
-    require_path "$BUILD_DIR" "Build directory" "Run 'ob init $MACHINE' first." 3
-    require_path "$OPENBMC_DIR/setup" "OpenBMC setup script" "Run 'ob init' first." 3
+    require_path "$BUILD_DIR" "Build directory" "Run '$OB_CMD init $MACHINE' first." 3
+    require_path "$OPENBMC_DIR/setup" "OpenBMC setup script" "Run '$OB_CMD init' first." 3
 
     local qb_machine_raw
     local qb_mem_raw
@@ -267,7 +267,7 @@ resolve_qemu_launch_profile() {
             # An empty `bitbake -e` means the build environment itself is unhealthy,
             # not merely a missing QB input that profile fallback can repair.
             error "Failed to run 'bitbake -e' for machine '$MACHINE'."
-            error "Ensure the build environment is healthy (try 'ob init $MACHINE' if unsure)."
+            error "Ensure the build environment is healthy (try '$OB_CMD init $MACHINE' if unsure)."
             exit 1
         fi
 

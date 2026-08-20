@@ -32,7 +32,7 @@ resolve_command_machine() {
             return 0
         fi
         error "Machine '$MACHINE' is not initialized (no completed init-done marker - a previous init may have been interrupted)."
-        error "Run 'ob init $MACHINE' first."
+        error "Run '$OB_CMD init $MACHINE' first."
         return 3
     fi
 
@@ -41,7 +41,7 @@ resolve_command_machine() {
     case "$_gstat" in
         empty)
             error "No initialized machines found."
-            error "Run 'ob init <machine>' first."
+            error "Run '$OB_CMD init <machine>' first."
             return 3
             ;;
         nontty)

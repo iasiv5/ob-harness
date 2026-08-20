@@ -179,7 +179,7 @@ touch_partial_ast2700_bootloader
 out="$(run_profile_subshell "$TMP" "$DB" ast2700a1-evb)"; rc=$?
 assert_eq "ast2700 partial bootloader rc" "$rc" "3"
 assert_contains "ast2700 partial bootloader diagnosis" "$out" "AST2700 bootloader files are missing"
-assert_contains "ast2700 partial bootloader remedy" "$out" "Run 'ob build ast2700a1-evb' first."
+assert_contains "ast2700 partial bootloader remedy" "$out" "Run './ob build ast2700a1-evb' first."
 rm -rf "$TMP" "$DB"
 
 # --- non-EVB AST2700 machine does not require split bootloaders ---

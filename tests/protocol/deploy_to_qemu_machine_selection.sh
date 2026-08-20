@@ -50,7 +50,7 @@ setup_has_initialized() {       # 有 initialized(init-done) + 无 MACHINE + 非
 run_deploy_case setup_no_initialized deploy-to-qemu
 assert_eq "deploy empty rc=3" "$DEPLOY_CASE_RC" "3"
 assert_contains "deploy empty diagnosis" "$DEPLOY_CASE_OUTPUT" "No initialized machines found."
-assert_contains "deploy empty remedy" "$DEPLOY_CASE_OUTPUT" "Run 'ob init <machine>' first."
+assert_contains "deploy empty remedy" "$DEPLOY_CASE_OUTPUT" "Run './ob init <machine>' first."
 
 # nontty: 有 initialized + 无 MACHINE + 非 TTY(run_deploy_case 内 </dev/null) → exit 3 + terminal remedy
 run_deploy_case setup_has_initialized deploy-to-qemu

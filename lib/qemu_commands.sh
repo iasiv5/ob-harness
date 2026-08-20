@@ -54,14 +54,14 @@ cmd_start_qemu() {
                 # 且仅在 empty 异常路径, 非 hot path(同 deploy 段 empty 分支的判空前置模式)。
                 if [[ -n "$(machine_state_initialized_machines)" ]]; then
                     error "No firmware-image-ready machines found."
-                    error "Run 'ob build <machine>' first."
+                    error "Run '$OB_CMD build <machine>' first."
                 else
                     error "No initialized machines found."
-                    error "Run 'ob init <machine>' first."
+                    error "Run '$OB_CMD init <machine>' first."
                 fi
                 exit 3 ;;
             nontty)
-                error "No interactive terminal. Specify machine: ob start-qemu <machine>"
+                error "No interactive terminal. Specify machine: $OB_CMD start-qemu <machine>"
                 exit 3 ;;
             ok) ;;
         esac
@@ -83,7 +83,7 @@ cmd_start_qemu() {
     # ── Prerequisite 1: machine init-done ──
     if ! machine_state_is_initialized "$MACHINE"; then
         error "Machine '$MACHINE' has not been initialized."
-        error "Run 'ob init $MACHINE' first."
+        error "Run '$OB_CMD init $MACHINE' first."
         exit 3
     fi
 
@@ -94,7 +94,7 @@ cmd_start_qemu() {
     image_file=$(machine_state_firmware_image_path "$MACHINE" 2>/dev/null || true)
     if [[ -z "$image_file" ]]; then
         error "No firmware image found for machine '$MACHINE' in $deploy_dir"
-        error "Run 'ob build $MACHINE' first."
+        error "Run '$OB_CMD build $MACHINE' first."
         exit 3
     fi
     verbose "Image file: $image_file"
@@ -134,7 +134,7 @@ cmd_start_qemu() {
                 resolve_qemu_port_reuse "$PIDFILE_SSH_PORT" "$PIDFILE_REDFISH_PORT" "$PIDFILE_IPMI_PORT" "$PIDFILE_HTTP_PORT"
             else
                 error "QEMU instance already running for '$MACHINE' (PID $PIDFILE_PID)."
-                error "Use --force to kill and restart, or 'ob stop-qemu $MACHINE' first."
+                error "Use --force to kill and restart, or '$OB_CMD stop-qemu $MACHINE' first."
                 exit 1
             fi
             ;;
@@ -217,8 +217,8 @@ cmd_stop_qemu() {
         fi
 
         if [[ ! -t 0 ]]; then
-            error "No interactive terminal. Specify machine: ob stop-qemu <machine>"
-            error "Or use --all: ob stop-qemu --all"
+            error "No interactive terminal. Specify machine: $OB_CMD stop-qemu <machine>"
+            error "Or use --all: $OB_CMD stop-qemu --all"
             exit 3
         fi
 
@@ -345,7 +345,7 @@ cmd_deploy_to_qemu() {
 
     # ── Resolve machine(经 resolve_command_machine: given verify / empty·nontty·ok, ADR-0019) ──
     local _rc=0
-    resolve_command_machine machine_state_initialized_machines "Deploy to QEMU" stdout "No interactive terminal. Specify machine: ob deploy-to-qemu <machine>" || _rc=$?
+    resolve_command_machine machine_state_initialized_machines "Deploy to QEMU" stdout "No interactive terminal. Specify machine: $OB_CMD deploy-to-qemu <machine>" || _rc=$?
     # 字面 case 收口（同 cmd_build/cmd_dev; 1) error 作 3) exit 3 的 Z(b) 锚点）。
     case "$_rc" in
         0) ;;
@@ -446,14 +446,14 @@ cmd_deploy_to_qemu() {
               "$PIDFILE_PROCESS_START_TICKS" != "$old_qemu_start_ticks" || \
               "$PIDFILE_SERIAL_SOCK" != "$old_qemu_serial_sock" ]]; then
             error "QEMU instance for '$MACHINE' changed while the image was building."
-            error "Review the current instance, then retry 'ob deploy-to-qemu $MACHINE'."
+            error "Review the current instance, then retry '$OB_CMD deploy-to-qemu $MACHINE'."
             exit 3
         fi
     else
         case "$_deploy_liv_now" in
             running)
                 error "A QEMU instance for '$MACHINE' appeared while the image was building."
-                error "Review the current instance, then retry 'ob deploy-to-qemu $MACHINE'."
+                error "Review the current instance, then retry '$OB_CMD deploy-to-qemu $MACHINE'."
                 exit 3
                 ;;
             exited|recycled)
@@ -474,7 +474,7 @@ cmd_deploy_to_qemu() {
     # ── Step 3: start 新 QEMU(端口复用) + 恢复引导(约束 5/6) ──
     echo ""
     step_header "Starting new QEMU for '$MACHINE'"
-    info "If start fails, image is already rebuilt — recover manually: ob start-qemu $MACHINE"
+    info "If start fails, image is already rebuilt — recover manually: $OB_CMD start-qemu $MACHINE"
 
     qemu_prepare_launch "$MACHINE" "$image_file"
     echo "  Machine   : $QEMU_LAUNCH_MACHINE_NAME"
@@ -653,7 +653,7 @@ cmd_smoke() {
         local -a _smoke_targets=()
         mapfile -t _smoke_targets < <(qemu_instance_list)
         if [[ ${#_smoke_targets[@]} -eq 0 ]]; then
-            error "No QEMU instance is running. smoke probes a running instance — run 'ob start-qemu <machine>' first."
+            error "No QEMU instance is running. smoke probes a running instance — run '$OB_CMD start-qemu <machine>' first."
         else
             error "Running QEMU instances you can smoke:"
             local _t
@@ -661,7 +661,7 @@ cmd_smoke() {
                 printf '  %-20s %s\n' "$_t" "$(qemu_instance_summarize_brief "$_t")" >&2
             done
         fi
-        error "Specify a machine: ob smoke <machine>"
+        error "Specify a machine: $OB_CMD smoke <machine>"
         exit 3
     fi
 
@@ -674,13 +674,13 @@ cmd_smoke() {
     case "$_liv" in
         nopid)
             error "No QEMU instance running for '$MACHINE' (no PID file)."
-            error "Run 'ob start-qemu $MACHINE' first."
+            error "Run '$OB_CMD start-qemu $MACHINE' first."
             exit 3
             ;;
         exited|recycled)
             qemu_instance_clean_stale "$MACHINE"
             error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
-            error "Run 'ob start-qemu $MACHINE' first."
+            error "Run '$OB_CMD start-qemu $MACHINE' first."
             exit 3
             ;;
         running)
@@ -853,7 +853,7 @@ test_qemu_resolve_baseline_dir() {
 # test_qemu_usage — cmd_test_qemu 的 -h/--help 输出 (ob test-qemu --help)。自包含 test-qemu 专属说明。
 test_qemu_usage() {
     cat <<EOF
-Usage: ob test-qemu <machine> [options]
+Usage: $OB_CMD test-qemu <machine> [options]
 
 Run <machine>'s baseline AR probes on its RUNNING QEMU instance (probe mode;
 --dry-run lists ARs + applicability without an instance). Each AR
@@ -881,7 +881,7 @@ Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish
           With no <machine> on a TTY it offers a numbered pick among
           running instances; non-interactively it lists them and exits 3.
           With no running instance it exits 3 and will NOT boot one — run
-          'ob start-qemu <machine>' first. With --dry-run no instance is
+          '$OB_CMD start-qemu <machine>' first. With --dry-run no instance is
           needed — baseline asset check only.
 
 baseline dir (lineage-routed, per ADR-0025/0026; lineage is judged on the
@@ -950,7 +950,7 @@ cmd_test_qemu() {
         mapfile -t _tq_targets < <(qemu_instance_list)
         if [[ ${#_tq_targets[@]} -eq 0 ]]; then
             error "No machine specified."
-            error "No QEMU instance is running. test-qemu probes a running instance — run 'ob start-qemu <machine>' first."
+            error "No QEMU instance is running. test-qemu probes a running instance — run '$OB_CMD start-qemu <machine>' first."
             exit 3
         fi
         if [[ ! -t 0 ]]; then
@@ -960,7 +960,7 @@ cmd_test_qemu() {
             for _t in "${_tq_targets[@]}"; do
                 printf '  %-20s %s\n' "$_t" "$(qemu_instance_summarize_brief "$_t")" >&2
             done
-            error "Specify a machine: ob test-qemu <machine>"
+            error "Specify a machine: $OB_CMD test-qemu <machine>"
             exit 3
         fi
         # 交互: 渲染实例详情(PID/端口/状态, 同 ob status 格式)+ 复用 read_machine_choice
@@ -1012,10 +1012,10 @@ cmd_test_qemu() {
         fi
         if [[ -z "$_mlabel" ]]; then
             error "Cannot determine lineage for '$MACHINE': source manifest missing or source_label empty."
-            error "Restore ${SOURCE_MANIFEST_FILE:-workspace/configs/openbmc-source.manifest} or re-run 'ob init' to regenerate it. See ADR-0026."
+            error "Restore ${SOURCE_MANIFEST_FILE:-workspace/configs/openbmc-source.manifest} or re-run '$OB_CMD init' to regenerate it. See ADR-0026."
         else
             error "Cannot determine lineage for '$MACHINE': source label is neither 'community' nor 'custom'."
-            error "The manifest is externally corrupted — check via 'ob status' (Source label) or re-run ob init. See ADR-0026."
+            error "The manifest is externally corrupted — check via '$OB_CMD status' (Source label) or re-run $OB_CMD init. See ADR-0026."
         fi
         exit 3
     fi
@@ -1028,7 +1028,7 @@ cmd_test_qemu() {
             error "A community baseline cannot own a custom build's verdict; provide contexts/baseline/$MACHINE/ (see tests/baseline/README.md, ADR-0026)."
         else
             error "Expected tests/baseline/$MACHINE/ (community lineage, ships with ob-harness)."
-            error "Create it per tests/baseline/README.md, or verify lineage via 'ob status'. See ADR-0026."
+            error "Create it per tests/baseline/README.md, or verify lineage via '$OB_CMD status'. See ADR-0026."
         fi
         exit 3
     fi
@@ -1092,13 +1092,13 @@ print((rf or {}).get("password") or a.get("password") or "")
         case "$_liv" in
             nopid)
                 error "No QEMU instance running for '$MACHINE' (no PID file)."
-                error "Run 'ob start-qemu $MACHINE' first."
+                error "Run '$OB_CMD start-qemu $MACHINE' first."
                 exit 3
                 ;;
             exited|recycled)
                 qemu_instance_clean_stale "$MACHINE"
                 error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
-                error "Run 'ob start-qemu $MACHINE' first."
+                error "Run '$OB_CMD start-qemu $MACHINE' first."
                 exit 3
                 ;;
             running)

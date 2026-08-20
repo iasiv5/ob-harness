@@ -29,7 +29,7 @@ rc=0
 assert_not_contains(){ local l="$1" h="$2" n="$3"; [[ "$h" != *"$n"* ]] && _assert_ok "$l" || _assert_bad "$l (unexpectedly contains '$n')"; }
 
 _verb="Build"
-_nontty="No machine specified and no interactive terminal. Run 'ob status' to list initialized machines. Specify a machine: ob build <machine>"
+_nontty="No machine specified and no interactive terminal. Run './ob status' to list initialized machines. Specify a machine: ./ob build <machine>"
 
 # mock 依赖(resolve_command_machine 消费的原语): 覆盖 ob_loader source 的同名函数。
 machine_state_is_initialized(){ return "${MOCK_INIT_RC:-0}"; }
@@ -47,7 +47,7 @@ MACHINE="romulus"; MOCK_INIT_RC=1; MOCK_GUARD_STAT=ok; MOCK_PICK_RC=99; MOCK_PIC
 resolve_command_machine machine_state_initialized_machines "$_verb" stdout "$_nontty" 2>"$_err" >"$_out" || rc=$?
 assert_eq "② given+noinit rc=3" "$rc" "3"
 assert_contains "② verify remedy is not initialized" "$(cat "$_err")" "is not initialized"
-assert_contains "② verify remedy init hint" "$(cat "$_err")" "Run 'ob init romulus' first."
+assert_contains "② verify remedy init hint" "$(cat "$_err")" "Run './ob init romulus' first."
 
 # ③ empty+ok: 交互选号 → 0 + 设 $MACHINE。MOCK_INIT_RC=1 故意置 1 证 empty+ok 路径不查 is_initialized
 #    (pick 自 initialized_machines 源可信, 不重复 verify, ADR-0019; 若路径误查 init 会因 MOCK_INIT_RC=1 返 3 而非 0)
@@ -61,7 +61,7 @@ MACHINE=""; MOCK_INIT_RC=1; MOCK_GUARD_STAT=empty; MOCK_PICK_RC=99; MOCK_PICK_RE
 resolve_command_machine machine_state_initialized_machines "$_verb" stdout "$_nontty" 2>"$_err" >"$_out" || rc=$?
 assert_eq "④ empty+empty rc=3" "$rc" "3"
 assert_contains "④ empty remedy" "$(cat "$_err")" "No initialized machines found."
-assert_contains "④ empty remedy hint" "$(cat "$_err")" "Run 'ob init <machine>' first."
+assert_contains "④ empty remedy hint" "$(cat "$_err")" "Run './ob init <machine>' first."
 
 # ⑤ empty+ok+pick-read-fail: pick 读失败 → 1 (无 cancel warn)
 MACHINE=""; MOCK_INIT_RC=1; MOCK_GUARD_STAT=ok; MOCK_PICK_RC=1; MOCK_PICK_RESULT=""; rc=0

@@ -71,6 +71,13 @@ PROMPT_PREFIX='\033[38;2;255;210;80mob-harness>\033[0m'
 
 # === sourced lib 分区(以下 lib/*.sh 均被 ob source; OB_ENTRY_DIR 须在 source 前算好) ===
 OB_ENTRY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# invocation prefix(提示文案回显用户敲法; ob 未装 PATH): source/test 模式(OB_NO_MAIN)外部注入优先(ob_loader export ./ob),
+# 普通 CLI 强制 $0(防环境 OB_CMD=ob 污染回显 bare ob)。须在 source lib 前(util.sh 的 :- 兜底不覆盖已有值)。
+if [[ -n "${OB_NO_MAIN:-}" ]]; then
+    OB_CMD="${OB_CMD:-$0}"
+else
+    OB_CMD="$0"
+fi
 for f in "$OB_ENTRY_DIR"/lib/*.sh; do
     # shellcheck disable=SC1090
     source "$f"
@@ -200,9 +207,11 @@ parse_args() {
 
 usage() {
     cat <<EOF
-Usage: ob [command] [options] [arguments]
+Usage: $OB_CMD [command] [options] [arguments]
 
 Run without arguments to enter interactive menu mode.
+ob is not installed to PATH; run ./ob from the repo root or invoke this script
+by path. Hints below echo how you invoked it.
 
 Commands:
   init         [<machine>]    One-click initialize OpenBMC dev environment
@@ -242,9 +251,9 @@ smoke Options:
             overrides (--ssh-port/--redfish-port/--ipmi-port) nor --dry-run: the
             three ports are read from the instance's PID file, so smoke reflects
             the actual running instance, not a wish.
-  Prerequisite: a running instance started via 'ob start-qemu <machine>'. With no
+  Prerequisite: a running instance started via '$OB_CMD start-qemu <machine>'. With no
             instance (no PID file, or stale PID) smoke exits 3 and will NOT boot
-            one — run 'ob start-qemu <machine>' first.
+            one — run '$OB_CMD start-qemu <machine>' first.
   Assertions (exactly 5, each probes the running BMC):
             1. Redfish root reachable           (HTTP 200 + Redfish marker)
             2. Redfish Managers reachable       (HTTP 200 + Manager resource marker)
@@ -259,7 +268,7 @@ smoke Options:
                 it is NOT "smoke is broken". Read the ✗ rows + RAW responses to
                 see which interface and why (e.g. image lacks an RMCP+/LAN
                 responder → IPMI ✗). Debug the named BMC interface, not smoke.
-            3   No running QEMU instance (precondition) — 'ob start-qemu' first.
+            3   No running QEMU instance (precondition) — '$OB_CMD start-qemu' first.
   Environment:
     OB_SMOKE_READY_ATTEMPTS  Poll attempts for BMC SSH-port readiness (default 30, 5s each)
 
@@ -275,7 +284,7 @@ test-qemu Options:
   Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish port
             from the instance's PID file (no port overrides honored). With no
             running instance it exits 3 and will NOT boot one — run
-            'ob start-qemu <machine>' first. With --dry-run no instance is
+            '$OB_CMD start-qemu <machine>' first. With --dry-run no instance is
             needed — it lists ARs + applicability only.
   baseline dir (lineage-routed, per ADR-0025/0026; lineage is judged on the
             source label alone — the QEMU binary dir derives from the same
@@ -302,7 +311,7 @@ Exit Codes:
   1   Failure — broken, or usage error (e.g. unknown option)
   2   Cancelled by user (not a failure)
   3   Precondition missing (e.g. machine not initialized / not built);
-      satisfy it via ob (run the suggested 'ob ...' first), then retry
+      satisfy it via ob (run the suggested '$OB_CMD ...' first), then retry
 
 Environment Variables (lower priority than command-line options):
   OB_OPENBMC_URL          Custom OpenBMC repository URL (init, non-interactive mode)
@@ -315,26 +324,26 @@ Environment Variables (lower priority than command-line options):
   OB_NPM_REGISTRY         Override npm registry URL (set empty to disable auto-detection)
 
 Examples:
-  ob init                          # List machines and choose interactively
-  ob init romulus                  # Initialize romulus machine
-  ob init romulus -d               # Preview what would be done
-  ob init romulus --url https://example.com/openbmc.git
-  ob build romulus                 # Build romulus non-interactively
-  ob build romulus -d              # Preview the build without running bitbake
-  ob start-qemu romulus            # Launch romulus in QEMU
-  ob start-qemu romulus --ssh-port 22223
-  ob stop-qemu romulus             # Stop romulus QEMU instance
-  ob stop-qemu --all               # Stop all running instances
-  ob deploy-to-qemu romulus        # Rebuild romulus image + restart QEMU (port-reuse if running)
-  ob smoke romulus                 # Probe running romulus QEMU (5 assertions; exit 1 = α BMC truth, not a smoke bug; see smoke Options)
-  ob dev --machine romulus list ipmi    # Search recipes matching 'ipmi'
-  ob dev --machine romulus modify phosphor-ipmi-host   # devtool modify, outputs srctree
-  ob dev --machine romulus build phosphor-ipmi-host  # devtool build single recipe (do_build); exit-code carries result
-  ob dev --machine romulus refresh     # Regenerate recipe metadata cache
-  ob dev --machine romulus reset phosphor-ipmi-host  # devtool reset, outputs disposition JSON
-  ob dev --machine romulus finish phosphor-ipmi-host  # devtool finish, lands patches to layer, outputs JSON
-  ob dev --machine romulus status             # List modified recipes (outputs JSONL)
-  ob dev                               # Interactive: pick machine, then pick subcommand (TTY)
+  $OB_CMD init                          # List machines and choose interactively
+  $OB_CMD init romulus                  # Initialize romulus machine
+  $OB_CMD init romulus -d               # Preview what would be done
+  $OB_CMD init romulus --url https://example.com/openbmc.git
+  $OB_CMD build romulus                 # Build romulus non-interactively
+  $OB_CMD build romulus -d              # Preview the build without running bitbake
+  $OB_CMD start-qemu romulus            # Launch romulus in QEMU
+  $OB_CMD start-qemu romulus --ssh-port 22223
+  $OB_CMD stop-qemu romulus             # Stop romulus QEMU instance
+  $OB_CMD stop-qemu --all               # Stop all running instances
+  $OB_CMD deploy-to-qemu romulus        # Rebuild romulus image + restart QEMU (port-reuse if running)
+  $OB_CMD smoke romulus                 # Probe running romulus QEMU (5 assertions; exit 1 = α BMC truth, not a smoke bug; see smoke Options)
+  $OB_CMD dev --machine romulus list ipmi    # Search recipes matching 'ipmi'
+  $OB_CMD dev --machine romulus modify phosphor-ipmi-host   # devtool modify, outputs srctree
+  $OB_CMD dev --machine romulus build phosphor-ipmi-host  # devtool build single recipe (do_build); exit-code carries result
+  $OB_CMD dev --machine romulus refresh     # Regenerate recipe metadata cache
+  $OB_CMD dev --machine romulus reset phosphor-ipmi-host  # devtool reset, outputs disposition JSON
+  $OB_CMD dev --machine romulus finish phosphor-ipmi-host  # devtool finish, lands patches to layer, outputs JSON
+  $OB_CMD dev --machine romulus status             # List modified recipes (outputs JSONL)
+  $OB_CMD dev                               # Interactive: pick machine, then pick subcommand (TTY)
 EOF
 }
 

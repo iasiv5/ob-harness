@@ -30,9 +30,9 @@
     orphan
       Path      : <TMP>/workspace/openbmc/build/orphan/tmp/deploy/images/orphan/orphan.static.mtd
       Reason    : firmware image artifact exists, but machine init is incomplete
-      Next step : ob init orphan
+      Next step : ./ob init orphan
 
-  💡 Run 'ob build <machine>' to produce a firmware image.
+  💡 Run './ob build <machine>' to produce a firmware image.
 
 [0;36m────────────────────────────────────────────────────────────[0m
   [1m[0;36mQEMU Instances[0m
