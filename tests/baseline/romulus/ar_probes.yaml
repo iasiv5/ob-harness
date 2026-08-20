@@ -1,7 +1,8 @@
 # romulus baseline AR (需求条目) — 5 条 redfish probe AR 覆盖 core/users/webui 场景。
+schema_version: 1
 # Schema (per-machine, ADR-0025): auth + ars[]。每条 AR 字段顺序:
 #   ar / name / probe / suite / request{method,path,body} / assert[{type,...}] / depends_on / rationale
-# assert 原语 (tests/baseline/romulus/runner/probe_redfish.py):
+# assert 原语 (tests/baseline/runner/probe_redfish.py, 共享单副本 ADR-0027):
 #   status_in        {value: [code,...]}
 #   json_path_exists {path: dotted}
 #   json_path_match  {path: dotted, value: expected}

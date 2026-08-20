@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""romulus baseline runner: 遍历 ar_probes.yaml × applicability → 逐条 probe →
+"""共享 baseline runner: 遍历 ar_probes.yaml × applicability → 逐条 probe →
 收 pass/fail/skip/xfail/xpass → report → exit 0/1。
-per-machine (ADR-0025); host/port/auth 由调用方注入, 不硬编码。
+runner 单副本共享(ADR-0027, machine 差异只在数据 YAML); 数据路径经 OB_TQ_AR_PROBES/OB_TQ_APPL
+env 注入(缺省 script_dir/../ 兜底), host/port/auth 由调用方注入, 不硬编码。
 
 从 run.sh bash 编排全量下沉(逻辑逐行等价, 防御与文案原样保留):
   ① 前置检查     — 参数/凭据(argv 或 env 至少一源)/PyYAML

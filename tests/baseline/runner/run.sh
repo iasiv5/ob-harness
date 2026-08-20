@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# romulus baseline runner 薄 shim: 全部编排在 runner.py(结构地图与 rc 纪律
+# 共享 baseline runner 薄 shim: 全部编排在 runner.py(结构地图与 rc 纪律
 # 见 runner.py docstring)。本件只保留编码钉死 + exec 透传。
-# per-machine (ADR-0025); host/port/auth 由调用方注入, 不硬编码。
+# runner 单副本共享(ADR-0027); machine 差异只在数据 YAML, 数据/凭据/host/port 由调用方注入, 不硬编码。
 #
 # 编码钉死(评审 🟢4, 四轮对撞定稿): 两个 export 各管一个敌意变体、互不可替 —
 #   PYTHONIOENCODING=utf-8 覆盖"stdio 被压成 ascii"的预设(变体 B: xfail/xpass 的中文 reason

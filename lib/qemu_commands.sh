@@ -1085,7 +1085,9 @@ print((rf or {}).get("password") or a.get("password") or "")
         _port="$PIDFILE_REDFISH_PORT"
     fi
 
-    # ── 调 per-machine runner (host/port argv + 凭据 env 注入; runner exit 0/1 透传为 ob exit 0/1) ──
+    # ── 调共享 runner (host/port argv + 数据/凭据 env 注入; runner exit 0/1 透传为 ob exit 0/1) ──
+    # runner 单副本在主仓 tests/baseline/runner/ (ADR-0027): 谱系路由($_dir)只定数据目录,
+    # 数据路径经 OB_TQ_AR_PROBES/OB_TQ_APPL env 注入(runner 既有钩子, 引擎零参数化)。
     # 凭据走 env 不走 argv(评审 🟡2): ob → bash run.sh → python probe 全链 ps 不可见;
     # run.sh 侧"argv 或 env 至少一源"校验由 env 满足, probe _resolve_auth 的 env fallback 消费。
     if [[ $_dry -eq 1 ]]; then
@@ -1093,7 +1095,9 @@ print((rf or {}).get("password") or a.get("password") or "")
     else
         info "test-qemu: probing '$MACHINE' baseline at $_dir (lineage $_lineage, Redfish port $_port)."
     fi
-    local -a _run_args=(bash "$_dir/runner/run.sh")
+    local _tq_root="${HARNESS_ROOT:-$OB_ENTRY_DIR}"
+    export OB_TQ_AR_PROBES="$_dir/ar_probes.yaml" OB_TQ_APPL="$_dir/applicability.yaml"
+    local -a _run_args=(bash "$_tq_root/tests/baseline/runner/run.sh")
     [[ $_dry -eq 0 ]] && _run_args+=(--host 127.0.0.1 --port "$_port")
     [[ -n "$_ar" ]] && _run_args+=(--ar "$_ar")
     [[ -n "$_suite" ]] && _run_args+=(--suite "$_suite")

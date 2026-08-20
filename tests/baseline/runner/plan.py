@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""romulus baseline planner: ar_probes.yaml × applicability.yaml → 执行计划。
+"""共享 baseline planner: ar_probes.yaml × applicability.yaml → 执行计划。
 
 从 run.sh 抽出(B3 结构化; 逻辑与内嵌时期逐行等价, 防御原样保留):
 读两份 YAML → schema 校验 → --ar/--suite 过滤 → cascade-skip 传播。
@@ -24,6 +24,7 @@ import yaml
 _ALLOWED_APPL = ("applicable", "skip", "xfail")
 _ALLOWED_ASSERT = ("status_in", "json_path_exists", "json_path_match")
 _ALLOWED_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")
+_SCHEMA_VERSIONS = (1,)
 
 
 def has_control_chars(value):
@@ -42,6 +43,15 @@ def load_inputs(ar_probes, appl_path):
     except Exception as e:  # yaml 语法/open 失败 → 数据错 exit 3, 不 traceback
         sys.stderr.write("plan.py: cannot parse baseline YAML: {}\n".format(e))
         sys.exit(3)
+    # 两仓版本门禁(ADR-0027): runner(主仓)与数据(community tests/ 或 custom 子仓)分属
+    # 不同 git 仓, YAML 顶层 schema_version 声明数据方言, 此处 fail-closed 校验。
+    # type(v) is not int 而非 isinstance: bool 是 int 子类, YAML 的
+    # schema_version: true 会因 True == 1 被当合法版本 1, 类型约束失真。
+    for _name, _doc in (("ar_probes", d), ("applicability", appl)):
+        _v = _doc.get("schema_version") if isinstance(_doc, dict) else None
+        if type(_v) is not int or _v not in _SCHEMA_VERSIONS:
+            die("bad schema_version {!r} in {} (want one of {})".format(
+                _v, _name, ", ".join(map(str, _SCHEMA_VERSIONS))))
     return d, appl
 
 

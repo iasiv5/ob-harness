@@ -139,6 +139,9 @@ _tq_dry_root="$(mktemp -d)"
 mkdir -p "$_tq_dry_root/workspace/configs" "$_tq_dry_root/tests/baseline"
 printf 'source_label=community\n' > "$_tq_dry_root/workspace/configs/openbmc-source.manifest"
 cp -r "$OB_ENTRY_DIR/tests/baseline/romulus" "$_tq_dry_root/tests/baseline/fake-m"
+# 共享 runner(ADR-0027): runner 不再随 machine 目录, fake 根须补齐, 否则 cmd 层
+# 调 $root/tests/baseline/runner/run.sh 落空。
+cp -r "$OB_ENTRY_DIR/tests/baseline/runner" "$_tq_dry_root/tests/baseline/runner"
 python3 - "$_tq_dry_root/tests/baseline/fake-m/ar_probes.yaml" <<'PY'
 import sys, yaml
 p = sys.argv[1]
@@ -162,6 +165,7 @@ _tq_cred_root="$(mktemp -d)"
 mkdir -p "$_tq_cred_root/workspace/configs" "$_tq_cred_root/tests/baseline"
 printf 'source_label=community\n' > "$_tq_cred_root/workspace/configs/openbmc-source.manifest"
 cp -r "$OB_ENTRY_DIR/tests/baseline/romulus" "$_tq_cred_root/tests/baseline/fake-m"
+cp -r "$OB_ENTRY_DIR/tests/baseline/runner" "$_tq_cred_root/tests/baseline/runner"   # 共享 runner(ADR-0027), 同 (7)
 python3 - "$_tq_cred_root/tests/baseline/fake-m/ar_probes.yaml" <<'PY'
 import sys, yaml
 p = sys.argv[1]

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""romulus baseline record 装配层: probe 输出 → 统一 record dict。
+"""共享 baseline record 装配层: probe 输出 → 统一 record dict。
 
 从 run.sh 抽出(B3 结构化; 逻辑与内嵌时期逐行等价, 防御原样保留):
   ① probe 协议校验(评审 🔴1): probe 输出必须 dict + rc/pass/error/code

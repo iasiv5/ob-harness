@@ -1,3 +1,5 @@
+schema_version: 1
+
 # romulus 适用性:标 skip/xfail 的 AR + reason + source。
 #
 # 校准记录(2026-08-17):

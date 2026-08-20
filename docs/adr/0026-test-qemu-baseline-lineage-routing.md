@@ -29,7 +29,8 @@ ADR-0025 说的是"社区机 tests/、custom 机 contexts/"，从未要求优先
 Status: accepted
 
 References: [ADR-0025](0025-test-qemu-baseline-fullstack-per-machine.md)（落点二分——本 ADR
-是其路由语义的精化）；`lib/qemu.sh` derive_qemu_paths / `lib/qemu_binary.sh` ensure_qemu_binary
+是其路由语义的精化）；[ADR-0027](0027-baseline-runner-single-copy-in-main-repo.md)（本 ADR
+路由语义不变，路由标的经其收窄为纯数据目录——runner 单副本于 `tests/baseline/runner/`）；`lib/qemu.sh` derive_qemu_paths / `lib/qemu_binary.sh` ensure_qemu_binary
 （label→binary 目录/provisioning 的派生链，单维度判定的共线依据）；[ADR-0017](0017-knowhow-distribution-boundary.md)（`contexts/` 不随上游
 分发的边界）；CONTEXT.md `baseline` / `ob test-qemu`（谱系路由术语）；`lib/qemu_commands.sh`
 `test_qemu_lineage` / `test_qemu_resolve_baseline_dir`（leaf-pure 路由 helper，protocol 可直测）。

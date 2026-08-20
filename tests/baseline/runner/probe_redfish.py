@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""romulus Redfish probe engine + assert primitives.
+"""共享 Redfish probe engine + assert primitives.
 
-Per-machine probe engine (ADR-0025: each machine's baseline dir ships its own
-engine; this is NOT shared with `ob smoke`).  host/port/auth are injected by
+Shared probe engine (单副本, ADR-0027; machine 差异只在数据 YAML。NOT shared
+with `ob smoke`).  host/port/auth are injected by
 the caller (cmd_test_qemu / run.sh); nothing is hardcoded.
 
 Assert primitives (state assertions, not timing — zero flake by design):

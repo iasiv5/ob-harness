@@ -6,10 +6,14 @@ set -uo pipefail
 source "$(dirname "$0")/../lib/assert.sh"
 assert_reset
 
-# 锚定 romulus runner(ADR-0025 per-machine: 每 machine baseline 自带 runner, 测试跟着 baseline 走)。
-# OB_TQ_RUNNER env 可指向其它 machine 的 runner(未来 custom 机 runner 复用本测试时用);
-# PROBE_BIN 从 RUNNER 目录派生, 切 runner 时跟着切。
-RUNNER="${OB_TQ_RUNNER:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/tests/baseline/romulus/runner/run.sh}"
+# 锚定共享 runner(ADR-0027 单副本: tests/baseline/runner/, machine 差异只在数据 YAML)。
+# OB_TQ_RUNNER env 可换指其它 runner 副本; PROBE_BIN 从 RUNNER 目录派生, 切 runner 时跟着切。
+# 共享 runner 无 script_dir/../ 数据缺省, 默认数据 env 注入 romulus(直调形态对齐
+# cmd_test_qemu 的 OB_TQ_AR_PROBES/OB_TQ_APPL 注入); 各 fixture 用例以调用前缀 env 覆盖。
+RUNNER="${OB_TQ_RUNNER:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/tests/baseline/runner/run.sh}"
+_repo="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+export OB_TQ_AR_PROBES="$_repo/tests/baseline/romulus/ar_probes.yaml"
+export OB_TQ_APPL="$_repo/tests/baseline/romulus/applicability.yaml"
 
 # no-match --ar (dry-run) → exit 3 + remedy
 rc=0; bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --ar NOPE --dry-run >/dev/null 2>&1 || rc=$?
@@ -35,6 +39,7 @@ assert_eq "full AR dry-run → exit 0 (not false-green)" "$rc" "0"
 PROBE_BIN="$(dirname "$RUNNER")/probe_redfish.py"
 _tmp=$(mktemp -d)
 cat > "$_tmp/bad.yaml" <<'YAML'
+schema_version: 1
 auth: {user: r, password: x}
 ars:
   - ar: BAD-TYPO
@@ -48,6 +53,7 @@ ars:
     rationale: typo
 YAML
 cat > "$_tmp/appl.yaml" <<'YAML'
+schema_version: 1
 default: applicable
 YAML
 rc=0; OB_TQ_AR_PROBES="$_tmp/bad.yaml" OB_TQ_APPL="$_tmp/appl.yaml" \
@@ -93,6 +99,7 @@ sys.exit(rc)
 PY
 chmod +x "$_tmp/probe-stub.py"
 cat > "$_tmp/one.yaml" <<'YAML'
+schema_version: 1
 auth: {user: r, password: x}
 ars:
   - ar: TEST-A
@@ -105,10 +112,12 @@ ars:
     rationale: fixture
 YAML
 cat > "$_tmp/applicable.yaml" <<'YAML'
+schema_version: 1
 default: applicable
 overrides: {}
 YAML
 cat > "$_tmp/xfail.yaml" <<'YAML'
+schema_version: 1
 default: applicable
 overrides:
   TEST-A: {status: xfail, reason: expected, source: unit}
@@ -198,6 +207,7 @@ assert_true "live line survives >128KB body (record via stdin, not argv)" \
 #    json.dumps 的 ASCII 转义形态(中文 → \uXXXX), 直接拼会打出转义串(回归);
 #    解码走 assemble record。skip 行不区分 -v/-v-default(此前 -v 才带 reason)。
 cat > "$_tmp/skip-appl.yaml" <<'YAML'
+schema_version: 1
 default: applicable
 overrides:
   TEST-A: {status: skip, reason: "纯硬件/规格条目, QEMU 不可仿真", source: unit}
@@ -228,6 +238,7 @@ assert_true "skip live line has no \\\\uXXXX escapes" \
 # pass-stub 同锁 xpass 判定路径(意外 pass 不污染 exit)。装配层兜底(🟡1)的编码触发器已被
 # 双 export 消灭, 不可经本用例到达 — 该分支为防御性, 勿再造测(四轮对撞结论)。
 cat > "$_tmp/xfail-zh.yaml" <<'YAML'
+schema_version: 1
 default: applicable
 overrides:
   TEST-A: {status: xfail, reason: "romulus 预期不填 Description, 跟踪中", source: unit}
@@ -262,7 +273,8 @@ import sys
 import yaml
 
 base = {
-  "auth": {"user": "r", "password": "x"},
+  "schema_version": 1,
+    "auth": {"user": "r", "password": "x"},
   "ars": [{
     "ar": "TEST-A", "name": "fixture", "probe": "redfish", "suite": "fixture",
     "request": {"method": "get", "path": "/redfish/v1"},
@@ -288,6 +300,7 @@ assert_rc 3 "planner unit-separator path rejected as config error" \
 
 # skip AR 可省略 request(评审配套⑤): 无占位假请求; applicable AR 缺 request → exit 3
 cat > "$_tmp/skip-noreq.yaml" <<'YAML'
+schema_version: 1
 auth: {user: r, password: x}
 ars:
   - ar: TEST-SKIP
@@ -299,6 +312,7 @@ ars:
     rationale: skip AR may omit request
 YAML
 cat > "$_tmp/skip-noreq-appl.yaml" <<'YAML'
+schema_version: 1
 default: applicable
 overrides:
   TEST-SKIP: {status: skip, reason: not emulatable in QEMU, source: unit}
@@ -390,6 +404,7 @@ sys.stdout.write('{"pass": true, "code": 200, "body": "b", "actual": null, "reas
 sys.exit(0)
 EOF
 cat > "$_tmp3/ars.yaml" <<'YAML'
+schema_version: 1
 ars:
   - ar: T-STDERR
     suite: t
@@ -398,6 +413,7 @@ ars:
       - {type: status_in, value: [200]}
 YAML
 cat > "$_tmp3/appl.yaml" <<'YAML'
+schema_version: 1
 default: applicable
 YAML
 OB_TQ_AR_PROBES="$_tmp3/ars.yaml" OB_TQ_APPL="$_tmp3/appl.yaml" OB_TQ_PROBE="$_tmp3/probe.py" \
@@ -421,6 +437,7 @@ sys.stdout.write(json.dumps({"pass": True, "code": 200, "body": "got --body " + 
 sys.exit(0)
 EOF
 cat > "$_tmp3/ars2.yaml" <<'YAML'
+schema_version: 1
 ars:
   - ar: T-BODY
     suite: t
@@ -446,10 +463,12 @@ rm -rf "$_tmp3"
 # 不进 α truth(probe 读 a.get("value", []) 会静默拿 [] → 全 fail 冒充 BMC 缺陷)
 _tmp4=$(mktemp -d)
 cat > "$_tmp4/appl.yaml" <<'YAML'
+schema_version: 1
 default: applicable
 YAML
 for badval in 'values: [200]' 'value: []' 'value: 200'; do
   cat > "$_tmp4/ars.yaml" <<YAML
+schema_version: 1
 ars:
   - ar: T-BADASSERT
     suite: t
@@ -464,5 +483,27 @@ YAML
   assert_true "remedy 指名 status_in.value($badval)" grep -q "status_in.value" "$_tmp4/err"
 done
 rm -rf "$_tmp4"
+
+# schema_version 门禁回归矩阵(ADR-0027 两仓耦合): bool/string/99/missing × 两份 YAML,
+# 全部须 exit 3 + "bad schema_version"。bool 案尤其关键——type(v) is not int 防
+# True == 1 穿透(评审三轮真 bug), 不得退化成 isinstance/not in 单检查。
+_tmp5=$(mktemp -d)
+_repo_data="$_repo/tests/baseline/romulus"
+for tamper in 's/^schema_version: 1/schema_version: true/' \
+              's/^schema_version: 1/schema_version: "1"/' \
+              's/^schema_version: 1/schema_version: 99/' \
+              '/^schema_version: 1/d'; do
+  for which in ar_probes.yaml applicability.yaml; do
+    cp "$_repo_data"/*.yaml "$_tmp5/"
+    sed -i "$tamper" "$_tmp5/$which"
+    rc=0; OB_TQ_AR_PROBES="$_tmp5/ar_probes.yaml" OB_TQ_APPL="$_tmp5/applicability.yaml" \
+      bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run \
+      >"$_tmp5/out" 2>&1 || rc=$?
+    assert_eq "schema gate [$tamper @ $which] → exit 3" "$rc" "3"
+    assert_true "schema gate [$tamper @ $which] remedy 指名 schema_version" \
+      grep -q "bad schema_version" "$_tmp5/out"
+  done
+done
+rm -rf "$_tmp5"
 
 assert_summary

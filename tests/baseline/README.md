@@ -1,9 +1,10 @@
-# baseline 目录（per-machine，ADR-0025）
+# baseline 数据目录（per-machine data，runner 共享）
 
 `ob test-qemu <machine>` 的被测数据：该 machine 的**开发基线**（baseline）里
-QEMU 可仿真子集的 AR（需求条目）。每个 machine 目录**自包含** AR 数据 +
-probe 引擎 + 本地 applicability，不与他机共享——组织权限边界优先于 DRY，
-详见 [ADR-0025](../../docs/adr/0025-test-qemu-baseline-fullstack-per-machine.md)。
+QEMU 可仿真子集的 AR（需求条目）。每个 machine 目录只承载 AR 数据 +
+本地 applicability，数据 per-machine 自成体系（[ADR-0025](../../docs/adr/0025-test-qemu-baseline-fullstack-per-machine.md)）；
+runner 引擎是主仓共享单副本 `tests/baseline/runner/`，不随 machine 数据目录复制
+（ADR-0027 修订 0025 的引擎不共享结论）。
 
 - `tests/baseline/<machine>/` — 社区基线，随 ob-harness 上游分发
 - `contexts/baseline/<machine>/` — custom 基线本地目录（gitignored，不随上游）
@@ -42,18 +43,23 @@ exit：`0` 全 applicable pass；`1` ≥1 applicable fail（**不是 test-qemu b
 
 ## 接入第二台 machine
 
+runner 是**主仓共享单副本** `tests/baseline/runner/`（ADR-0027），machine 差异只在
+数据 YAML——接入新 machine **只建数据目录，不复制 runner**：
+
 ```bash
-cp -r tests/baseline/romulus tests/baseline/<new-machine>   # 社区机
+mkdir tests/baseline/<new-machine>   # 社区机
 # custom 机放 contexts/baseline/<new-machine>/（不随上游分发）
+cp tests/baseline/romulus/{ar_probes,applicability}.yaml tests/baseline/<new-machine>/
 ```
 
 然后：① 替换 `ar_probes.yaml` 为你方 baseline 的 QEMU 可仿真子集（编号沿引
-原需求文档）；② 校准 `applicability.yaml`（见下节）；③ 按需扩展
-`runner/` 的 probe 类型（当前仅 redfish；ipmi/ssh/console 的 auth 位已预留）。
+原需求文档，顶层 `schema_version: 1` 必须保留——plan.py 版本门禁）；② 校准
+`applicability.yaml`（见下节，同样保留 `schema_version`）；③ 按需在共享
+`runner/` 扩展 probe 类型（当前仅 redfish；ipmi/ssh/console 的 auth 位已预留）。
 runner 探测是确定性脚本 + assert 原语（状态断言非计时断言，零 flake），
 LLM 不参与 runtime 判定。
 
-`runner/` 文件构成（6 件，各管一段，可独立单测）：
+`runner/` 文件构成（6 件，`tests/baseline/runner/` 共享，各管一段，可独立单测）：
 - `run.sh` — 薄 shim：编码钉死双 export + `exec python3 runner.py "$@"`。
   编排结构地图与 rc 纪律见 `runner.py` docstring（接入者的阅读入口）。
 - `runner.py` — python 编排：参数/凭据前置 → planner → 逐 AR 分派 →
