@@ -151,6 +151,9 @@ def run_report(records, report_path, compact_rows):
             print("      auth), not a baseline miss. Verify creds and re-run before debugging the BMC.")
 
     # VERDICT 收尾(行序 UX): 逐条行 + 401 HINT 之后, 汇总结论作 stdout 最后一行。
+    # 分隔线(60 宽 ─, 对齐 runner 起跑分隔 + ob step_header): 把汇总结论与上方
+    # 明细/live 流切开; VERDICT 必须仍是最后一行(单测锚 tail -1), 故只加线上方。
+    print("─" * 60)
     print("VERDICT: {} ({} pass / {} fail / {} skip / {} xfail / {} xpass / {} error)".format(
         verdict, counts["pass"], counts["fail"], counts["skip"],
         counts["xfail"], counts["xpass"], counts["error"]))

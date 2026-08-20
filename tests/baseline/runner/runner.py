@@ -154,8 +154,12 @@ def main():
 
     probe_bin = os.environ.get("OB_TQ_PROBE",
                                os.path.join(script_dir, "probe_redfish.py"))
+    # 分隔线(对齐 ob step_header 的 60 宽 ─ 规则): 把起跑行与 bash 侧 info、
+    # live 流与后续 report 输出在视觉上切开; agent 侧按行前缀 grep 不受影响。
+    print("─" * 60, file=sys.stderr, flush=True)
     print("probing {} ARs (timeout {}s per probe) — results stream below".format(
         len(rows), o["timeout"]), file=sys.stderr, flush=True)
+    print("─" * 60, file=sys.stderr, flush=True)
 
     records = []
     for r in rows:
