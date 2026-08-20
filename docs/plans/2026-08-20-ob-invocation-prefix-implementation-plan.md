@@ -64,7 +64,7 @@ Run:
 #    else
 #        OB_CMD="$0"              # 普通 CLI 强制以 $0 为准($0 可见形态: ./ob / 绝对路径; bash ob 形态只回显 ob, 已知局限)
 #    fi
-#    须在 source lib 前(util.sh 的 :- 兜底不覆盖已有值)
+#    须在 source lib 前完成注入(lib 不落兜底)
 # 3) tests/lib/ob_loader.sh 的 OB= 行（第 8 行）后加：
 #    export OB_CMD="${OB_CMD:-./ob}"   # 必须 export: 二级 bash -c child source "$OB" 不继承非 export 变量, 且 child 里 $0=_
 ```
