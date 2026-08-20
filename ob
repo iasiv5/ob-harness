@@ -72,7 +72,7 @@ PROMPT_PREFIX='\033[38;2;255;210;80mob-harness>\033[0m'
 # === sourced lib 分区(以下 lib/*.sh 均被 ob source; OB_ENTRY_DIR 须在 source 前算好) ===
 OB_ENTRY_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # invocation prefix(提示文案回显用户敲法; ob 未装 PATH): source/test 模式(OB_NO_MAIN)外部注入优先(ob_loader export ./ob),
-# 普通 CLI 强制 $0(防环境 OB_CMD=ob 污染回显 bare ob)。须在 source lib 前(util.sh 的 :- 兜底不覆盖已有值)。
+# 普通 CLI 强制 $0(防环境 OB_CMD=ob 污染回显 bare ob)。须在 source lib 前完成注入(lib 不落兜底)。
 if [[ -n "${OB_NO_MAIN:-}" ]]; then
     OB_CMD="${OB_CMD:-$0}"
 else

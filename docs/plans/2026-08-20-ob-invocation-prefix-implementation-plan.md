@@ -9,7 +9,7 @@
 ## 架构快照
 
 - `ob` 入口在 source `lib/*.sh` 前已有 `OB_ENTRY_DIR` 赋值点（ob:72 附近），`OB_CMD` 落同处。
-- `lib/util.sh` 顶部（log 函数族前）放兜底 `OB_CMD="${OB_CMD:-ob}"`：tests 经 `tests/lib/ob_loader.sh` 直接 source lib 调函数、不经 ob 入口，无兜底会 nounset 炸。
+- ~~`lib/util.sh` 顶部放兜底 `OB_CMD="${OB_CMD:-ob}"`~~ **（执行中被否决，见文末「执行偏离」）**：最终实现 util.sh 不落兜底（三段纯函数检查禁顶层赋值，且无单独 source 本文件的消费方）。
 - `tests/lib/ob_loader.sh` 已算出 `OB="$OB_DIR/ob"`（第 8 行），在其后 **`export`** `OB_CMD="${OB_CMD:-./ob}"`——必须 export：20 个测试文件存在二级 `bash -c 'OB_NO_MAIN=1 source "$1"; ...' _ "$OB"` child 模式（如 `tests/protocol/qemu_launch_profile_remedy.sh:37`），child bash 不继承未 export 的 shell 变量，且 child 里 `$0` 是 `_`，不 export 会渲染出 `OB_CMD=_`。
 - **`$0` 回显的已知局限**：`bash ob` 形态下脚本内 `$0` 只是 `ob`（不是 `bash ob`），回显裸 `ob` 照敲会 command not found。本次只承诺 `$0` 可见的调用形态（`./ob`、绝对路径），`bash ob` 为已知局限不处理（重建 interpreter 前缀超出纯文案范围）。
 - usage heredoc（`ob` 的 `usage()` 与 `lib/qemu_commands.sh` 的 `test_qemu_usage()`）均为 **unquoted `<<EOF`**，`$OB_CMD` 直接展开；已核实两份 heredoc 文本无其它 `$` 变量会被误展开。EXIT_RE（`tools/exit_contract.py`）不解析 heredoc，不受影响。
@@ -30,7 +30,7 @@
 | 文件 | 改动职责 |
 |---|---|
 | `ob` | 入口在 `OB_ENTRY_DIR` 后按 `OB_NO_MAIN` 分流设置 `OB_CMD`：source/test 模式 `OB_CMD="${OB_CMD:-$0}"`（外部注入优先），普通 CLI 强制 `OB_CMD="$0"`（防环境污染）；`usage()` heredoc 的 Usage 行/Examples/smoke·test-qemu 段 `ob xxx` → `$OB_CMD xxx`；加一行「不装 PATH，可在 repo root 用 `./ob` 或用脚本路径调用」的说明 |
-| `lib/util.sh` | 顶部兜底 `OB_CMD="${OB_CMD:-ob}"`；`resolve_npm_registry` 失败提示里两处 `ob build` → `$OB_CMD build`（util.sh:367/371） |
+| `lib/util.sh` | 不落 OB_CMD 兜底（执行偏离：三段纯函数检查禁顶层赋值），仅消费入口/loader 注入的 `OB_CMD`；`resolve_npm_registry` 失败提示里两处 `ob build` → `$OB_CMD build`（util.sh:367/371） |
 | `lib/qemu_commands.sh` | remedy/Tip/info 约 17 处 + `test_qemu_usage()` heredoc 2 处 → `$OB_CMD` |
 | `lib/commands.sh` | require_path remedy 2 处、nontty remedy 3 处、build 恢复提示 1 处、Tip 行 411（已是 `./ob` hardcode，迁 `$OB_CMD`） |
 | `lib/qemu.sh` | 连接 summary 2 处（261/293） |
@@ -53,12 +53,11 @@
 
 ### Task 1: OB_CMD 变量三处落位
 
-**Consumes**: 无 **Produces**: 全局 `OB_CMD`——ob 入口跑时 = `$0`（用户敲法），lib 直 source 时 = `ob`（util.sh 兜底），test loader 环境下 = `./ob`
+**Consumes**: 无 **Produces**: 全局 `OB_CMD`——ob 入口跑时 = `$0`（用户敲法），test loader 环境下 = `./ob`；单独 source lib 文件不承诺可用（见文末「执行偏离」）
 
 Run:
 ```bash
-# 1) lib/util.sh 顶部（log() 定义前）加：
-#    OB_CMD="${OB_CMD:-ob}"   # invocation prefix: 用户敲法($0)由 ob 入口覆盖; tests 直 source lib 时兜底
+# 1) lib/util.sh 顶部（log() 定义前）加：（执行中被否决, 见文末「执行偏离」—— 最终只在注释说明, 不落赋值）
 # 2) ob 入口 OB_ENTRY_DIR= 行（ob:72 附近）后加（不复用 :- 兜底: 环境已有 OB_CMD=ob 的普通 CLI 会被污染成回显 bare ob，绕回本次问题）：
 #    if [[ -n "${OB_NO_MAIN:-}" ]]; then
 #        OB_CMD="${OB_CMD:-$0}"   # test source 模式(ob_loader export 的 ./ob 优先, 兜底 $0)
@@ -72,11 +71,10 @@ Run:
 Expected/验证（child 传播是本设计最快证伪点，最先跑）:
 ```bash
 bash -c 'source tests/lib/ob_loader.sh; bash -c "OB_NO_MAIN=1 source \"\$1\"; echo \"[\$OB_CMD]\"" _ "$OB"' | grep -xF '[./ob]'
-bash -c 'source lib/util.sh && echo "[$OB_CMD]"' | grep -F '[ob]'
 OB_CMD=ob bash -c 'OB_NO_MAIN=1 source "$1"; echo "[$OB_CMD]"' _ "$PWD/ob" | grep -xF '[ob]'   # source 模式: 外部注入优先, 不被 $0 覆盖
 OB_CMD=ob ./ob --help | head -1 | grep -F 'Usage: ./ob [command]'   # 普通 CLI: 受污染环境下仍强制 $0(单次调用, 勿拆两次丢掉污染环境; Task 2 后)
 ```
-前两条先行；后两条分别证明 source 模式注入优先、CLI 模式强制 $0（第 4 条并入 Task 2 后跑）。
+前两条先行；第三条（CLI 模式强制 $0）并入 Task 2 后跑。（原「source lib/util.sh 期望 [ob]」一条已随兜底否决删除，见文末「执行偏离」。）
 
 ### Task 2: ob usage() heredoc 改 $OB_CMD + repo-root 说明
 
@@ -181,3 +179,9 @@ bash tools/ob_check.sh; rc=$?; echo "ob_check rc=$rc"; exit "$rc"
 ## 最终验证
 
 Task 8 的三条命令 + 向用户演示原始场景收敛：`./ob test-qemu`（无实例时）应输出 `run './ob start-qemu <machine>' first.`，照抄执行不再 command not found。
+
+## 执行偏离（收口记录，2026-08-20 实施时确认）
+
+1. **util.sh 兜底被否决**：`ob_check` 的 extract_funcs 三段纯函数检查禁止 lib 文件 header 顶层赋值；核实无任何消费方单独 source `lib/util.sh`（都经 ob 入口或 ob_loader，两者在 source lib 前已定义/导出 `OB_CMD`）。最终契约：`OB_CMD` 只由 ob 入口（`OB_NO_MAIN` 分流）或 `ob_loader` 注入，单独 source lib 文件不承诺可用。util.sh 仅保留注释说明。
+2. **两处计划外测试适配**：`qemu_launch_profile_remedy.sh` 的 child 直跑不经 ob_loader，在其 `bash -c` 内注入 `OB_CMD=./ob`；`smoke_substep_isolation.sh` 3a 是对**源码** grep 字面量的边界闸，ob 源文件改用 `$OB_CMD smoke` 后不再含字面量 `ob smoke`，期望集三件套同步为两件套（闸的意图不变）。
+3. **实施引入并即时修复的 bug**：批量替换时 `qemu_launch_profile.sh:245-246` 两条 remedy 外层双引号误写成单引号，`$OB_CMD` 不展开 + word splitting 使 `exit` 收到 `init`（exit 2 非 3）——Task 6 测试跑红当场抓住并修复。
