@@ -212,15 +212,15 @@ Usage: $OB_CMD [command] [options] [arguments]
 Run without arguments to enter interactive menu mode.
 
 Commands:
-  init         [<machine>]    One-click initialize OpenBMC dev environment
-  build        [<machine>]    Build an initialized machine's image (interactive if omitted)
+  init           [<machine>]  One-click initialize OpenBMC dev environment
+  build          [<machine>]  Build an initialized machine's image (interactive if omitted)
   status                      Show current OpenBMC source binding status
-  start-qemu   [<machine>]    Launch QEMU with built BMC image
-  stop-qemu    [<machine>]    Stop a running QEMU instance
+  start-qemu     [<machine>]  Launch QEMU with built BMC image
+  stop-qemu      [<machine>]  Stop a running QEMU instance
   deploy-to-qemu [<machine>]  Rebuild image and restart QEMU for clean verification
-  smoke        [<machine>]    Probe a running QEMU-backed BMC (read-only OOB probe; no bring-up/teardown)
-  test-qemu    [<machine>]    Run <machine>'s baseline AR probes on its running QEMU instance (probe-only; pass/fail/skip/xfail/xpass; --dry-run lists ARs without an instance)
-  dev          [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
+  smoke          [<machine>]  Probe a running QEMU-backed BMC (read-only OOB probe; no bring-up/teardown)
+  test-qemu      [<machine>]  Run <machine>'s baseline AR probes on its running QEMU instance (probe-only; pass/fail/skip/xfail/xpass; --dry-run lists ARs without an instance)
+  dev            [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
 
 Global Options:
   -d, --dry-run         Print actions without executing
@@ -256,8 +256,7 @@ smoke Options:
             1. Redfish root reachable           (HTTP 200 + Redfish marker)
             2. Redfish Managers reachable       (HTTP 200 + Manager resource marker)
             3. Redfish SoftwareVersion reported (BMC reports firmware version)
-            4. IPMI over LAN works              (ipmitool mc info exit 0; needs an
-                                                 RMCP+/LAN responder in the image)
+            4. IPMI over LAN works              (ipmitool mc info exit 0; needs an RMCP+/LAN responder in the image)
             5. System ready signal              (SSH forwarded port TCP-connectable)
   Exit codes (smoke-specific — they OVERRIDE the global "1 = broken" line below):
             0   All 5 assertions passed.
