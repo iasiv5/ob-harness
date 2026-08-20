@@ -27,6 +27,7 @@ OpenBMC 固件开发工作台。`ob` CLI 覆盖环境初始化、镜像构建、
 ```bash
 git clone https://github.com/iasiv5/ob-harness.git
 cd ob-harness
+./ob init [machine]  # 初始化 OpenBMC 开发环境
 ```
 
 ## 场景索引
