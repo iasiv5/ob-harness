@@ -210,8 +210,6 @@ usage() {
 Usage: $OB_CMD [command] [options] [arguments]
 
 Run without arguments to enter interactive menu mode.
-ob is not installed to PATH; run ./ob from the repo root or invoke this script
-by path. Hints below echo how you invoked it.
 
 Commands:
   init         [<machine>]    One-click initialize OpenBMC dev environment
