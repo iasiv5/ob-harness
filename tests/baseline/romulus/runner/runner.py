@@ -34,8 +34,9 @@ USAGE = """Usage: run.sh --host H --port P [--user U] [--password W] [options]
   --ar ID         only run AR with this id
   --suite NAME    only run ARs in this suite
   --report PATH   dump JSON report to PATH
-  -v, --verbose   per-AR live lines also carry fail/error reason (skip
-                  lines always carry reason [source]; live lines always on)
+  -v, --verbose   per-AR live fail/error lines also carry code= when
+                  available (reason is always shown; skip lines always
+                  carry reason [source])
   -d, --dry-run   list ARs + applicability, no probe, exit 0
   --timeout SE    per-probe HTTP timeout (default 10; env OB_TQ_TIMEOUT)
   -h, --help      show this help

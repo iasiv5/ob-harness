@@ -33,11 +33,12 @@ def oneline(value):
 def live_line(record, verbose):
     """record → stderr 流式 live 行(每条 AR 完成即打一行)。
 
-    与旧 run.sh 两段内联 python 输出逐字节一致:
+    与收尾逐条行同源 oneline(一致性靠代码):
       skip 行    '  <AR 留空补齐 14> skip | <reason 摘要>'(+ ' [source]' 有则拼接;
                  -v 不影响 skip 行, reason 恒给全)
-      probe 行   '  <AR> <status>'; verbose=1 且 status ∈ fail/error 时行尾追加
-                 ' ' + reason 摘要
+      probe 行   '  <AR> <status>'; status ∈ fail/error 时恒追加 ' ' + reason
+                 摘要(千级 AR 场景即时归因, 不等收尾逐条行); verbose=1 且
+                 code 非 None 时在 reason 前额外插入 ' code=<code>'
     """
     ar = str(record.get("ar", "?"))
     st = record.get("status", "?")
@@ -45,7 +46,11 @@ def live_line(record, verbose):
         reason = oneline(record.get("reason", ""))
         src = str(record.get("source", "") or "")
         return "  {:<14} skip | {}".format(ar, reason + " [" + src + "]" if src else reason)
-    if verbose and st in ("fail", "error"):
+    if st in ("fail", "error"):
+        if verbose:
+            code = record.get("code")
+            if code is not None:
+                st += " code={}".format(code)
         st += " " + oneline(record.get("reason", ""))
     return "  {:<14} {}".format(ar, st)
 

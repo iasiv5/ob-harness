@@ -136,9 +136,9 @@ assert_rc 0 "valid probe pass remains pass" \
 assert_rc 1 "valid probe fail remains alpha fail" \
   _run_protocol_case good-fail "$_tmp/applicable.yaml"
 
-# 流式 UX 回归: live 行默认开(run.sh 恒打 '  <AR> <status>' 到 stderr), VERDICT 恒为
-# stdout 最后一行, -v 时 fail/error 行尾追加 reason 摘要(一行化: 转字符串 + 换行替空格
-# + 截断 120 — 与 report.py 逐条行同规则)。
+# 流式 UX 回归: live 行默认开(run.sh 恒打到 stderr), VERDICT 恒为 stdout 最后一行,
+# fail/error live 行恒带 reason 摘要(一行化: 转字符串 + 换行替空格 + 截断 120 — 与
+# report.py 逐条行同规则); -v 额外带 code=(code 非 None 时)。
 _run_protocol_capture() {
   # 同 _run_protocol_case 的 fixture 注入, 但保留输出供断言: 函数 stdout 即 captured
   # output(2>&1 合并), 调用侧用 command substitution 捕获, rc 由调用侧 || rc=$? 保存。
@@ -154,17 +154,17 @@ assert_eq "live pass streams by default, runner still rc=0" "$rc" "0"
 assert_true "live AR line streams by default (no -v)" grep -Eq '^  TEST-A[[:space:]]+pass$' <<<"$out"
 assert_true "VERDICT is the last line" grep -q '^VERDICT: PASS' <<<"$(tail -1 <<<"$out")"
 
-# 3: -v 追加 reason(一行化: 换行替空格, 锁 '每条 AR 一行' 契约)
+# 3: -v 额外带 code=(fixture code=500), reason 一行化(换行替空格, 锁 '每条 AR 一行' 契约)
 out=""; rc=0; out=$(_run_protocol_capture good-fail-multiline -v) || rc=$?
 assert_eq "verbose fail run keeps alpha rc=1" "$rc" "1"
-assert_true "verbose live line carries flattened reason" \
-  grep -Eq '^  TEST-A[[:space:]]+fail line1 line2 bad$' <<<"$out"
+assert_true "verbose live line carries code + flattened reason" \
+  grep -Eq '^  TEST-A[[:space:]]+fail code=500 line1 line2 bad$' <<<"$out"
 
-# 4: 不带 -v 无行内 reason
+# 4: 不带 -v 恒带行内 reason(无 code= 段)
 out=""; rc=0; out=$(_run_protocol_capture good-fail-multiline) || rc=$?
 assert_eq "non-verbose fail run keeps alpha rc=1" "$rc" "1"
-assert_true "non-verbose live line has no inline reason" \
-  grep -Eq '^  TEST-A[[:space:]]+fail$' <<<"$out"
+assert_true "non-verbose live line carries inline reason" \
+  grep -Eq '^  TEST-A[[:space:]]+fail line1 line2 bad$' <<<"$out"
 
 # 5: 通道分工(live→stderr / report→stdout), 分离捕获锁全局约束
 _sstdout="$_tmp/split.out"; _sstderr="$_tmp/split.err"
@@ -181,7 +181,8 @@ rc=0; OB_TQ_STUB_MODE=good-fail-multiline OB_TQ_PROBE="$_tmp/probe-stub.py" \
     bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x \
     >"$_sstdout" 2>"$_sstderr" || rc=$?
 assert_eq "split-stream fail run rc=1" "$rc" "1"
-assert_true "live fail line is on stderr" grep -Eq '^  TEST-A[[:space:]]+fail$' "$_sstderr"
+assert_true "live fail line is on stderr with inline reason" \
+  grep -Eq '^  TEST-A[[:space:]]+fail line1 line2 bad$' "$_sstderr"
 assert_true "stdout keeps fail detail row" grep -Eq 'TEST-A[[:space:]]+fail \| code=' "$_sstdout"
 assert_true "stdout last line is VERDICT: FAIL" grep -q '^VERDICT: FAIL' <<<"$(tail -1 "$_sstdout")"
 
@@ -337,7 +338,7 @@ print("fn-ok")
 PY
 assert_eq "report.oneline 直调(截断/换行/coerce)" "$_fn_ok" "1"
 
-# live_line: skip 裸行带 [source] / -v=0 fail 裸状态 / -v=1 fail 追加 reason
+# live_line: skip 裸行带 [source] / fail 恒带 reason / -v=1 额外带 code=
 _py "$RUNNER_DIR" <<'PY' && _live_ok=1 || _live_ok=0
 import sys
 sys.path.insert(0, sys.argv[1])
@@ -347,7 +348,11 @@ assert ll == "  A              skip | r [unit]", ll
 ll = report.live_line({"ar": "A", "status": "skip", "reason": "r", "source": ""}, 1)
 assert ll.endswith("skip | r"), ll
 ll = report.live_line({"ar": "A", "status": "fail", "reason": "boom"}, 0)
-assert ll.endswith("fail") and "boom" not in ll, ll
+assert ll.endswith("fail boom"), ll
+ll = report.live_line({"ar": "A", "status": "fail", "reason": "boom", "code": 401}, 1)
+assert ll == "  A              fail code=401 boom", ll
+ll = report.live_line({"ar": "A", "status": "error", "reason": "x", "code": None}, 1)
+assert ll.endswith("error x"), ll
 ll = report.live_line({"ar": "A", "status": "fail", "reason": "boom\nx" * 100}, 1)
 exp = "  {:<14} {}".format("A", "fail " + "boom x" * 20)  # 合并后每单元 6 字符 ×20 = 120
 assert ll == exp, (ll, exp)

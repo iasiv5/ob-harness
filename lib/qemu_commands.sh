@@ -863,8 +863,9 @@ Options:
   --suite <name>   Only run ARs in this suite
   --ar <id>        Only run the named AR
   --report <path>  Dump JSON report to PATH
-  -v, --verbose    Per-AR live lines also carry fail/error/skip reason (live
-                   status lines are always streamed to stderr; verdict prints last)
+  -v, --verbose    Per-AR live fail/error lines also carry code= when
+                   available (reason is always shown; live status lines
+                   always stream to stderr)
   -d, --dry-run    List ARs + applicability, no probe (no running instance needed)
   -h, --help       Show this help
 
