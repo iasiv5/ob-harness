@@ -37,7 +37,7 @@ assert_eq "private flags reach cmd_test_qemu (exit 3 at first missing preconditi
 rm -f "$_tq_p1" "$_tq_p2"
 
 # (3) machine 必填(🟡5): 无 machine → exit 3
-rc=0; "$OB" test-qemu >/tmp/tq_nomachine.run 2>&1 || rc=$?
+rc=0; "$OB" test-qemu </dev/null >/tmp/tq_nomachine.run 2>&1 || rc=$?
 assert_eq "no machine → exit 3" "$rc" "3"
 
 # (4) 谱系路由(🔴2 → ADR-0026 改写, 零 QEMU 直测 leaf-pure helper)

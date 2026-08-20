@@ -51,6 +51,7 @@ assert_ob_rc() {
             status)     cmd_status ;;
             start-qemu) cmd_start_qemu ;;
             stop-qemu)  cmd_stop_qemu ;;
+            test-qemu)  cmd_test_qemu ;;
             *)          exit 1 ;;
         esac
     ) </dev/null >/dev/null 2>&1 || rc=$?
@@ -110,6 +111,10 @@ _setup_stop_qemu_candidates() {
     mkdir -p "$tmp/workspace/qemu-bin/.pids"
     : > "$tmp/workspace/qemu-bin/.pids/romulus.pid"
 }
+_setup_test_qemu_candidates() {
+    # 与 stop-qemu 同源(.pids 枚举); test-qemu machine 前置在最前, 无需其余前置
+    _setup_stop_qemu_candidates "$1"
+}
 _setup_init_candidates() {
     local tmp="$1"
     mkdir -p "$tmp/workspace/openbmc/.git"
@@ -126,6 +131,7 @@ assert_ob_rc 3 "start-qemu empty workspace" start-qemu
 OB_RC_SETUP=_setup_build_candidates assert_ob_rc 3 "build candidates but non-TTY" build
 OB_RC_SETUP=_setup_start_qemu_candidates assert_ob_rc 3 "start-qemu candidates but non-TTY" start-qemu
 OB_RC_SETUP=_setup_stop_qemu_candidates assert_ob_rc 3 "stop-qemu candidates but non-TTY" stop-qemu
+OB_RC_SETUP=_setup_test_qemu_candidates assert_ob_rc 3 "test-qemu candidates but non-TTY" test-qemu
 OB_RC_SETUP=_setup_init_candidates assert_ob_rc 3 "init candidates but non-TTY" init
 
 # cmd_menu 非交互终端 = exit 3（ADR-0003 回归；无参触发 COMMAND="" → cmd_menu）

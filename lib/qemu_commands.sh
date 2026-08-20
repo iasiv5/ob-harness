@@ -878,6 +878,8 @@ Environment:
 
 Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish
           port from the instance's PID file (no port overrides honored).
+          With no <machine> on a TTY it offers a numbered pick among
+          running instances; non-interactively it lists them and exits 3.
           With no running instance it exits 3 and will NOT boot one — run
           'ob start-qemu <machine>' first. With --dry-run no instance is
           needed — baseline asset check only.
@@ -941,22 +943,44 @@ cmd_test_qemu() {
         esac
     done
 
-    # ── 前置 1: machine 必填 (probe-only 命令不交互选号; 列 running candidates, 对齐 cmd_smoke) ──
+    # ── 前置 1: machine 必填 (TTY 时交互选号, 同 cmd_stop_qemu 模式; 非 TTY 列 running
+    #    candidates + exit 3, 保 CI/agent 语义; 交互选号不破坏 probe-only — 只选目标, 不 bring-up) ──
     if [[ -z "$MACHINE" ]]; then
-        error "No machine specified."
         local -a _tq_targets=()
         mapfile -t _tq_targets < <(qemu_instance_list)
         if [[ ${#_tq_targets[@]} -eq 0 ]]; then
+            error "No machine specified."
             error "No QEMU instance is running. test-qemu probes a running instance — run 'ob start-qemu <machine>' first."
-        else
+            exit 3
+        fi
+        if [[ ! -t 0 ]]; then
+            error "No machine specified."
             error "Running QEMU instances you can test:"
             local _t
             for _t in "${_tq_targets[@]}"; do
                 printf '  %-20s %s\n' "$_t" "$(qemu_instance_summarize_brief "$_t")" >&2
             done
+            error "Specify a machine: ob test-qemu <machine>"
+            exit 3
         fi
-        error "Specify a machine: ob test-qemu <machine>"
-        exit 3
+        # 交互: 渲染实例详情(PID/端口/状态, 同 ob status 格式)+ 复用 read_machine_choice
+        # (pick_machine 只渲染纯序号+名字, 同 cmd_stop_qemu 的自渲染理由)
+        echo ""
+        step_header "Running QEMU Instances"
+        local _tq_total=${#_tq_targets[@]}
+        local _tq_idx_width=${#_tq_total}
+        local _tq_i _tq_m
+        for (( _tq_i=0; _tq_i<_tq_total; _tq_i++ )); do
+            _tq_m="${_tq_targets[$_tq_i]}"
+            printf "  %${_tq_idx_width}d) %-20s %s\n" "$((_tq_i + 1))" "$_tq_m" "$(qemu_instance_summarize_brief "$_tq_m")"
+        done
+        local _tq_pm_rc=0
+        read_machine_choice "$_tq_total" "Test QEMU" _tq_targets || _tq_pm_rc=$?
+        case "$_tq_pm_rc" in
+            0) ;;
+            2) warn "Test QEMU cancelled by user."; exit 2 ;;
+            *) exit 1 ;;
+        esac
     fi
 
     # PyYAML 前置(runner/report/auth 解析 YAML; 缺失 → exit 3 + remedy, 计划全局约束 + 评审 🔴2)
