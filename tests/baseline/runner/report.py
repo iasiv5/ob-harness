@@ -119,6 +119,20 @@ def run_report(records, report_path, compact_rows):
     # --compact-rows: runner 恒已向 stderr 实时流过每条 AR 状态(pass 裸状态, skip 带
     # reason), report 再打一遍是双打 — 跳过 pass 与 skip 行(信息无损失; skip 的 source
     # 也随 live 行给出), fail/error/xfail/xpass 行保留 code/reason/source 详情。
+    # 块首分隔 + 标头(2026-08-20 UX): compact-rows 下逐条行是 live 流之后 stdout 的
+    # 收尾复读块, 终端 2>&1 同屏时与 live 末行直接相接, 看起来像流在继续、fail/error
+    # 被"重复"打出; 有行可打时才出分隔 + 标头(全 pass/skip 不留悬挂空框), 且
+    # VERDICT 仍恒为最后一行(单测锚 tail -1 不受影响)。
+    visible = [r for r in records
+               if not isinstance(r, dict)
+               or not (compact_rows and r.get("status", "?") in ("pass", "skip"))]
+    if visible:
+        print("─" * 60)
+        if compact_rows:
+            print("DETAIL ROWS: {} non-pass/non-skip AR(s) — recap of live stream above:".format(
+                len(visible)))
+        else:
+            print("DETAIL ROWS: {} AR(s):".format(len(visible)))
     for r in records:
         if not isinstance(r, dict):
             print("  <non-dict>    error | {!r}".format(r))

@@ -184,6 +184,8 @@ rc=0; OB_TQ_STUB_MODE=good-pass OB_TQ_PROBE="$_tmp/probe-stub.py" \
 assert_eq "split-stream pass run rc=0" "$rc" "0"
 assert_true "live pass line is on stderr" grep -Eq '^  TEST-A[[:space:]]+pass$' "$_sstderr"
 assert_true "stdout (compact-rows) carries no pass AR row" bash -c "! grep -q 'TEST-A' '$_sstdout'"
+assert_true "all-pass run emits no DETAIL ROWS block (no dangling frame)" \
+  bash -c "! grep -q '^DETAIL ROWS:' '$_sstdout'"
 assert_true "stdout last line is VERDICT" grep -q '^VERDICT: PASS' <<<"$(tail -1 "$_sstdout")"
 rc=0; OB_TQ_STUB_MODE=good-fail-multiline OB_TQ_PROBE="$_tmp/probe-stub.py" \
     OB_TQ_AR_PROBES="$_tmp/one.yaml" OB_TQ_APPL="$_tmp/applicable.yaml" \
@@ -193,6 +195,10 @@ assert_eq "split-stream fail run rc=1" "$rc" "1"
 assert_true "live fail line is on stderr with inline reason" \
   grep -Eq '^  TEST-A[[:space:]]+fail line1 line2 bad$' "$_sstderr"
 assert_true "stdout keeps fail detail row" grep -Eq 'TEST-A[[:space:]]+fail \| code=' "$_sstdout"
+assert_true "fail run frames detail rows with DETAIL ROWS header" \
+  grep -q '^DETAIL ROWS: 1 non-pass/non-skip AR(s)' "$_sstdout"
+assert_true "DETAIL ROWS header is preceded by a separator line" \
+  bash -c "grep -B1 '^DETAIL ROWS:' '$_sstdout' | head -1 | grep -qE '^─+$'"
 assert_true "stdout last line is VERDICT: FAIL" grep -q '^VERDICT: FAIL' <<<"$(tail -1 "$_sstdout")"
 
 # 6: 大 body record(>128KB 单参数上限)走 stdin 不走 argv — live 行不 E2BIG(回归:
@@ -386,7 +392,10 @@ live = report.live_line(rec, 0)
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
     report.run_report([rec], None, False)  # 非 compact, skip 逐条行也打
-row = buf.getvalue().splitlines()[0]
+# 块首分隔 + DETAIL ROWS 标头(2026-08-20)占前 2 行, 逐条行按 AR 前缀定位, 不取 [0]
+rows = [l for l in buf.getvalue().splitlines() if l.startswith("  INV")]
+assert len(rows) == 1, buf.getvalue()
+row = rows[0]
 assert "共享 reason" in live and "共享 reason" in row, (live, row)
 print("inv-ok")
 PY
