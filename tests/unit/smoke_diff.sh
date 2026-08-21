@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# tests/unit/smoke_diff.sh — smoke_diff.py 逻辑自测(unit 层)。
-# 用 here-doc fixture 钉死回归闸门口径: ✓→✗(同名退化) 与 baseline 无此名+current ✗(新出现的
-#   失败断言) = 回归(exit 1); 其余(版本变更/✗→✓/新出现的 ✓/消失)不算回归(exit 0)。
-#   fixture 镜像真实 `ob smoke` 输出形态(mark + 断言名 + 括号细节; 含 breakdown 段重打 ✗ 的去重场景)。
+# tests/unit/smoke_diff.sh — smoke_diff.py 逻辑自测(unit 层, ADR-0028 JSON report 形态)。
+# fixture = 从真实 `ob test-qemu --suite smoke --report` 裁剪的 JSON(顶层 {verdict,
+#   counts, records}, 配对键 records[].ar, 判定字段 records[].status)。
+# 钉死回归闸门口径: pass→fail(同名退化) 与 baseline 无此 AR + current fail(新出现的
+#   失败) = 回归(exit 1); 其余(fail→pass 改善/新出现的非 fail/消失/skip·error 不参与)不算回归。
 source "$(dirname "$0")/../lib/assert.sh"
 assert_reset
 
@@ -13,117 +14,78 @@ test -f "$TOOL" || { echo "MISSING $TOOL" >&2; exit 1; }
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# baseline: 五条全 ✓(Redfish×3 / IPMI / ready)
-cat > "$TMP/base.txt" <<'EOF'
-Smoke assertions for 'romulus'
-  ✓ Redfish root reachable (HTTP 200, Redfish structural marker present)
-  ✓ Redfish Managers reachable (HTTP 200, Manager resource present)
-  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.15.0)
-  ✓ IPMI over LAN works (ipmitool mc info exit 0)
-  ✓ System ready signal (SSH port TCP-connectable)
-EOF
+# rec <ar> <status> — 生成一条最小合法 record(字段名对齐 report.py 实测契约)
+rec() { printf '{"ar": "%s", "status": "%s", "pass": %s, "reason": "fixture", "code": 200, "body": "", "actual": null, "source": "", "probe_reason": "ok"}' "$1" "$2" "$([[ "$2" == pass ]] && echo true || echo false)"; }
+wrap() { printf '{"verdict": "PASS", "counts": {"pass": 0, "fail": 0, "skip": 0, "xfail": 0, "xpass": 0, "error": 0}, "records": [%s]}' "$1"; }
 
-# --- 1. 无退化: 版本号变(v2.15.0→v2.16.0)但同名 ✓ → exit 0 ---
-cat > "$TMP/cur_ok.txt" <<'EOF'
-  ✓ Redfish root reachable (HTTP 200, Redfish structural marker present)
-  ✓ Redfish Managers reachable (HTTP 200, Manager resource present)
-  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.16.0)
-  ✓ IPMI over LAN works (ipmitool mc info exit 0)
-  ✓ System ready signal (SSH port TCP-connectable)
-EOF
-out="$(python3 "$TOOL" "$TMP/base.txt" "$TMP/cur_ok.txt" 2>&1)"; rc=$?
-assert_eq "no-regression (version change, same ✓) rc 0" "$rc" "0"
+# baseline: 五条全 pass(真实 smoke suite 的 SMOKE-01..05)
+BASE_ROWS="$(rec SMOKE-01 pass), $(rec SMOKE-02 pass), $(rec SMOKE-03 pass), $(rec SMOKE-04 pass), $(rec SMOKE-05 pass)"
+wrap "$BASE_ROWS" > "$TMP/base.json"
+
+# --- 1. 无退化: 同名全 pass(细节 reason 变化不影响) → exit 0 ---
+wrap "$BASE_ROWS" > "$TMP/cur_ok.json"
+out="$(python3 "$TOOL" "$TMP/base.json" "$TMP/cur_ok.json" 2>&1)"; rc=$?
+assert_eq "no-regression (same pass) rc 0" "$rc" "0"
 assert_contains "no-regression prints OK 闸门放行" "$out" "闸门放行"
 assert_false "no-regression 不含 REGRESSION 字样" grep -q 'REGRESSION' <<<"$out"
 
-# --- 2. 退化: IPMI ✓→✗ → exit 1 + 报退化项 ---
-cat > "$TMP/cur_reg.txt" <<'EOF'
-  ✓ Redfish root reachable (HTTP 200, Redfish structural marker present)
-  ✓ Redfish Managers reachable (HTTP 200, Manager resource present)
-  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.15.0)
-  ✗ IPMI over LAN works (ipmitool exit 1 — Unable to establish RMCP+ session)
-  ✓ System ready signal (SSH port TCP-connectable)
-EOF
-out="$(python3 "$TOOL" "$TMP/base.txt" "$TMP/cur_reg.txt" 2>&1)"; rc=$?
-assert_eq "regression (IPMI ✓→✗) rc 1" "$rc" "1"
-assert_contains "regression prints REGRESSION"      "$out" "REGRESSION"
-assert_contains "regression prints 退化项名"          "$out" "IPMI over LAN works"
-assert_contains "regression prints 闸门拦截"          "$out" "闸门拦截"
+# --- 2. 退化: SMOKE-04 pass→fail → exit 1 + 报退化项 ---
+wrap "$(rec SMOKE-01 pass), $(rec SMOKE-02 pass), $(rec SMOKE-03 pass), $(rec SMOKE-04 fail), $(rec SMOKE-05 pass)" > "$TMP/cur_reg.json"
+out="$(python3 "$TOOL" "$TMP/base.json" "$TMP/cur_reg.json" 2>&1)"; rc=$?
+assert_eq "regression (SMOKE-04 pass→fail) rc 1" "$rc" "1"
+assert_contains "regression prints REGRESSION" "$out" "REGRESSION"
+assert_contains "regression prints 退化项 AR" "$out" "SMOKE-04"
+assert_contains "regression prints 闸门拦截" "$out" "闸门拦截"
 
-# --- 3. 改善不算回归: baseline IPMI ✗ → current IPMI ✓ → exit 0 ---
-cat > "$TMP/base_onefail.txt" <<'EOF'
-  ✓ Redfish root reachable (HTTP 200, ...)
-  ✓ Redfish Managers reachable (HTTP 200, ...)
-  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.15.0)
-  ✗ IPMI over LAN works (ipmitool exit 1)
-  ✓ System ready signal (SSH port TCP-connectable)
-EOF
-out="$(python3 "$TOOL" "$TMP/base_onefail.txt" "$TMP/cur_ok.txt" 2>&1)"; rc=$?
-assert_eq "improvement (✗→✓) rc 0" "$rc" "0"
+# --- 3. 改善不算回归: baseline SMOKE-04 fail → current pass → exit 0 ---
+wrap "$(rec SMOKE-01 pass), $(rec SMOKE-02 pass), $(rec SMOKE-03 pass), $(rec SMOKE-04 fail), $(rec SMOKE-05 pass)" > "$TMP/base_onefail.json"
+out="$(python3 "$TOOL" "$TMP/base_onefail.json" "$TMP/cur_ok.json" 2>&1)"; rc=$?
+assert_eq "improvement (fail→pass) rc 0" "$rc" "0"
 assert_contains "improvement prints 改善 info" "$out" "改善"
 
-# --- 4. breakdown 重打去重: current 含 judge 行 + breakdown 段重打 ✗ name(无 detail) → 仍正确判该条 ---
-cat > "$TMP/cur_dup.txt" <<'EOF'
-Smoke assertions for 'gb200nvl-obmc'
-  ✓ Redfish root reachable (HTTP 200, ...)
-  ✓ Redfish Managers reachable (HTTP 200, ...)
-  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.15.0)
-  ✗ IPMI over LAN works (ipmitool exit 1 — unable)
-  ✓ System ready signal (SSH port TCP-connectable)
-Failed assertions (1):
-  ✗ IPMI over LAN works
------ RAW response (for localization) -----
-EOF
-out="$(python3 "$TOOL" "$TMP/base.txt" "$TMP/cur_dup.txt" 2>&1)"; rc=$?
-assert_eq "breakdown-dup regression rc 1" "$rc" "1"
-assert_contains "breakdown-dup 仍检出 IPMI 退化" "$out" "IPMI over LAN works"
-# current 断言计数应 = 5(judge 行去重, breakdown 重打不重复计)
-assert_contains "breakdown-dup current 计 5 条(去重)" "$out" "current 断言: 5 条"
+# --- 4. skip/error 行不参与退化判定: baseline SMOKE-04 error(被丢弃)→ current fail
+#     按"baseline 无此 AR + current fail = 新增失败"拦截 → exit 1(闸门 fail-closed) ---
+wrap "$(rec SMOKE-01 pass), $(rec SMOKE-02 pass), $(rec SMOKE-03 pass), $(rec SMOKE-04 error), $(rec SMOKE-05 pass)" > "$TMP/base_err.json"
+out="$(python3 "$TOOL" "$TMP/base_err.json" "$TMP/cur_reg.json" 2>&1)"; rc=$?
+assert_eq "error→fail 按新增 fail 拦截(error 非 α 真相, fail-closed) rc 1" "$rc" "1"
 
-# baseline 子集(无 IPMI 行)— 用于 5/6 测试 "新出现断言" 语义
-cat > "$TMP/base_noipmi.txt" <<'EOF'
-  ✓ Redfish root reachable (HTTP 200, ...)
-  ✓ Redfish Managers reachable (HTTP 200, ...)
-  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.15.0)
-  ✓ System ready signal (SSH port TCP-connectable)
-EOF
+# baseline 子集(无 SMOKE-04)— 用于 5/6 测试 "新出现 AR" 语义
+wrap "$(rec SMOKE-01 pass), $(rec SMOKE-02 pass), $(rec SMOKE-03 pass), $(rec SMOKE-05 pass)" > "$TMP/base_no04.json"
 
-# --- 5. 语义严格化: baseline 无此名 + current ✗(新出现的失败断言) → exit 1 ---
-cat > "$TMP/cur_new_fail.txt" <<'EOF'
-  ✓ Redfish root reachable (HTTP 200, ...)
-  ✓ Redfish Managers reachable (HTTP 200, ...)
-  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.15.0)
-  ✗ IPMI over LAN works (ipmitool exit 1 — new failing assertion)
-  ✓ System ready signal (SSH port TCP-connectable)
-EOF
-out="$(python3 "$TOOL" "$TMP/base_noipmi.txt" "$TMP/cur_new_fail.txt" 2>&1)"; rc=$?
-assert_eq "new-✗ regression rc 1" "$rc" "1"
-assert_contains "new-✗ prints REGRESSION" "$out" "REGRESSION"
-assert_contains "new-✗ mentions IPMI" "$out" "IPMI over LAN works"
-assert_contains "new-✗ prints absent baseline 标注" "$out" "absent — new assertion"
-assert_contains "new-✗ prints 闸门拦截" "$out" "闸门拦截"
+# --- 5. 语义严格化: baseline 无此 AR + current fail(新出现的失败 AR) → exit 1 ---
+out="$(python3 "$TOOL" "$TMP/base_no04.json" "$TMP/cur_reg.json" 2>&1)"; rc=$?
+assert_eq "new-fail regression rc 1" "$rc" "1"
+assert_contains "new-fail prints REGRESSION" "$out" "REGRESSION"
+assert_contains "new-fail mentions SMOKE-04" "$out" "SMOKE-04"
+assert_contains "new-fail prints absent baseline 标注" "$out" "absent — new AR"
+assert_contains "new-fail prints 闸门拦截" "$out" "闸门拦截"
 
-# --- 6. 新出现的 ✓ 不算回归: baseline 无此名 + current ✓ → exit 0(改善 by addition) ---
-cat > "$TMP/cur_new_pass.txt" <<'EOF'
-  ✓ Redfish root reachable (HTTP 200, ...)
-  ✓ Redfish Managers reachable (HTTP 200, ...)
-  ✓ Redfish SoftwareVersion reported (BMC reports firmware version v2.15.0)
-  ✓ IPMI over LAN works (ipmitool mc info exit 0)
-  ✓ System ready signal (SSH port TCP-connectable)
-EOF
-out="$(python3 "$TOOL" "$TMP/base_noipmi.txt" "$TMP/cur_new_pass.txt" 2>&1)"; rc=$?
-assert_eq "new-✓ no-regression rc 0" "$rc" "0"
-assert_contains "new-✓ prints 新出现的 ✓ info" "$out" "新出现的 ✓"
-assert_contains "new-✓ info mentions IPMI" "$out" "IPMI over LAN works"
-assert_false "new-✓ 不含 REGRESSION" grep -q 'REGRESSION' <<<"$out"
+# --- 6. 新出现的非 fail AR 不算回归: baseline 无 SMOKE-04 + current pass → exit 0 ---
+out="$(python3 "$TOOL" "$TMP/base_no04.json" "$TMP/cur_ok.json" 2>&1)"; rc=$?
+assert_eq "new-pass no-regression rc 0" "$rc" "0"
+assert_contains "new-pass prints 新出现的非 fail info" "$out" "新出现的非 fail"
+assert_false "new-pass 不含 REGRESSION" grep -q 'REGRESSION' <<<"$out"
 
-# --- 7. 错误路径: 文件不存在 → exit 2 ---
-assert_rc 2 "nonexistent file rc 2" python3 "$TOOL" "$TMP/base.txt" "$TMP/nope.txt"
+# --- 6b. schema 漂移 fail-closed(评审 🔴): record 字段名错(status→verdict)/
+#     非 dict / 重复 AR → exit 2, 不静默丢弃折叠成假放行 ---
+cat > "$TMP/cur_drift.json" <<'JSON'
+{"verdict": "FAIL", "counts": {"pass": 4, "fail": 1, "skip": 0, "xfail": 0, "xpass": 0, "error": 0}, "records": [{"ar": "SMOKE-04", "verdict": "fail", "pass": false, "reason": "drift"}]}
+JSON
+assert_rc 2 "status→verdict 字段漂移 rc 2" python3 "$TOOL" "$TMP/base.json" "$TMP/cur_drift.json"
+cat > "$TMP/cur_dup.json" <<'JSON'
+{"verdict": "PASS", "counts": {}, "records": [{"ar": "SMOKE-01", "status": "pass"}, {"ar": "SMOKE-01", "status": "fail"}]}
+JSON
+assert_rc 2 "重复 AR rc 2" python3 "$TOOL" "$TMP/cur_dup.json" "$TMP/base.json"
+
+# --- 7. 错误路径: 文件不存在 / 非 report JSON → exit 2 ---
+assert_rc 2 "nonexistent file rc 2" python3 "$TOOL" "$TMP/base.json" "$TMP/nope.json"
+echo "not json" > "$TMP/bad.json"
+assert_rc 2 "non-report JSON rc 2" python3 "$TOOL" "$TMP/bad.json" "$TMP/base.json"
 
 # --- 8. --help → exit 0 + 打印 doc ---
 out="$(python3 "$TOOL" --help 2>&1)"; rc=$?
 assert_eq "--help rc 0" "$rc" "0"
-assert_contains "--help prints 用法" "$out" "smoke baseline-diff"
-assert_contains "--help doc 反映新语义(新出现的 ✗)" "$out" "新出现的失败断言"
+assert_contains "--help prints 用法" "$out" "smoke suite baseline-diff"
+assert_contains "--help doc 反映新语义(新出现的 fail)" "$out" "新出现的失败 AR"
 
 assert_summary

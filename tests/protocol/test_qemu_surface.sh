@@ -29,6 +29,12 @@ assert_reset
 out=$("$OB" test-qemu --help 2>&1) || true
 assert_true "test-qemu registered (--help mentions test-qemu)" grep -q "test-qemu" <<<"$out"
 
+# (1b) smoke suite surface(ADR-0028 收编): --help 提及内建 smoke suite;
+#      旧 `ob smoke` 顶层命令已退役 — 主 usage 不再注册该命令。
+assert_true "--suite 说明提及 smoke suite" grep -q "smoke" <<<"$out"
+_obhelp=$("$OB" --help 2>&1) || true
+assert_false "顶层 usage 无 ob smoke 命令残留" grep -qE "^  smoke " <<<"$_obhelp"
+
 # (2) parse_args 私有参数穿透(🔴1): --suite/--ar/--report 越过全局 parser, 不被 Unknown option 拦
 _tq_p1="$(mktemp)"; _tq_p2="$(mktemp)"   # mktemp(评审 🟢3): 多用户并行跑 protocol 不互踩 /tmp 固定名
 rc=0; "$OB" test-qemu fake-m --suite users --ar BMC-3-1-2 --report "$_tq_p1" >"$_tq_p2" 2>&1 || rc=$?

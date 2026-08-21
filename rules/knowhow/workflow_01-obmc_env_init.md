@@ -253,12 +253,12 @@ bitbake -c cleansstate <failed-recipe>
 ls workspace/openbmc/build/<machine>/tmp/log/cooker/<machine>/
 ```
 
-### ob smoke 阶段（QEMU 验证）
+### smoke suite 阶段（QEMU 验证，`ob test-qemu <machine> --suite smoke`）
 
 #### 7. smoke 第3条 `Redfish SoftwareVersion reported` ✗（bmcweb 不填 FirmwareVersion）
 
-**症状**：`ob smoke <machine>` 4/5 通过、唯一失败是第3条，bmcweb 的 Manager 资源 body 不含 `FirmwareVersion`/`SoftwareVersion` 字段（其它4条全 ✓）。
-**影响**：smoke exit 1（α truth-reporter，如实报告 BMC 接口态），成功标准（exit 0 / 5/5）无法达成。
+**症状**：`ob test-qemu <machine> --suite smoke` 4/5 通过、唯一 fail 是 SMOKE-03，bmcweb 的 Manager 资源 body 不含 `FirmwareVersion`/`SoftwareVersion` 字段（其它4条全 pass）。
+**影响**：exit 1（α truth，如实报告 BMC 接口态），成功标准（exit 0 / 5 pass）无法达成。
 
 **判别**（区分 timing vs 确定性配置缺口）：
 
@@ -296,5 +296,5 @@ EXTRA_OEMESON += "-Dredfish-updateservice-use-dbus=disabled"
 | 个别 bare mirror 失败不阻塞 init | 设计决策：允许部分失败，BitBake 按需从远程拉取 | 重跑 init 或手动补 mirror |
 | `--skip-deps` 需要已有 deps.json | 跳过 bitbake -g + Tinfoil，直接复用缓存 | 先完整跑一次 init |
 | `ob build` 需要交互终端 | 必须交互选择 machine + Y/N 确认 | 无 TTY 环境下手动 `source setup && bitbake` |
-| romulus smoke 第3条 FirmwareVersion 缺失 | OBMC 上游 romulus 配置不一致：移除 software-update-dbus-interface 但没配 bmcweb USE_DBUS=disabled | 见故障排除 #7（改 bmcweb bbappend + cleansstate 重编） |
-| romulus community QEMU boot 慢/偶发 lockup | workqueue/soft-lockup（srcu_drive_gp stuck） | boot 完全稳定（login prompt + 服务全起，~5-7min）后再 smoke；串口 socat 看实时态 |
+| romulus smoke SMOKE-03 FirmwareVersion 缺失 | OBMC 上游 romulus 配置不一致：移除 software-update-dbus-interface 但没配 bmcweb USE_DBUS=disabled | 见故障排除 #7（改 bmcweb bbappend + cleansstate 重编） |
+| romulus community QEMU boot 慢/偶发 lockup | workqueue/soft-lockup（srcu_drive_gp stuck） | boot 完全稳定（login prompt + 服务全起，~5-7min）后再跑 smoke suite；串口 socat 看实时态 |

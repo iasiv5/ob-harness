@@ -138,12 +138,6 @@ parse_args() {
                 shift
             fi
             ;;
-        smoke)
-            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
-                MACHINE="$1"
-                shift
-            fi
-            ;;
         test-qemu)
             if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
                 MACHINE="$1"
@@ -218,7 +212,6 @@ Commands:
   start-qemu     [<machine>]  Launch QEMU with built BMC image
   stop-qemu      [<machine>]  Stop a running QEMU instance
   deploy-to-qemu [<machine>]  Rebuild image and restart QEMU for clean verification
-  smoke          [<machine>]  Probe a running QEMU-backed BMC (read-only OOB probe; no bring-up/teardown)
   test-qemu      [<machine>]  Run <machine>'s baseline AR probes on its running QEMU instance (probe-only; pass/fail/skip/xfail/xpass; --dry-run lists ARs without an instance)
   dev            [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
 
@@ -241,33 +234,6 @@ start-qemu Options:
 stop-qemu Options:
   --force                 Stop without confirmation
   --all                   Stop all running QEMU instances
-
-smoke Options:
-  <machine>               Whose running QEMU instance to probe (required positional)
-  Boundary: smoke is a READ-ONLY probe of ONE already-running instance. It does
-            NOT boot or tear down QEMU, installs NO EXIT trap, and honors NO port
-            overrides (--ssh-port/--redfish-port/--ipmi-port) nor --dry-run: the
-            three ports are read from the instance's PID file, so smoke reflects
-            the actual running instance, not a wish.
-  Prerequisite: a running instance started via '$OB_CMD start-qemu <machine>'. With no
-            instance (no PID file, or stale PID) smoke exits 3 and will NOT boot
-            one — run '$OB_CMD start-qemu <machine>' first.
-  Assertions (exactly 5, each probes the running BMC):
-            1. Redfish root reachable           (HTTP 200 + Redfish marker)
-            2. Redfish Managers reachable       (HTTP 200 + Manager resource marker)
-            3. Redfish SoftwareVersion reported (BMC reports firmware version)
-            4. IPMI over LAN works              (ipmitool mc info exit 0; needs an RMCP+/LAN responder in the image)
-            5. System ready signal              (SSH forwarded port TCP-connectable)
-  Exit codes (smoke-specific — they OVERRIDE the global "1 = broken" line below):
-            0   All 5 assertions passed.
-            1   α truth-reporter: one or more assertions reported the BMC's ACTUAL
-                state (a "✗" row). This reports WHAT THE BMC INTERFACE ANSWERED —
-                it is NOT "smoke is broken". Read the ✗ rows + RAW responses to
-                see which interface and why (e.g. image lacks an RMCP+/LAN
-                responder → IPMI ✗). Debug the named BMC interface, not smoke.
-            3   No running QEMU instance (precondition) — '$OB_CMD start-qemu' first.
-  Environment:
-    OB_SMOKE_READY_ATTEMPTS  Poll attempts for BMC SSH-port readiness (default 30, 5s each)
 
 test-qemu Options:
   <machine>               Whose baseline to test (required positional; a RUNNING instance is required unless --dry-run)
@@ -332,7 +298,6 @@ Examples:
   $OB_CMD stop-qemu romulus             # Stop romulus QEMU instance
   $OB_CMD stop-qemu --all               # Stop all running instances
   $OB_CMD deploy-to-qemu romulus        # Rebuild romulus image + restart QEMU (port-reuse if running)
-  $OB_CMD smoke romulus                 # Probe running romulus QEMU (5 assertions; exit 1 = α BMC truth, not a smoke bug; see smoke Options)
   $OB_CMD dev --machine romulus list ipmi    # Search recipes matching 'ipmi'
   $OB_CMD dev --machine romulus modify phosphor-ipmi-host   # devtool modify, outputs srctree
   $OB_CMD dev --machine romulus build phosphor-ipmi-host  # devtool build single recipe (do_build); exit-code carries result
@@ -384,11 +349,6 @@ main() {
 
     if [[ "$COMMAND" == "deploy-to-qemu" ]]; then
         cmd_deploy_to_qemu
-        return $?
-    fi
-
-    if [[ "$COMMAND" == "smoke" ]]; then
-        cmd_smoke
         return $?
     fi
 

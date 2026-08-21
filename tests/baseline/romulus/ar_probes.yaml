@@ -17,10 +17,13 @@ auth:
   redfish:
     user: root
     password: "0penBmc"
-  # ipmi:    {user: ..., password: ...}   # 后续 ipmi probe 扩展
+  ipmi:
+    user: root
+    password: "0penBmc"
   # ssh:     {user: ..., password: ...}   # 后续 ssh probe 扩展
   # console: {user: ..., password: ...}   # 后续 console probe 扩展
 include:
   - ar_probes.d/core.yaml
   - ar_probes.d/users.yaml
   - ar_probes.d/webui.yaml
+  - ar_probes.d/smoke.yaml

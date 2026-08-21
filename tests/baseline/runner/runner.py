@@ -33,7 +33,8 @@ USAGE = """Usage: run.sh --host H --port P [--user U] [--password W] [options]
   Env is preferred for real passwords (argv is ps-visible; environ is
   owner-only) — probe_redfish.py _resolve_auth consumes the env fallback.
   --ar ID         only run AR with this id
-  --suite NAME    only run ARs in this suite
+  --suite NAME    only run ARs in this suite (built-in per-machine suites
+                  include 'smoke' — the 5-AR reachability gate, ADR-0028)
   --report PATH   dump JSON report to PATH
   -v, --verbose   per-AR live fail/error lines also carry code= when
                   available (reason is always shown; skip lines always
@@ -152,8 +153,8 @@ def main():
             print("  {:<14} {}".format(r["ar"], r["status"]))
         return 0
 
-    probe_bin = os.environ.get("OB_TQ_PROBE",
-                               os.path.join(script_dir, "probe_redfish.py"))
+    probe_bin_redfish = os.environ.get("OB_TQ_PROBE",
+                                        os.path.join(script_dir, "probe_redfish.py"))
     # 分隔线(对齐 ob step_header 的 60 宽 ─ 规则): 把起跑行与 bash 侧 info、
     # live 流与后续 report 输出在视觉上切开; agent 侧按行前缀 grep 不受影响。
     print("─" * 60, file=sys.stderr, flush=True)
@@ -174,21 +175,38 @@ def main():
             print(report_mod.live_line(rec, o["verbose"]),
                   file=sys.stderr, flush=True)
         elif st in ("xfail", "applicable"):
-            # 凭据条件传(评审 🟡2): argv 缺者不传, probe _resolve_auth 从
-            # OB_TQ_* env 补 — 密码全程不落 argv(ps world-readable →
-            # environ owner-only)。body present iff plan dict 的 body is not
-            # None(YAML 显式 {}/"" 是合法 body, 禁止 truthy 判断)。
-            probe_args = [sys.executable, probe_bin,
-                          "--host", o["host"], "--port", o["port"],
-                          "--method", r["method"], "--path", r["path"],
-                          "--asserts", json.dumps(r["asserts"]),
-                          "--timeout", o["timeout"]]
-            if o["user"]:
-                probe_args += ["--user", o["user"]]
-            if o["password"]:
-                probe_args += ["--password", o["password"]]
-            if r["body"] is not None:
-                probe_args += ["--body", json.dumps(r["body"])]
+            # probe-type 分派(ADR-0028): 按 r["probe"] 选 probe 二进制与参数。
+            # redfish 维持现状(OB_TQ_PROBE env override 保留); ipmi/ssh_tcp
+            # 固定 probe_<type>.py, 只传 --asserts(+ssh_tcp 的 attempts/
+            # interval, 端口/凭据全走 OB_TQ_IPMI_*/OB_TQ_SSH_* env)。
+            # probe 'none' 是 planner-only sentinel, 仅 skip/cascade_skip
+            # 合法, 永不进入本分支。
+            probe_type = r.get("probe", "redfish")
+            if probe_type == "redfish":
+                # 凭据条件传(评审 🟡2): argv 缺者不传, probe _resolve_auth 从
+                # OB_TQ_* env 补 — 密码全程不落 argv(ps world-readable →
+                # environ owner-only)。body present iff plan dict 的 body is not
+                # None(YAML 显式 {}/"" 是合法 body, 禁止 truthy 判断)。
+                probe_args = [sys.executable, probe_bin_redfish,
+                              "--host", o["host"], "--port", o["port"],
+                              "--method", r["method"], "--path", r["path"],
+                              "--asserts", json.dumps(r["asserts"]),
+                              "--timeout", o["timeout"]]
+                if o["user"]:
+                    probe_args += ["--user", o["user"]]
+                if o["password"]:
+                    probe_args += ["--password", o["password"]]
+                if r["body"] is not None:
+                    probe_args += ["--body", json.dumps(r["body"])]
+            elif probe_type in ("ipmi", "ssh_tcp"):
+                probe_args = [sys.executable,
+                              os.path.join(script_dir, "probe_%s.py" % probe_type),
+                              "--asserts", json.dumps(r["asserts"])]
+                if probe_type == "ssh_tcp":
+                    probe_args += ["--attempts", str(r.get("attempts") or 30),
+                                   "--interval", str(r.get("interval") or 5)]
+            else:
+                die("AR '{}' has non-executable probe '{}'".format(r["ar"], probe_type), 3)
             # 只捕获 stdout(与 bash out=$(...) 语义一致), probe stderr 自然
             # 继承到 runner stderr 不吞诊断; text+utf-8 钉死解码。
             proc = subprocess.run(

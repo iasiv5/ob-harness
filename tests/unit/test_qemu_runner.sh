@@ -66,6 +66,133 @@ rc=0; OB_TQ_AR_PROBES="$_tmp/bad.yaml" OB_TQ_APPL="$_tmp/appl.yaml" \
 assert_eq "unknown assert type → runner exit 3" "$rc" "3"
 assert_true "runner remedy mentions 'unknown assert type'" grep -q "unknown assert type" "$_tmp/out"
 
+# ── probe-type 分派与兼容矩阵(ADR-0028) ──
+_mk_pt() {  # $1=ar_yaml_body  $2=out-name → 生成 baseline + 跑 dry-run, rc 经全局 $? 断言
+  cat > "$_tmp/ar_probes.d/$2.yaml" <<<"$1"
+  cat > "$_tmp/ar_probes.yaml" <<YAML
+schema_version: 2
+auth: {user: r, password: x}
+include: [ar_probes.d/$2.yaml]
+YAML
+}
+
+# ipmi AR 配 status_in(矩阵违例)→ exit 3 数据错, 不进 α truth
+_mk_pt 'ars:
+  - ar: PT-MATRIX
+    name: matrix violation
+    probe: ipmi
+    suite: s
+    request: {command: mc_info}
+    assert:
+      - type: status_in
+        value: [200]
+    depends_on: []
+' pt_matrix.yaml
+rc=0; OB_TQ_AR_PROBES="$_tmp/ar_probes.yaml" OB_TQ_APPL="$_tmp/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp/out_pt" 2>&1 || rc=$?
+assert_eq "ipmi AR + status_in 矩阵违例 → exit 3" "$rc" "3"
+assert_true "矩阵违例 remedy 指名 assert/probe" grep -q "not allowed for probe 'ipmi'" "$_tmp/out_pt"
+
+# probe none + applicable(无可执行探测定义却要跑)→ exit 3
+_mk_pt 'ars:
+  - ar: PT-NONE
+    name: none sentinel on applicable
+    probe: none
+    suite: s
+    assert: []
+    depends_on: []
+' pt_none.yaml
+rc=0; OB_TQ_AR_PROBES="$_tmp/ar_probes.yaml" OB_TQ_APPL="$_tmp/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp/out_pt" 2>&1 || rc=$?
+assert_eq "probe none + applicable → exit 3" "$rc" "3"
+assert_true "probe none remedy 指名 sentinel 规则" grep -q "probe 'none' only allowed" "$_tmp/out_pt"
+
+# executable AR 空 assert(评审 🔴: 假绿防御)→ exit 3
+_mk_pt 'ars:
+  - ar: PT-EMPTY
+    name: empty assert
+    probe: redfish
+    suite: s
+    request: {method: GET, path: /redfish/v1}
+    assert: []
+' pt_empty.yaml
+rc=0; OB_TQ_AR_PROBES="$_tmp/ar_probes.yaml" OB_TQ_APPL="$_tmp/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp/out_pt" 2>&1 || rc=$?
+assert_eq "applicable AR 空 assert → exit 3" "$rc" "3"
+assert_true "空 assert remedy 指名" grep -q "no assert" "$_tmp/out_pt"
+
+# 畸形类型(评审 🟡: planner 类型防御, 不 traceback 冒充 exit 1)
+_mk_pt 'ars:
+  - ar: PT-STRASSERT
+    name: assert item is str
+    probe: redfish
+    suite: s
+    request: {method: GET, path: /redfish/v1}
+    assert: [status_in]
+' pt_strassert.yaml
+rc=0; OB_TQ_AR_PROBES="$_tmp/ar_probes.yaml" OB_TQ_APPL="$_tmp/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp/out_pt" 2>&1 || rc=$?
+assert_eq "assert 项为 str → exit 3(非 traceback exit 1)" "$rc" "3"
+assert_false "无 Python traceback" grep -q "Traceback" "$_tmp/out_pt"
+
+_mk_pt 'ars:
+  - ar: PT-STRREQ
+    name: request is str
+    probe: redfish
+    suite: s
+    request: not-a-dict
+    assert: [{type: status_in, value: [200]}]
+' pt_strreq.yaml
+rc=0; OB_TQ_AR_PROBES="$_tmp/ar_probes.yaml" OB_TQ_APPL="$_tmp/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp/out_pt" 2>&1 || rc=$?
+assert_eq "request 为 str → exit 3(非 traceback exit 1)" "$rc" "3"
+assert_false "无 Python traceback(2)" grep -q "Traceback" "$_tmp/out_pt"
+
+_mk_pt 'ars:
+  - ar: PT-BADDEPS
+    name: depends_on is scalar
+    probe: redfish
+    suite: s
+    request: {method: GET, path: /redfish/v1}
+    assert: [{type: status_in, value: [200]}]
+    depends_on: 123
+' pt_baddeps.yaml
+rc=0; OB_TQ_AR_PROBES="$_tmp/ar_probes.yaml" OB_TQ_APPL="$_tmp/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp/out_pt" 2>&1 || rc=$?
+assert_eq "depends_on 为 scalar → exit 3(非 traceback exit 1)" "$rc" "3"
+assert_false "无 Python traceback(3)" grep -q "Traceback" "$_tmp/out_pt"
+
+_mk_pt 'ars:
+  - ar: PT-BADOVERRIDES
+    name: overrides is list
+    probe: redfish
+    suite: s
+    request: {method: GET, path: /redfish/v1}
+    assert: [{type: status_in, value: [200]}]
+    depends_on: []
+' pt_badoverrides.yaml
+cat > "$_tmp/appl_bad_overrides.yaml" <<'YAML'
+schema_version: 1
+default: applicable
+overrides: []
+YAML
+rc=0; OB_TQ_AR_PROBES="$_tmp/ar_probes.yaml" OB_TQ_APPL="$_tmp/appl_bad_overrides.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp/out_pt" 2>&1 || rc=$?
+assert_eq "overrides 为 list → exit 3(非 traceback exit 1)" "$rc" "3"
+assert_false "无 Python traceback(4)" grep -q "Traceback" "$_tmp/out_pt"
+
+# 合法 smoke 形态数据(5 AR: redfish×3 + ipmi + ssh_tcp)→ dry-run exit 0(分派层零异常)
+cp "$_repo/tests/baseline/romulus/ar_probes.d/smoke.yaml" "$_tmp/ar_probes.d/smoke.yaml"
+cat > "$_tmp/ar_probes.yaml" <<'YAML'
+schema_version: 2
+auth: {user: r, password: x}
+include: [ar_probes.d/smoke.yaml]
+YAML
+rc=0; OB_TQ_AR_PROBES="$_tmp/ar_probes.yaml" OB_TQ_APPL="$_tmp/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --suite smoke --dry-run >"$_tmp/out_pt" 2>&1 || rc=$?
+assert_eq "混合 probe-type smoke suite dry-run → exit 0" "$rc" "0"
+assert_true "smoke dry-run 列出 SMOKE-01..05" grep -q "SMOKE-05" "$_tmp/out_pt"
+
 # probe 兜底(方案 B, 评审二轮 🟡): 直接调 probe 绕过 runner, unknown type → error JSON + exit 3
 rc=0; out=$(python3 "$PROBE_BIN" --host 127.0.0.1 --port 1 --user r --password x \
     --method GET --path /p --asserts '[{"type":"typo_assert"}]' --timeout 2 2>/dev/null) || rc=$?

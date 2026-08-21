@@ -7,7 +7,8 @@ runner.py in-process import 消费(旧 \x1f 分隔 stdout 帧已随 bash 主循�
 现为 list[dict] 返回; plan() 是唯一入口, CLI 形态已删——无外部消费方)。
 
 plan() 返回 list[dict], 元素字段:
-  ar / status / method / path / body / asserts / reason / source
+  ar / status / probe / method / path / body / asserts / attempts / interval
+  / reason / source
   status ∈ applicable / skip / xfail / cascade_skip(runner 把 cascade_skip
   归并读作 skip); method/path 为原字符串(schema 校验保证无控制字符);
   body/asserts 为已解析对象; reason/source 为原字符串。
@@ -23,7 +24,17 @@ import sys
 import yaml
 
 _ALLOWED_APPL = ("applicable", "skip", "xfail")
-_ALLOWED_ASSERT = ("status_in", "json_path_exists", "json_path_match")
+# probe-type 白名单(ADR-0028 smoke 收编): none 是 planner-only sentinel——
+# 仅 skip/cascade_skip AR 合法(无可执行探测定义), 永不进入 runner probe 分派。
+_ALLOWED_PROBE = ("redfish", "ipmi", "ssh_tcp", "none")
+# assert 原语 × probe-type 兼容矩阵: 矩阵外组合 = 数据错 → die() exit 3。
+_PROBE_ASSERTS = {
+    "redfish": ("status_in", "json_path_exists", "json_path_match",
+                "body_contains_any", "json_path_nonempty_any"),
+    "ipmi": ("exitcode_zero", "output_contains"),
+    "ssh_tcp": ("tcp_connectable",),
+    "none": (),
+}
 _ALLOWED_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")
 # 布局 v2(ADR-0025/0027 增补)起 ar_probes 与 applicability 方言分家:
 # ar_probes = 2(include 驱动薄顶层), applicability = 1(布局未变)。
@@ -128,11 +139,23 @@ def resolve_status(ars, appl):
     if default not in _ALLOWED_APPL:
         die("applicability default '{}' not in {}".format(default, ", ".join(_ALLOWED_APPL)))
     overrides = appl.get("overrides", {})
+    if not isinstance(overrides, dict):
+        die("applicability overrides must be a mapping (got {!r})".format(overrides))
     ar_ids = {a["ar"] for a in ars}
     # orphan override: 指向不存在 AR → exit 3(评审 🟡2)
-    for o_id in overrides:
+    for o_id, o in overrides.items():
         if o_id not in ar_ids:
             die("applicability override '{}' references unknown AR".format(o_id))
+        if not isinstance(o, dict):
+            die("applicability override '{}' must be a mapping (got {!r})".format(o_id, o))
+    # depends_on 容器也属 schema: 非 list/非字符串不能 traceback 成 exit 1。
+    deps_by_ar = {}
+    for a in ars:
+        deps = a.get("depends_on", [])
+        if not isinstance(deps, list) or not all(
+                isinstance(dep, str) and dep for dep in deps):
+            die("AR '{}' depends_on must be a list of non-empty strings (got {!r})".format(a["ar"], deps))
+        deps_by_ar[a["ar"]] = deps
     stat = {}
     for a in ars:
         o = overrides.get(a["ar"], {})
@@ -142,7 +165,7 @@ def resolve_status(ars, appl):
         stat[a["ar"]] = (st, o.get("reason", ""), o.get("source", ""))
     # depends_on 引用完整性(评审 🟡3): 未知 dependency 不默认 applicable
     for a in ars:
-        for dep in (a.get("depends_on") or []):
+        for dep in deps_by_ar[a["ar"]]:
             if dep not in ar_ids:
                 die("AR '{}' depends_on unknown AR '{}'".format(a["ar"], dep))
     # cascade-skip: depends_on 命中 skip/cascade_skip 的 AR 级联为 skip
@@ -151,7 +174,7 @@ def resolve_status(ars, appl):
         changed = False
         for a in ars:
             if stat[a["ar"]][0] == "applicable":
-                for dep in (a.get("depends_on") or []):
+                for dep in deps_by_ar[a["ar"]]:
                     ds = stat.get(dep, ("applicable", "", ""))[0]
                     if ds in ("skip", "cascade_skip"):
                         stat[a["ar"]] = ("cascade_skip", "depends_on " + dep + " skipped", "auto")
@@ -160,25 +183,96 @@ def resolve_status(ars, appl):
 
 
 def build_plan(a, st):
-    """单 AR 的 assert/request schema 校验 → 计划行 dict。"""
-    # 未知 assert type = baseline 数据错(评审二轮 🟡), 不当 BMC fail
-    for x in a.get("assert", []):
-        if x.get("type") not in _ALLOWED_ASSERT:
-            die("AR '{}' unknown assert type '{}'; allowed: {}".format(
-                a["ar"], x.get("type"), ", ".join(_ALLOWED_ASSERT)))
+    """单 AR 的 probe/assert/request schema 校验 → 计划行 dict。"""
+    ar = a["ar"]
+    # 类型防御(评审 🟡): AR 源自 YAML, 字段访问前先保证容器形态——
+    # 畸形数据 traceback 到 runner 会冒充 exit 1 假 α truth。
+    if not isinstance(a, dict):
+        die("AR entry must be a mapping (got {!r})".format(a))
+    raw_asserts = a.get("assert", [])
+    if not isinstance(raw_asserts, list) or not all(
+            isinstance(x, dict) for x in raw_asserts):
+        die("AR '{}' assert must be a list of mappings (got {!r})".format(ar, raw_asserts))
+    req_raw = a.get("request")
+    if req_raw is not None and not isinstance(req_raw, dict):
+        die("AR '{}' request must be a mapping (got {!r})".format(ar, req_raw))
+    # probe 字段: 缺省 redfish(v1/早期数据不带 probe); 白名单外 = 数据错。
+    p = a.get("probe", "redfish")
+    if p not in _ALLOWED_PROBE:
+        die("AR '{}' unknown probe type '{}'; allowed: {}".format(
+            ar, p, ", ".join(_ALLOWED_PROBE)))
+    # none sentinel: 无可执行探测定义, 仅 skip/cascade_skip 合法——
+    # applicable/xfail 却无探测定义 = "要跑却没定义", 数据错。
+    if p == "none" and st[0] not in ("skip", "cascade_skip"):
+        die("AR '{}' probe 'none' only allowed when applicability is skip/cascade_skip (got '{}')".format(ar, st[0]))
+    # executable AR(assert 将被消费)必须携带非空 assert(评审 🔴): assert 误删/漏写
+    # 时 probe 的空 assert 循环恒 pass → 假绿, 比 fail 更危险(CI 放行)。
+    if p != "none" and st[0] in ("applicable", "xfail") and not raw_asserts:
+        die("AR '{}' (probe '{}', status '{}') has no assert — executable AR requires a non-empty assert list".format(ar, p, st[0]))
+    # 未知 assert type / 矩阵外组合 = baseline 数据错(评审二轮 🟡), 不当 BMC fail
+    allowed_asserts = _PROBE_ASSERTS[p]
+    for x in raw_asserts:
+        t = x.get("type")
+        if t not in allowed_asserts:
+            die("AR '{}' assert type '{}' not allowed for probe '{}' (allowed: {})".format(
+                ar, t, p, ", ".join(allowed_asserts)))
         # status_in.value 必须非空 list: probe 读 a.get("value", []) — 字段写错
         # (如 values typo)或空列表会静默拿 [], 任何 HTTP code 都 fail, 冒充 BMC 缺陷。
-        if x.get("type") == "status_in":
+        if t == "status_in":
             v = x.get("value")
             if not isinstance(v, list) or not v:
-                die("AR '{}' status_in.value must be a non-empty list (got {!r})".format(a["ar"], v))
+                die("AR '{}' status_in.value must be a non-empty list (got {!r})".format(ar, v))
+        # body_contains_any.value: 非空 str 列表 — 空列表恒 false(必 fail 冒充缺陷),
+        # 空串在 `"" in body` 下恒 true(假 pass), 双向堵。
+        if t == "body_contains_any":
+            v = x.get("value")
+            if not isinstance(v, list) or not v or not all(
+                    isinstance(s, str) and s for s in v):
+                die("AR '{}' body_contains_any.value must be a non-empty list of non-empty strings (got {!r})".format(ar, v))
+        # json_path_nonempty_any.path: 非空 dotted 路径列表(同上双向堵)。
+        if t == "json_path_nonempty_any":
+            v = x.get("path")
+            if not isinstance(v, list) or not v or not all(
+                    isinstance(s, str) and s for s in v):
+                die("AR '{}' json_path_nonempty_any.path must be a non-empty list of non-empty strings (got {!r})".format(ar, v))
+        # output_contains.value: 非空 str(空串子串恒命中 → 假 pass)。
+        if t == "output_contains":
+            v = x.get("value")
+            if not isinstance(v, str) or not v:
+                die("AR '{}' output_contains.value must be a non-empty string (got {!r})".format(ar, v))
+        # 无参原语: 带 value 字段 = 字段写错(如 copy-paste status_in), 多余即拒。
+        if t in ("exitcode_zero", "tcp_connectable") and "value" in x:
+            die("AR '{}' assert '{}' takes no 'value' field".format(ar, t))
     # request 缺省容忍(评审配套⑤): 仅实际将 skip 的 AR 可省略 request — 无可执行
     # 探测定义就不该编造占位请求(如 Web banner AR 挂 GET /redfish/v1 的语义错位);
     # request 存在则无条件过白名单校验(数据要合法, applicability 改回 applicable 后即跑)。
-    req = a.get("request") or {}
+    req = req_raw or {}
+    attempts = None
+    interval = None
     if not req:
         if st[0] not in ("skip", "cascade_skip"):
-            die("AR '{}' missing request (required unless applicability is skip)".format(a["ar"]))
+            die("AR '{}' missing request (required unless applicability is skip)".format(ar))
+        method = ""
+        path = ""
+    elif p == "ipmi":
+        # ipmi request 分叉(ADR-0028): 目前仅 mc_info; 未知键 = 字段写错。
+        if set(req) - {"command"}:
+            die("AR '{}' ipmi request allows only 'command' (got keys {})".format(ar, sorted(req)))
+        if req.get("command") != "mc_info":
+            die("AR '{}' ipmi request.command must be 'mc_info' (got {!r})".format(ar, req.get("command")))
+        method = ""
+        path = ""
+    elif p == "ssh_tcp":
+        # ssh_tcp request 分叉: 可选 attempts/interval 正整数(缺省 30/5, 对齐
+        # 旧 smoke 就绪门 30×5); 无凭据无 method/path。
+        if set(req) - {"attempts", "interval"}:
+            die("AR '{}' ssh_tcp request allows only 'attempts'/'interval' (got keys {})".format(ar, sorted(req)))
+        for k in ("attempts", "interval"):
+            v = req.get(k)
+            if v is not None and (type(v) is not int or v <= 0):
+                die("AR '{}' ssh_tcp request.{} must be a positive integer (got {!r})".format(ar, k, v))
+        attempts = req.get("attempts", 30)
+        interval = req.get("interval", 5)
         method = ""
         path = ""
     else:
@@ -186,12 +280,13 @@ def build_plan(a, st):
         method = req.get("method", "")
         path = req.get("path", "")
         if not isinstance(method, str) or method not in _ALLOWED_METHODS:
-            die("AR '{}' bad HTTP method '{}'; allowed: {}".format(a["ar"], method, ", ".join(_ALLOWED_METHODS)))
+            die("AR '{}' bad HTTP method '{}'; allowed: {}".format(ar, method, ", ".join(_ALLOWED_METHODS)))
         if not isinstance(path, str) or has_control_chars(path):
-            die("AR '{}' request.path has control chars or non-str".format(a["ar"]))
+            die("AR '{}' request.path has control chars or non-str".format(ar))
     status, reason, source = st
-    return {"ar": a["ar"], "status": status, "method": method, "path": path,
-            "body": req.get("body"), "asserts": a.get("assert", []),
+    return {"ar": ar, "status": status, "probe": p, "method": method,
+            "path": path, "body": req.get("body"), "asserts": a.get("assert", []),
+            "attempts": attempts, "interval": interval,
             "reason": reason, "source": source}
 
 

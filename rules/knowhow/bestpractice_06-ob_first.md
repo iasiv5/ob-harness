@@ -35,18 +35,12 @@ agent 做 OpenBMC 环境动作时，以 `ob` 为唯一前门：先查 `ob` 是�
 | **2** | 用户主动取消（选 Q / 输 0 / 拒绝确认 banner）——不是失败 | 停下回报，不重试、不转手动 |
 | **3** | 前置缺失（缺 machine / 无 TTY / 未 init / 未 build / `ob dev` 缺子命令或 recipe），修复方式是用 `ob` 补前置 | 按 `ob` 提示补前置再重试，**不要据此转手动** |
 
-## exit 1 的 smoke α 例外（truth-reporter）
-
-`ob smoke`（probe-only 只读探测，ADR-0020）是 exit 1 语义的**唯一例外**：它的 exit 1 **不是**"`ob` 坏了"，而是 **α truth-reporter** —— 探测成功完成，但被测 BMC 接口如实报告了 ✗（某条断言发现接口异常）。典型：image 缺 RMCP+/LAN responder → IPMI 断言 ✗ → smoke exit 1（坏的是 **BMC 接口**，不是 smoke）。
-
-**处置**：见 smoke 的 exit 1 时，先读它的 ✗ 行 + stderr α warn（`exit 1 here is the α truth-reporter contract...`）；只有当信号指向 smoke 自身（QEMU 未起 / curl 失败 / 用法错误）时，才按通用 exit 1 回退。详见 `./ob --help` smoke Options 的 "Exit codes (smoke-specific — they OVERRIDE...)" 段。
-
 ## 按码回退协议
 
 1. **exit 0** → 完成。
 2. **exit 2** → 用户取消，停下回报，不重试、不转手动。（非交互场景几乎只在确认被 wrapper 拒时出现；用显式参数 + `--force` 可绕过 prompt。）
 3. **exit 3** → 读 `ob` 打印的 **remedy line**（exit 3 必带的一行 imperative 提示，内含字面的下一条 `ob` 命令），照它补前置再重跑（典型链：`./ob init <machine>` → `./ob build <machine>` → `./ob start-qemu <machine>`），或补全 CLI 参数。**禁止**因 exit 3 转手动。
-4. **exit 1 / 其他** → 真实失败才触发回退。（**例外：`ob smoke` 的 exit 1 多为 α truth-reporter —— 先按下文"exit 1 的 smoke α 例外"小节判定，勿误判 smoke 坏了。**）先读 `ob` 自己的报错 + 相关 `ob` 源码定位根因 → 根因在 scope 内就改掉重跑 `ob` → **只有当 `ob` 确实没这能力、或 `ob` 自身坏在 agent scope 之外时，才手动兜底**。
+4. **exit 1 / 其他** → 真实失败才触发回退。（**例外：`ob test-qemu` 的 exit 1 多为 α truth —— fail 行报的是 BMC 实际行为，先读 fail 行/debug BMC 接口，勿误判 test-qemu 坏了。**）先读 `ob` 自己的报错 + 相关 `ob` 源码定位根因 → 根因在 scope 内就改掉重跑 `ob` → **只有当 `ob` 确实没这能力、或 `ob` 自身坏在 agent scope 之外时，才手动兜底**。
 
 ## 手动兜底：严格度与确认
 

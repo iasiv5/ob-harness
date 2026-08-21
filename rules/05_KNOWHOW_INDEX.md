@@ -19,7 +19,7 @@
 
 特定任务的完整工作流程。
 
-- [OpenBMC 开发环境初始化](knowhow/workflow_01-obmc_env_init.md) — 首次 `ob init` 或重建 OpenBMC 开发环境时使用；含 `ob build`/`ob smoke` 故障排除（如 romulus smoke 第3条 FirmwareVersion 缺失、QEMU boot lockup）。
+- [OpenBMC 开发环境初始化](knowhow/workflow_01-obmc_env_init.md) — 首次 `ob init` 或重建 OpenBMC 开发环境时使用；含 `ob build`/`ob test-qemu --suite smoke` 故障排除（如 romulus smoke SMOKE-03 FirmwareVersion 缺失、QEMU boot lockup）。
 - [OpenBMC recipe 源码开发（ob dev modify）](knowhow/workflow_02-obmc_dev_modify.md) — 改 recipe 源码时用 `ob dev modify`/`list`/`refresh`/`build`/`reset`/`finish` 等子命令，而非手动 devtool。
 - [手动经验沉淀（ob 沉淀四步）](knowhow/workflow_04-manual_sedimentation.md) — 踩坑/学到经验后，走"判所有权 → 判层 → 写 → 收口"四步，把它沉淀到正确的层（product/user）与子层，落盘即收口。
 
