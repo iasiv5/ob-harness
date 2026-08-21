@@ -1,4 +1,5 @@
 # mgmt suite — 管理功能占位(skip AR 演示 applicability 机制)
+
 ars:
   - ar: BMC-8-1-5
     name: KVM virtual media attach

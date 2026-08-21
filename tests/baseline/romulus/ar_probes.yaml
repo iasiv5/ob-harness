@@ -1,7 +1,4 @@
-# romulus baseline AR — smoke suite(5 AR 可达性门) + mgmt suite(1 skip AR 占位)。
-# Schema 布局 v2 (ADR-0025/0027): 薄顶层 + ar_probes.d/<suite>.yaml 分片。
-# assert 原语见 tests/baseline/runner/plan.py _PROBE_ASSERTS 兼容矩阵。
-# auth: per-interface 凭据; cmd_test_qemu 读 auth.redfish, 缺则 fallback 顶层 user/password。
+# romulus baseline AR 
 
 # ══════════════════════════════════════════════════════════════════
 # schema 方言版本 — 布局 v2(薄顶层 + 分片), runner fail-closed 校验
@@ -9,7 +6,7 @@
 schema_version: 2
 
 # ══════════════════════════════════════════════════════════════════
-# per-interface 凭据 — redfish/ipmi/ssh_tcp 已实现, console 预留扩展
+# per-interface 凭据 — redfish/ipmi/ssh_tcp/console
 # ══════════════════════════════════════════════════════════════════
 auth:
   redfish:

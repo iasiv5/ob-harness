@@ -1,10 +1,12 @@
-# smoke suite — 7 AR 服务可达性门(旧 `ob smoke` 收编, ADR-0028)。
-# 语义等价映射: SMOKE-01/02 = 服务根/Manager 资源结构标记; SMOKE-03 = 固件版本
-# 非空(规范名 FirmwareVersion 或 alias SoftwareVersion); SMOKE-04 = IPMI mc info
-# rc==0(旧 judge 同款, 只验 rc——mc info 输出无稳定可断子串); SMOKE-05 = SSH TCP
-# 就绪门(默认 30 次 × 5s, 对齐旧 OB_SMOKE_READY_ATTEMPTS)。
-# 注: ar 行括注前的对齐空格是纯展示排版(2026-08-21 与 b865g8 移植对齐时统一);
-# smoke_diff 按 records[].ar 精确字符串配对, 两 machine 须保持同款排版。
+# smoke suite — 7 AR 服务可达性门(旧 `ob smoke` 收编, ADR-0028):
+#   SMOKE-01  Redfish 根服务可达且是真实 ServiceRoot(结构标记防 placeholder 误判)
+#   SMOKE-02  Redfish Managers/bmc 资源可达且是真实 Manager 文档
+#   SMOKE-03  Redfish BMC 固件版本非空(FirmwareVersion 或 alias SoftwareVersion)
+#   SMOKE-04  IPMI(lanplus) mc info rc==0
+#   SMOKE-05  SSH TCP 端口可连(仅 TCP 握手, 不登录)
+#   SMOKE-06  Console 串口完整登录到 shell prompt(pexpect 三阶段)
+#   SMOKE-07  Web UI 根路径 HTTPS 200 + Content-Type: text/html
+
 ars:
   - ar: SMOKE-01       (Redfish service root reachability)
     name: Redfish service root reachable
