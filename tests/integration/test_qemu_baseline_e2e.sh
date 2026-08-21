@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/integration/test_qemu_baseline_e2e.sh — ob test-qemu real integration (opt-in via --integration)。
-# 在真实 romulus QEMU 实例上跑 5 条 baseline AR, 断言五态 verdict + exit 契约成立。
+# 在真实 romulus QEMU 实例上跑 smoke suite baseline AR（现 8 条）, 断言五态 verdict + exit 契约成立。
 #
 # 生命周期(评审五轮 🟡1, 对照 smoke_e2e.sh start→probe→stop): 测试自管 QEMU 生命周期 ——
 #   无 firmware image → exit 77 SKIP; 有 image 但无 running 实例 → ob start-qemu(started_by_test=1);

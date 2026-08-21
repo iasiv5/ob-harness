@@ -6,7 +6,7 @@
 schema_version: 2
 
 # ══════════════════════════════════════════════════════════════════
-# per-interface 凭据 — redfish/ipmi/ssh_tcp/console
+# per-interface 凭据 — redfish/ipmi/ssh_tcp/console/web
 # ══════════════════════════════════════════════════════════════════
 auth:
   redfish:
@@ -19,6 +19,9 @@ auth:
     user: root
     password: "0penBmc"
   console:
+    user: root
+    password: "0penBmc"
+  web:
     user: root
     password: "0penBmc"
 

@@ -34,7 +34,7 @@ USAGE = """Usage: run.sh --host H --port P [--user U] [--password W] [options]
   owner-only) — probe_redfish.py _resolve_auth consumes the env fallback.
   --ar ID         only run AR with this id
   --suite NAME    only run ARs in this suite (built-in per-machine suites
-                  include 'smoke' — the 5-AR reachability gate, ADR-0028)
+                  include 'smoke' — the 8-AR reachability gate, ADR-0028)
   --report PATH   dump JSON report to PATH
   -v, --verbose   per-AR live fail/error lines also carry code= when
                   available (reason is always shown; skip lines always
@@ -199,7 +199,9 @@ def main():
                 if r["body"] is not None:
                     probe_args += ["--body", json.dumps(r["body"])]
             elif probe_type == "web":
-                # web probe: host/port/path 走 argv(与 redfish 同构), 无凭据;
+                # web probe: host/port/path 走 argv(与 redfish 同构); 静态资源无凭据;
+                # login 块(SMOKE-08)时凭据条件传(与 redfish 同构: argv 缺者不传,
+                # probe 侧从 OB_TQ_WEB_*/OB_TQ_* env 补 — 密码优先 env, 不落 argv)。
                 # scheme 可选(request.scheme 或 OB_TQ_WEB_SCHEME, 默认 https)
                 probe_args = [sys.executable,
                               os.path.join(script_dir, "probe_web.py"),
@@ -209,6 +211,12 @@ def main():
                               "--timeout", o["timeout"]]
                 if r.get("scheme"):
                     probe_args += ["--scheme", r["scheme"]]
+                if r.get("login"):
+                    probe_args += ["--login", json.dumps(r["login"])]
+                    if o["user"]:
+                        probe_args += ["--user", o["user"]]
+                    if o["password"]:
+                        probe_args += ["--password", o["password"]]
             elif probe_type in ("ipmi", "ssh_tcp", "console"):
                 probe_args = [sys.executable,
                               os.path.join(script_dir, "probe_%s.py" % probe_type),

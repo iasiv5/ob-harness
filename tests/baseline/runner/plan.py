@@ -184,6 +184,44 @@ def resolve_status(ars, appl):
     return stat
 
 
+def _gate_login(ar, login):
+    """web login 块 schema 校验(SMOKE-08, fail-closed 白名单与 probe_web 契约同构)。"""
+    if not isinstance(login, dict):
+        die("AR '{}' web request.login must be a mapping (got {!r})".format(ar, login))
+    allowed = {"path", "method", "content_type", "body", "csrf",
+               "ok_statuses", "logout_path", "logout_method"}
+    if set(login) - allowed:
+        die("AR '{}' login allows only {} (got keys {})".format(
+            ar, ", ".join(sorted(allowed)), sorted(login)))
+    lp = login.get("path")
+    if not isinstance(lp, str) or not lp or has_control_chars(lp):
+        die("AR '{}' login.path must be a non-empty str without control chars (got {!r})".format(ar, lp))
+    m = login.get("method")
+    if m is not None and m != "POST":
+        die("AR '{}' login.method must be 'POST' (got {!r})".format(ar, m))
+    ct = login.get("content_type")
+    if ct is not None and not isinstance(ct, str):
+        die("AR '{}' login.content_type must be a str (got {!r})".format(ar, ct))
+    body = login.get("body")
+    if not isinstance(body, str) or not body:
+        die("AR '{}' login.body must be a non-empty str with {{user}}/{{password}} placeholders".format(ar))
+    # 占位符显式校验(fail-closed): 漏写占位符 = 凭据不进登录请求 / 凭据硬编码进
+    # YAML, 都该在 schema gate 拦下而不是 live 才失败。
+    if "{user}" not in body or "{password}" not in body:
+        die("AR '{}' login.body must contain both {{user}} and {{password}} placeholders (got {!r})".format(ar, body))
+    if "csrf" in login and not isinstance(login["csrf"], bool):
+        die("AR '{}' login.csrf must be a bool (got {!r})".format(ar, login["csrf"]))
+    ok = login.get("ok_statuses")
+    if ok is not None and (not isinstance(ok, list) or not all(type(x) is int for x in ok)):
+        die("AR '{}' login.ok_statuses must be a list of ints (got {!r})".format(ar, ok))
+    lop = login.get("logout_path")
+    if lop is not None and (not isinstance(lop, str) or has_control_chars(lop)):
+        die("AR '{}' login.logout_path must be a str without control chars (got {!r})".format(ar, lop))
+    lom = login.get("logout_method")
+    if lom is not None and lom not in ("POST", "DELETE"):
+        die("AR '{}' login.logout_method must be 'POST' or 'DELETE' (got {!r})".format(ar, lom))
+
+
 def build_plan(a, st):
     """单 AR 的 probe/assert/request schema 校验 → 计划行 dict。"""
     ar = a["ar"]
@@ -288,15 +326,19 @@ def build_plan(a, st):
         method = ""
         path = ""
     elif p == "web":
-        # web request 分叉: path 必填 + scheme 可选(HTTP GET 静态资源, 无 method/body)。
-        if set(req) - {"path", "scheme"}:
-            die("AR '{}' web request allows only 'path' and optional 'scheme' (got keys {})".format(ar, sorted(req)))
+        # web request 分叉: path 必填 + scheme 可选(HTTP GET 静态资源, 无 method/body)
+        # + login 可选块(SMOKE-08 两段式: 登录建会话 → 带 cookie GET 目标路径)。
+        if set(req) - {"path", "scheme", "login"}:
+            die("AR '{}' web request allows only 'path' and optional 'scheme'/'login' (got keys {})".format(ar, sorted(req)))
         path = req.get("path", "")
         if not isinstance(path, str) or has_control_chars(path):
             die("AR '{}' web request.path has control chars or non-str".format(ar))
         scheme = req.get("scheme")
         if scheme is not None and scheme not in ("http", "https"):
             die("AR '{}' web request.scheme must be 'http' or 'https' (got {!r})".format(ar, scheme))
+        login = req.get("login")
+        if login is not None:
+            _gate_login(ar, login)
         method = "GET"  # web 语义隐含 GET, 但 runner 分派不消费 method 字段
     else:
         # method 白名单 + path 拒控制字符: 两者直接进入 HTTP argv。
@@ -310,7 +352,8 @@ def build_plan(a, st):
     return {"ar": ar, "status": status, "probe": p, "method": method,
             "path": path, "body": req.get("body"), "asserts": a.get("assert", []),
             "attempts": attempts, "interval": interval, "timeout": req.get("timeout"),
-            "scheme": req.get("scheme"), "reason": reason, "source": source}
+            "scheme": req.get("scheme"), "reason": reason, "source": source,
+            "login": req.get("login")}
 
 
 def plan(ar_probes, appl_path, ar_filter, suite_filter):

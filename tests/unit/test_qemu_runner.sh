@@ -767,4 +767,138 @@ for tamper in 's/^schema_version: 1/schema_version: true/' \
 done
 rm -rf "$_tmp5"
 
+# ── SMOKE-08 login 块 schema 与分派(2026-08-21 计划: web login 两段式) ──
+_tmp6=$(mktemp -d)
+# fixture: 单 web AR + login 块(合法/非法变体), 复用 smoke 的 appl 形态
+_web_case() {  # $1 = login 行内容(YAML 片段), $2 = 描述
+  local login_yaml="$1"
+  cat > "$_tmp6/ar_probes.yaml" <<'YAML'
+schema_version: 2
+auth: {user: r, password: x}
+include: [ar_probes.d/web.yaml]
+YAML
+  mkdir -p "$_tmp6/ar_probes.d"
+  {
+    echo "ars:"
+    echo "  - ar: WEB-01"
+    echo "    name: web login probe"
+    echo "    probe: web"
+    echo "    suite: web"
+    echo "    request:"
+    echo "      path: /"
+    echo "      login:"
+    printf '%s\n' "$login_yaml"
+    echo "    assert:"
+    echo "      - type: status_in"
+    echo "        value: [200]"
+    echo "    depends_on: []"
+    echo "    rationale: test"
+  } > "$_tmp6/ar_probes.d/web.yaml"
+  rc=0; OB_TQ_AR_PROBES="$_tmp6/ar_probes.yaml" OB_TQ_APPL="$_tmp6/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --suite web --dry-run \
+    >"$_tmp6/out" 2>&1 || rc=$?
+  echo "$rc"
+}
+
+cat > "$_tmp6/appl.yaml" <<'YAML'
+schema_version: 1
+default: applicable
+overrides: {}
+YAML
+
+# ① 非法键 → exit 3 指名
+rc=$(_web_case "        bad_key: 1" "")
+assert_eq "login 非法键 → exit 3" "$rc" "3"
+grep -q "login allows only" "$_tmp6/out"
+assert_true "login 非法键 remedy 指名 allows only" grep -q "login allows only" "$_tmp6/out"
+
+# ①' logout_method 非法值 → exit 3
+rc=$(_web_case "        path: /login
+        body: '{user}:{password}'
+        logout_method: GET" "")
+assert_eq "login logout_method=GET → exit 3" "$rc" "3"
+assert_true "logout_method remedy 指名 POST/DELETE" grep -q "logout_method must be" "$_tmp6/out"
+
+# ①'' body 缺占位符 → exit 3(fail-closed: 凭据硬编码/漏写占位符 schema gate 拦截)
+rc=$(_web_case "        path: /login
+        body: 'static-body-without-placeholders'" "")
+assert_eq "login body 缺占位符 → exit 3" "$rc" "3"
+assert_true "缺占位符 remedy 指名 placeholders" grep -q "placeholders" "$_tmp6/out"
+rc=$(_web_case "        path: /login
+        body: 'only-{user}-here'" "")
+assert_eq "login body 缺 {password} → exit 3" "$rc" "3"
+
+# ② 合法 login 块 → dry-run exit 0
+rc=$(_web_case "        path: /login
+        content_type: application/json
+        body: '{\"username\":\"{user}\",\"password\":\"{password}\"}'
+        csrf: false
+        ok_statuses: [200, 201]
+        logout_path: /logout
+        logout_method: POST" "")
+assert_eq "合法 login 块 dry-run → exit 0" "$rc" "0"
+
+# ③ stub 分派测试: 整目录复制 runner, probe_web.py 换 argv/env 记录 stub, 非 dry-run
+#    跑 web suite, 断言 --login 透传 / 密码不进 argv / probe 侧 OB_TQ_WEB_* 优先。
+_tmp_runner=$(mktemp -d)
+cp -r "$_repo/tests/baseline/runner/." "$_tmp_runner/"
+rm -rf "$_tmp_runner/__pycache__"
+cat > "$_tmp_runner/probe_web.py" <<'PY'
+#!/usr/bin/env python3
+import json
+import os
+import sys
+
+with open(os.environ["OB_TQ_STUB_RECORD"], "w") as f:
+    json.dump({"argv": sys.argv[1:],
+               "web_user": os.environ.get("OB_TQ_WEB_USER"),
+               "web_password": os.environ.get("OB_TQ_WEB_PASSWORD")}, f)
+print(json.dumps({"pass": True, "code": 200, "body": "", "actual": None, "reason": "stub ok"}))
+sys.exit(0)
+PY
+cat > "$_tmp6/ar_probes.d/web.yaml" <<'YAML'
+ars:
+  - ar: WEB-01
+    name: web login probe
+    probe: web
+    suite: web
+    request:
+      path: /
+      login:
+        path: /login
+        body: "{user}:{password}"
+        csrf: false
+    assert:
+      - type: status_in
+        value: [200]
+    depends_on: []
+    rationale: test
+YAML
+rc=0
+OB_TQ_AR_PROBES="$_tmp6/ar_probes.yaml" OB_TQ_APPL="$_tmp6/appl.yaml" \
+OB_TQ_STUB_RECORD="$_tmp6/stub_record.json" \
+OB_TQ_USER=dummy OB_TQ_PASSWORD=dummy \
+OB_TQ_WEB_USER=dummyweb OB_TQ_WEB_PASSWORD=dummyweb \
+bash "$_tmp_runner/run.sh" --host 127.0.0.1 --port 1 --suite web >"$_tmp6/out3" 2>&1 || rc=$?
+assert_eq "stub 分派: web suite 非 dry-run → exit 0" "$rc" "0"
+assert_true "stub 记录存在(分派真的跑到 probe_web)" test -s "$_tmp6/stub_record.json"
+if [[ -s "$_tmp6/stub_record.json" ]]; then
+  python3 - "$_tmp6/stub_record.json" <<'PY'
+import json
+import sys
+
+rec = json.load(open(sys.argv[1]))
+argv = rec["argv"]
+assert "--login" in argv, "argv missing --login: %r" % argv
+i = argv.index("--login")
+assert '"path": "/login"' in argv[i + 1].replace("\'", '"'), "login JSON not passed"
+assert "--password" not in argv and "dummyweb" not in argv and "dummy" not in argv, \
+    "password leaked into argv: %r" % argv
+assert rec["web_user"] == "dummyweb", "OB_TQ_WEB_USER not preferred: %r" % rec
+assert rec["web_password"] == "dummyweb", "OB_TQ_WEB_PASSWORD not preferred: %r" % rec
+PY
+  assert_eq "stub 记录内容(--login 透传/密码不进 argv/OB_TQ_WEB_* 优先)" "$?" "0"
+fi
+rm -rf "$_tmp6" "$_tmp_runner"
+
 assert_summary

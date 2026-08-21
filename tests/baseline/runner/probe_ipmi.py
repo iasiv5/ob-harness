@@ -136,10 +136,10 @@ def run_selftest():
     chk("port zero", _valid_port("0"), False)
     chk("port oob", _valid_port("70000"), False)
     # argv 构造: 含 -U user, 不含密码字面量(-E 形态, 密码走子进程 env)
-    av = _build_argv(2623, "toutiao")
+    av = _build_argv(2623, "ipmiuser")
     chk("argv shape", av, ["ipmitool", "-I", "lanplus", "-E", "-H", "localhost",
-                           "-p", "2623", "-U", "toutiao", "mc", "info"])
-    chk("argv no password", any("0penBmc" in x or "toutiao!@#" in x for x in av), False)
+                           "-p", "2623", "-U", "ipmiuser", "mc", "info"])
+    chk("argv no password", any("0penBmc" in x or "ipmiuser!@#" in x for x in av), False)
     chk("argv no -P", any(x == "-P" for x in av), False)
     # 凭据 fallback 链
     chk("creds ipmi-specific", _resolve_creds({"OB_TQ_IPMI_USER": "a", "OB_TQ_IPMI_PASSWORD": "b"}), ("a", "b"))

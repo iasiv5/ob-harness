@@ -17,3 +17,5 @@
 - **不设默认 suite**：`ob test-qemu` 无参数仍跑全量 applicable AR，smoke 只是显式 suite。
 - **测试迁移**：旧 smoke_* 测试簇（protocol/orchestration/integration 四层 13+ 文件）按新语义并入 test-qemu 既有分层后删除；smoke_diff 单测随 diff 工具保留、改断言格式。
 - 本 ADR 是决策记录；CONTEXT.md 词条（`ob smoke` → `smoke suite`、`ob test-qemu`/`baseline` 的"正交姊妹"表述）与 ADR-0020/0023/0025 的就地修订随实施落地（glossary 与代码同步变更，不超前描述不存在的命令面）。ADR 按活文档原则就地修订，不做 superseded-by 链。
+
+> **历史注记（2026-08-21）**：收编时点为 5 AR（决策原文保留）。此后 smoke 门扩容：+SMOKE-05 SSH TCP / SMOKE-06 console / SMOKE-07 Web UI（7 AR，2026-08-20），+SMOKE-08 Web 登录 + 登录后会话资源（8 AR，2026-08-21，`request.login` 数据驱动登录块）。当前门规模以 `tests/baseline/romulus/ar_probes.d/smoke.yaml` 头注释为准。
