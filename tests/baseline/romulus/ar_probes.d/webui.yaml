@@ -1,0 +1,16 @@
+# webui suite — Web 定制能力(暂无可执行 probe) (布局 v2 分片, 顶层见 ../ar_probes.yaml)
+ars:
+  - ar: BMC-7-7-1
+    name: Web UI banner customization
+    probe: redfish
+    suite: webui
+    # 无 request: skip AR 无可执行探测定义, 不编造占位请求(评审配套⑤;
+    # planner 允许 skip AR 省略 request, applicable AR 缺 request 仍 exit 3)
+    assert:
+      - type: status_in
+        value: [200]
+    depends_on: []
+    rationale: >
+      Web banner 定制能力暂无 romulus QEMU 可执行 Redfish probe,
+      applicability 标 skip, 不编造占位请求。
+

@@ -55,6 +55,13 @@ References: [ADR-0025](0025-test-qemu-baseline-fullstack-per-machine.md)（本 A
   exit 3 + remedy，fail-closed。
 - **0025 的自包含分发故事弱化**：给另一团队/环境接 custom 机 baseline 现在需要
   主仓（代码）+ 子仓（数据）两件。社区机不受影响（tests/ 自包含）。
+- **数据布局 v2（2026-08-21 增补,schema_version: 2）**：`ar_probes.yaml` 升级为 include
+  驱动薄顶层 + `ar_probes.d/<suite>.yaml` 分片（契约详见
+  [ADR-0025](0025-test-qemu-baseline-fullstack-per-machine.md) 增补节）。runner 侧落点：
+  plan.py `load_inputs` 实现 include 解析（缺失/越界/重复 AR id 皆 die），**只认 v2 布局、
+  不保留单文件兼容层**——主仓 runner 与 romulus demo 一次改完自洽，b865g8 子仓的
+  gen_baseline.py 改输出新布局 + 重跑生成 + 子仓 commit 纳入同一任务收尾，不可用窗口归零。
+  schema 演进流程照旧 fail-closed：支持集更新为 `{2}`，旧 v1 数据 exit 3 + remedy。
 - **可逆性**：退回 per-machine = 子仓 cp 六文件回去，成本低；但"单副本"确立后回退同样
   是语义倒退（重新引入同步纪律），正合 ADR 门槛（surprising：两仓分布 + 版本门禁的组合
   后人会问；real trade-off：单副本 vs 子仓自包含）。

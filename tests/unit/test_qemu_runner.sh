@@ -36,11 +36,16 @@ rc=0; bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >
 assert_eq "full AR dry-run → exit 0 (not false-green)" "$rc" "0"
 
 # unknown assert type → exit 3(planner 白名单, 评审二轮 🟡: baseline 数据错, 非 BMC fail)
+# v2 布局(ADR-0025/0027 增补): 薄顶层(schema_version: 2 + auth + include) + ar_probes.d/ 分片
 PROBE_BIN="$(dirname "$RUNNER")/probe_redfish.py"
 _tmp=$(mktemp -d)
 cat > "$_tmp/bad.yaml" <<'YAML'
-schema_version: 1
+schema_version: 2
 auth: {user: r, password: x}
+include: [ar_probes.d/bad.yaml]
+YAML
+mkdir -p "$_tmp/ar_probes.d"
+cat > "$_tmp/ar_probes.d/bad.yaml" <<'YAML'
 ars:
   - ar: BAD-TYPO
     name: typo assert type
@@ -99,8 +104,11 @@ sys.exit(rc)
 PY
 chmod +x "$_tmp/probe-stub.py"
 cat > "$_tmp/one.yaml" <<'YAML'
-schema_version: 1
+schema_version: 2
 auth: {user: r, password: x}
+include: [ar_probes.d/one.yaml]
+YAML
+cat > "$_tmp/ar_probes.d/one.yaml" <<'YAML'
 ars:
   - ar: TEST-A
     name: protocol fixture
@@ -275,24 +283,34 @@ assert_eq "no creds at all → exit 2 usage" "$rc" "2"
 # Planner framing inputs: method is canonical uppercase; AR/path reject every
 # ASCII control character, including the unit-separator used by the planner.
 python3 - "$_tmp/lower-method.yaml" "$_tmp/control-path.yaml" <<'PY'
+import os
 import sys
 import yaml
 
-base = {
-  "schema_version": 1,
-    "auth": {"user": "r", "password": "x"},
-  "ars": [{
+base_ars = [{
     "ar": "TEST-A", "name": "fixture", "probe": "redfish", "suite": "fixture",
     "request": {"method": "get", "path": "/redfish/v1"},
     "assert": [{"type": "status_in", "value": [200]}],
     "depends_on": [], "rationale": "fixture",
-  }],
-}
-with open(sys.argv[1], "w") as stream:
-  yaml.safe_dump(base, stream)
-base["ars"][0]["request"] = {"method": "GET", "path": "/redfish/v1\x1fManagers"}
-with open(sys.argv[2], "w") as stream:
-  yaml.safe_dump(base, stream)
+  }]
+
+def write_v2(top):
+    top = os.path.abspath(top)
+    frag_dir = os.path.join(os.path.dirname(top), "ar_probes.d")
+    os.makedirs(frag_dir, exist_ok=True)
+    frag = os.path.join(frag_dir, os.path.basename(top))
+    with open(top, "w") as stream:
+        yaml.safe_dump({"schema_version": 2, "auth": {"user": "r", "password": "x"},
+                        "include": ["ar_probes.d/" + os.path.basename(top)]}, stream)
+    return frag
+
+frag = write_v2(sys.argv[1])
+with open(frag, "w") as stream:
+    yaml.safe_dump({"ars": base_ars}, stream)
+frag = write_v2(sys.argv[2])
+base_ars[0]["request"] = {"method": "GET", "path": "/redfish/v1\x1fManagers"}
+with open(frag, "w") as stream:
+    yaml.safe_dump({"ars": base_ars}, stream)
 PY
 _planner_fixture() {
   local ar_file="$1"
@@ -306,8 +324,11 @@ assert_rc 3 "planner unit-separator path rejected as config error" \
 
 # skip AR 可省略 request(评审配套⑤): 无占位假请求; applicable AR 缺 request → exit 3
 cat > "$_tmp/skip-noreq.yaml" <<'YAML'
-schema_version: 1
+schema_version: 2
 auth: {user: r, password: x}
+include: [ar_probes.d/skip-noreq.yaml]
+YAML
+cat > "$_tmp/ar_probes.d/skip-noreq.yaml" <<'YAML'
 ars:
   - ar: TEST-SKIP
     name: skip without request
@@ -413,7 +434,11 @@ sys.stdout.write('{"pass": true, "code": 200, "body": "b", "actual": null, "reas
 sys.exit(0)
 EOF
 cat > "$_tmp3/ars.yaml" <<'YAML'
-schema_version: 1
+schema_version: 2
+include: [ar_probes.d/ars.yaml]
+YAML
+mkdir -p "$_tmp3/ar_probes.d"
+cat > "$_tmp3/ar_probes.d/ars.yaml" <<'YAML'
 ars:
   - ar: T-STDERR
     suite: t
@@ -446,7 +471,10 @@ sys.stdout.write(json.dumps({"pass": True, "code": 200, "body": "got --body " + 
 sys.exit(0)
 EOF
 cat > "$_tmp3/ars2.yaml" <<'YAML'
-schema_version: 1
+schema_version: 2
+include: [ar_probes.d/ars2.yaml]
+YAML
+cat > "$_tmp3/ar_probes.d/ars2.yaml" <<'YAML'
 ars:
   - ar: T-BODY
     suite: t
@@ -477,7 +505,11 @@ default: applicable
 YAML
 for badval in 'values: [200]' 'value: []' 'value: 200'; do
   cat > "$_tmp4/ars.yaml" <<YAML
-schema_version: 1
+schema_version: 2
+include: [ar_probes.d/ars.yaml]
+YAML
+  mkdir -p "$_tmp4/ar_probes.d"
+  cat > "$_tmp4/ar_probes.d/ars.yaml" <<YAML
 ars:
   - ar: T-BADASSERT
     suite: t
@@ -493,25 +525,118 @@ YAML
 done
 rm -rf "$_tmp4"
 
-# schema_version 门禁回归矩阵(ADR-0027 两仓耦合): bool/string/99/missing × 两份 YAML,
-# 全部须 exit 3 + "bad schema_version"。bool 案尤其关键——type(v) is not int 防
-# True == 1 穿透(评审三轮真 bug), 不得退化成 isinstance/not in 单检查。
+# include 契约负例(布局 v2, ADR-0025/0027 增补): 缺失分片/越界/sibling 前缀/绝对路径/
+# 顶层 ars/跨分片重复 AR/分片缺 ars/v1 旧形态, 全部 exit 3; v1 形态必须报 bad schema_version
+# (校验顺序: schema 门禁先于结构契约)。sibling 案用 relpath 生成真相对路径, 只考验
+# commonpath 判界(绝对路径行为由独立负例覆盖)。
+_tmp6=$(mktemp -d)
+mkdir -p "$_tmp6/ar_probes.d"
+cat > "$_tmp6/appl.yaml" <<'YAML'
+schema_version: 1
+default: applicable
+YAML
+_mk_top() {  # $1 = include 列表 YAML 文本(单行), 写到 $_tmp6/ar_probes.yaml
+  printf 'schema_version: 2\nauth: {user: r, password: x}\ninclude: [%s]\n' "$1" \
+    > "$_tmp6/ar_probes.yaml"
+}
+_inc_neg() {  # $1 = 用例名, $2 = 可选 stderr grep 模式
+  rc=0; OB_TQ_AR_PROBES="$_tmp6/ar_probes.yaml" OB_TQ_APPL="$_tmp6/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run \
+    >"$_tmp6/out" 2>&1 || rc=$?
+  assert_eq "include contract [$1] → exit 3" "$rc" "3"
+  if [ "$#" -ge 2 ]; then
+    assert_true "include contract [$1] stderr 指名 $2" grep -q "$2" "$_tmp6/out"
+  fi
+}
+cat > "$_tmp6/ar_probes.d/ok.yaml" <<'YAML'
+ars:
+  - ar: TEST-A
+    suite: fixture
+    request: {method: GET, path: /redfish/v1}
+    assert: [{type: status_in, value: [200]}]
+    depends_on: []
+YAML
+
+# 缺失分片 → include + 路径指名
+_mk_top 'ar_probes.d/nope.yaml'
+_inc_neg "missing fragment" 'include.*nope'
+
+# 逃出 baseline 目录(../..)
+_mk_top '../../etc/passwd'
+_inc_neg "escape via ../../"
+
+# sibling 前缀逃逸: <tmpdir>-evil 与 base 共享字符串前缀, startswith 会误放行
+_evil="${_tmp6}-evil"; mkdir -p "$_evil"
+printf 'ars: []\n' > "$_evil/x.yaml"
+_rel="$(python3 -c 'import os,sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' \
+  "$_evil/x.yaml" "$_tmp6")"
+_mk_top "$_rel"
+_inc_neg "sibling-prefix escape"
+
+# 绝对路径 include: 路径合法且在 base 内, 仍拒(relocatable 契约)
+_mk_top "$_tmp6/ar_probes.d/ok.yaml"
+_inc_neg "absolute include path"
+
+# 顶层 ars 不允许(v2 ars 只能住在分片)
+_mk_top 'ar_probes.d/ok.yaml'
+printf 'schema_version: 2\nauth: {user: r, password: x}\nars: []\ninclude: [ar_probes.d/ok.yaml]\n' \
+  > "$_tmp6/ar_probes.yaml"
+_inc_neg "top-level ars rejected" "top-level 'ars'"
+
+# 跨分片重复 AR id
+cat > "$_tmp6/ar_probes.d/dup.yaml" <<'YAML'
+ars:
+  - ar: TEST-A
+    suite: fixture
+    request: {method: GET, path: /redfish/v1}
+    assert: [{type: status_in, value: [200]}]
+    depends_on: []
+YAML
+_mk_top 'ar_probes.d/ok.yaml, ar_probes.d/dup.yaml'
+_inc_neg "duplicate AR across fragments" 'duplicate AR ID'
+
+# 分片缺 ars 键
+printf '# no ars here\n' > "$_tmp6/ar_probes.d/noars.yaml"
+_mk_top 'ar_probes.d/noars.yaml'
+_inc_neg "fragment missing ars key"
+
+# v1 旧单文件形态(schema_version: 1 + 顶层 ars) → bad schema_version, 非结构错
+printf 'schema_version: 1\nauth: {user: r, password: x}\nars: []\n' > "$_tmp6/ar_probes.yaml"
+_inc_neg "v1 single-file form" 'bad schema_version'
+
+rm -rf "$_tmp6" "$_evil"
+
+# schema_version 门禁回归矩阵(ADR-0027 两仓耦合): bool/string/越界版本/旧版本/missing
+# × 两份 YAML(ar_probes 基准 v2 / applicability 基准 v1), 全部 exit 3 + "bad schema_version"。
+# bool 案尤其关键——type(v) is not int 防 True == 1 穿透(评审三轮真 bug), 不得退化成
+# isinstance/not in 单检查。ar_probes 侧须拷整个 ar_probes.d/(v2 include 契约),
+# 否则 gate 未测先死在 include missing。
 _tmp5=$(mktemp -d)
 _repo_data="$_repo/tests/baseline/romulus"
+_gate_case() {  # $1 = tamper, $2 = which; 表达式含空格, 调用侧双引号传参
+  local tamper="$1" which="$2"
+  cp "$_repo_data"/*.yaml "$_tmp5/" && cp -r "$_repo_data/ar_probes.d" "$_tmp5/"
+  sed -i "$tamper" "$_tmp5/$which"
+  rc=0; OB_TQ_AR_PROBES="$_tmp5/ar_probes.yaml" OB_TQ_APPL="$_tmp5/applicability.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run \
+    >"$_tmp5/out" 2>&1 || rc=$?
+  assert_eq "schema gate [$tamper @ $which] → exit 3" "$rc" "3"
+  assert_true "schema gate [$tamper @ $which] remedy 指名 schema_version" \
+    grep -q "bad schema_version" "$_tmp5/out"
+}
+for tamper in 's/^schema_version: 2/schema_version: true/' \
+              's/^schema_version: 2/schema_version: "2"/' \
+              's/^schema_version: 2/schema_version: 99/' \
+              's/^schema_version: 2/schema_version: 1/' \
+              '/^schema_version: 2/d'; do
+  _gate_case "$tamper" ar_probes.yaml
+done
 for tamper in 's/^schema_version: 1/schema_version: true/' \
               's/^schema_version: 1/schema_version: "1"/' \
               's/^schema_version: 1/schema_version: 99/' \
+              's/^schema_version: 1/schema_version: 2/' \
               '/^schema_version: 1/d'; do
-  for which in ar_probes.yaml applicability.yaml; do
-    cp "$_repo_data"/*.yaml "$_tmp5/"
-    sed -i "$tamper" "$_tmp5/$which"
-    rc=0; OB_TQ_AR_PROBES="$_tmp5/ar_probes.yaml" OB_TQ_APPL="$_tmp5/applicability.yaml" \
-      bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run \
-      >"$_tmp5/out" 2>&1 || rc=$?
-    assert_eq "schema gate [$tamper @ $which] → exit 3" "$rc" "3"
-    assert_true "schema gate [$tamper @ $which] remedy 指名 schema_version" \
-      grep -q "bad schema_version" "$_tmp5/out"
-  done
+  _gate_case "$tamper" applicability.yaml
 done
 rm -rf "$_tmp5"
 

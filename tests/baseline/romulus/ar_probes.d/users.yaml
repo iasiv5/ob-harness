@@ -1,0 +1,38 @@
+# users suite — 账户规则与集合字段 (布局 v2 分片, 顶层见 ../ar_probes.yaml)
+ars:
+  - ar: BMC-3-1-2
+    name: Reject account create violating username rule
+    probe: redfish
+    suite: users
+    request:
+      method: POST
+      path: /redfish/v1/AccountService/Accounts
+      body:
+        UserName: "9bad"
+        Password: "Abcd1234!"
+        RoleId: ReadOnly
+    assert:
+      - type: status_in
+        value: [400, 403]
+    depends_on: [BMC-2-2-1]
+    rationale: >
+      用户名规则:无效用户名 (9bad) 应被拒绝 4xx。mutating negative —
+      若 BMC 违反 baseline 返回 2xx 创建账号,probe 引擎 (probe_redfish.py)
+      从 Location/@odata.id 抽 URI best-effort DELETE 清理,防污染复用实例
+      (评审六轮 黄2)。
+
+  - ar: BMC-9-1-1
+    name: Accounts collection Description present
+    probe: redfish
+    suite: users
+    request:
+      method: GET
+      path: /redfish/v1/AccountService/Accounts
+    assert:
+      - type: json_path_exists
+        path: Description
+    depends_on: [BMC-2-2-1]
+    rationale: >
+      romulus Accounts 集合顶层当前暴露 Description, default applicable 将其
+      锁为可见 Redfish 字段。避开 @odata.count 等带点字段(probe resolver
+      是 split('.'), 带点 key 会被拆错)。

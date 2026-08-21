@@ -1,6 +1,9 @@
 # romulus baseline AR (需求条目) — 5 条 redfish probe AR 覆盖 core/users/webui 场景。
-schema_version: 1
-# Schema (per-machine, ADR-0025): auth + ars[]。每条 AR 字段顺序:
+schema_version: 2
+# Schema 布局 v2 (per-machine, ADR-0025/0027 增补): 薄顶层 + 按 suite 分片。
+#   顶层 = schema_version + auth + include(相对路径列表); 顶层不允许 ars:。
+#   分片 = ar_probes.d/<suite>.yaml, 每片 = 局部注释 + ars:; merge 顺序 =
+#   include 顺序 × 分片内原序(suite-contiguous)。每条 AR 字段顺序:
 #   ar / name / probe / suite / request{method,path,body} / assert[{type,...}] / depends_on / rationale
 # assert 原语 (tests/baseline/runner/probe_redfish.py, 共享单副本 ADR-0027):
 #   status_in        {value: [code,...]}
@@ -17,89 +20,7 @@ auth:
   # ipmi:    {user: ..., password: ...}   # 后续 ipmi probe 扩展
   # ssh:     {user: ..., password: ...}   # 后续 ssh probe 扩展
   # console: {user: ..., password: ...}   # 后续 console probe 扩展
-
-ars:
-  - ar: BMC-2-2-1
-    name: Redfish service reachable
-    probe: redfish
-    suite: core
-    request:
-      method: GET
-      path: /redfish/v1
-    assert:
-      - type: status_in
-        value: [200]
-    depends_on: []
-    rationale: Redfish 根服务须可达 (HTTP 200)
-
-  - ar: BMC-3-15-1
-    name: BMC firmware inventory queryable
-    probe: redfish
-    suite: core
-    request:
-      method: GET
-      path: /redfish/v1/Managers/bmc
-    assert:
-      - type: status_in
-        value: [200]
-      - type: json_path_exists
-        path: FirmwareVersion
-    depends_on: [BMC-2-2-1]
-    rationale: >
-      锚点重评(2026-08-17): Managers/bmc.FirmwareVersion 是 Redfish 规范
-      中 BMC 版本上报的正位锚点, 实测已连续 5/5 稳定填充
-      (3.1.0-dev-896-g13fe9141ef-dirty), 从降级锚点升回。此前 bmcweb
-      software functional path 映射缺口时期曾降级锚到
-      UpdateService/FirmwareInventory collection 非空(弱断言), 该降级
-      锚点随缺口修复退役 — 降级不是永久形态, 见 README 重评规则。
-
-  - ar: BMC-3-1-2
-    name: Reject account create violating username rule
-    probe: redfish
-    suite: users
-    request:
-      method: POST
-      path: /redfish/v1/AccountService/Accounts
-      body:
-        UserName: "9bad"
-        Password: "Abcd1234!"
-        RoleId: ReadOnly
-    assert:
-      - type: status_in
-        value: [400, 403]
-    depends_on: [BMC-2-2-1]
-    rationale: >
-      用户名规则:无效用户名 (9bad) 应被拒绝 4xx。mutating negative —
-      若 BMC 违反 baseline 返回 2xx 创建账号,probe 引擎 (probe_redfish.py)
-      从 Location/@odata.id 抽 URI best-effort DELETE 清理,防污染复用实例
-      (评审六轮 黄2)。
-
-  - ar: BMC-7-7-1
-    name: Web UI banner customization
-    probe: redfish
-    suite: webui
-    # 无 request: skip AR 无可执行探测定义, 不编造占位请求(评审配套⑤;
-    # planner 允许 skip AR 省略 request, applicable AR 缺 request 仍 exit 3)
-    assert:
-      - type: status_in
-        value: [200]
-    depends_on: []
-    rationale: >
-      Web banner 定制能力暂无 romulus QEMU 可执行 Redfish probe,
-      applicability 标 skip, 不编造占位请求。
-
-  - ar: BMC-9-1-1
-    name: Accounts collection Description present
-    probe: redfish
-    suite: users
-    request:
-      method: GET
-      path: /redfish/v1/AccountService/Accounts
-    assert:
-      - type: json_path_exists
-        path: Description
-    depends_on: [BMC-2-2-1]
-    rationale: >
-      romulus Accounts 集合顶层当前暴露 Description, default applicable 将其
-      锁为可见 Redfish 字段。避开 @odata.count 等带点字段(probe resolver
-      是 split('.'), 带点 key 会被拆错)。
+include:
+  - ar_probes.d/core.yaml
+  - ar_probes.d/users.yaml
+  - ar_probes.d/webui.yaml

@@ -16,6 +16,19 @@ custom 谱系只查 `contexts/`，各找各的、不跨谱系回退，本谱系�
 社区基线**不会**被 custom 构建消费——custom build 的 fail 无法归因到上游，
 必须由自己的 contexts 基线拥有 verdict。
 
+## ar_probes 布局 v2（薄顶层 + 按 suite 分片）
+
+`ar_probes.yaml` 是 include 驱动的薄顶层（ADR-0025/0027 增补，schema_version: 2）：
+
+- 顶层只含 `schema_version: 2` + `auth`（per-interface 凭据）+ `include:`（相对
+  顶层文件的路径列表，即该基线有哪些 suite 的显式清单）；**顶层不允许 `ars:`**。
+- 分片落 `ar_probes.d/<suite>.yaml`，每片 = 局部注释 + `ars:`，不重复
+  auth/schema_version。merge 顺序 = include 顺序 × 分片内原序（suite-contiguous，
+  与拆分前的全局 sheet 顺序不同——AR 顺序只影响报告排列，不影响判定）。
+- loader 硬边界（违反皆 exit 3）：分片缺失 / include 路径越界或绝对路径 /
+  顶层 `ars` / 分片缺 `ars` / 跨分片重复 AR id。`depends_on` 跨 suite 合法。
+- `applicability.yaml` 布局未变（schema_version 保持 1）。
+
 ## AR 编号语义（为什么序号不连续）
 
 AR ID（如 `BMC-3-15-2`）= `<域>-<章节>-<条目>-<变体>`，**沿引你们 baseline
@@ -49,11 +62,12 @@ runner 是**主仓共享单副本** `tests/baseline/runner/`（ADR-0027），mac
 ```bash
 mkdir tests/baseline/<new-machine>   # 社区机
 # custom 机放 contexts/baseline/<new-machine>/（不随上游分发）
-cp tests/baseline/romulus/{ar_probes,applicability}.yaml tests/baseline/<new-machine>/
+cp -r tests/baseline/romulus/ar_probes.yaml tests/baseline/romulus/ar_probes.d tests/baseline/<new-machine>/
+cp tests/baseline/romulus/applicability.yaml tests/baseline/<new-machine>/
 ```
 
-然后：① 替换 `ar_probes.yaml` 为你方 baseline 的 QEMU 可仿真子集（编号沿引
-原需求文档，顶层 `schema_version: 1` 必须保留——plan.py 版本门禁）；② 校准
+然后：① 替换分片为你方 baseline 的 QEMU 可仿真子集（编号沿引
+原需求文档，顶层 `schema_version: 2` 与薄顶层结构必须保留——plan.py 版本门禁）；② 校准
 `applicability.yaml`（见下节，同样保留 `schema_version`）；③ 按需在共享
 `runner/` 扩展 probe 类型（当前仅 redfish；ipmi/ssh/console 的 auth 位已预留）。
 runner 探测是确定性脚本 + assert 原语（状态断言非计时断言，零 flake），

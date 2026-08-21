@@ -17,6 +17,7 @@ plan() 内 sys.exit(3)(YAML 语法/schema 违规: default status 白名单 / AR 
   type / 缺 request 且非 skip / method 白名单外 / path 含控制字符) —
   baseline 数据错 ≠ BMC fail, 不进 α truth; runner 捕 SystemExit 补 remedy。
 """
+import os
 import sys
 
 import yaml
@@ -24,7 +25,10 @@ import yaml
 _ALLOWED_APPL = ("applicable", "skip", "xfail")
 _ALLOWED_ASSERT = ("status_in", "json_path_exists", "json_path_match")
 _ALLOWED_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")
-_SCHEMA_VERSIONS = (1,)
+# 布局 v2(ADR-0025/0027 增补)起 ar_probes 与 applicability 方言分家:
+# ar_probes = 2(include 驱动薄顶层), applicability = 1(布局未变)。
+_AR_SCHEMA_VERSIONS = (2,)
+_APPL_SCHEMA_VERSIONS = (1,)
 
 
 def has_control_chars(value):
@@ -36,22 +40,70 @@ def die(msg):
     sys.exit(3)
 
 
-def load_inputs(ar_probes, appl_path):
-    try:
-        d = yaml.safe_load(open(ar_probes))
-        appl = yaml.safe_load(open(appl_path))
-    except Exception as e:  # yaml 语法/open 失败 → 数据错 exit 3, 不 traceback
-        sys.stderr.write("plan.py: cannot parse baseline YAML: {}\n".format(e))
-        sys.exit(3)
+def _gate_schema(doc, versions, name):
     # 两仓版本门禁(ADR-0027): runner(主仓)与数据(community tests/ 或 custom 子仓)分属
     # 不同 git 仓, YAML 顶层 schema_version 声明数据方言, 此处 fail-closed 校验。
     # type(v) is not int 而非 isinstance: bool 是 int 子类, YAML 的
     # schema_version: true 会因 True == 1 被当合法版本 1, 类型约束失真。
-    for _name, _doc in (("ar_probes", d), ("applicability", appl)):
-        _v = _doc.get("schema_version") if isinstance(_doc, dict) else None
-        if type(_v) is not int or _v not in _SCHEMA_VERSIONS:
-            die("bad schema_version {!r} in {} (want one of {})".format(
-                _v, _name, ", ".join(map(str, _SCHEMA_VERSIONS))))
+    _v = doc.get("schema_version") if isinstance(doc, dict) else None
+    if type(_v) is not int or _v not in versions:
+        die("bad schema_version {!r} in {} (want one of {})".format(
+            _v, name, ", ".join(map(str, versions))))
+
+
+def load_ar_probes(path):
+    """布局 v2: 薄顶层(schema_version + auth + include) → merge 分片 ars。
+
+    校验顺序: schema 门禁先于结构契约——旧 v1 单文件(schema_version: 1 + 顶层 ars)
+    必须报 bad schema_version, 与 schema gate 测试矩阵一致。
+    """
+    try:
+        top = yaml.safe_load(open(path))
+    except Exception as e:  # yaml 语法/open 失败 → 数据错 exit 3, 不 traceback
+        sys.stderr.write("plan.py: cannot parse baseline YAML: {}\n".format(e))
+        sys.exit(3)
+    _gate_schema(top, _AR_SCHEMA_VERSIONS, "ar_probes")
+    if "ars" in top:
+        die("top-level 'ars' not allowed in v2; ARs live in ar_probes.d/<suite>.yaml fragments")
+    include = top.get("include")
+    if not isinstance(include, list) or not include:
+        die("ar_probes 'include' must be a non-empty list of fragment paths")
+    base_real = os.path.realpath(os.path.dirname(os.path.abspath(path)))
+    ars = []
+    for item in include:
+        # include 条目必须是相对路径: 绝对路径使数据目录不可 relocatable, 违反契约。
+        if not isinstance(item, str) or not item or os.path.isabs(item):
+            die("include entry must be a relative path, got {!r}".format(item))
+        target = os.path.join(base_real, item)
+        target_real = os.path.realpath(target)
+        # commonpath 判界(禁止 startswith: sibling 目录共享字符串前缀会误放行)
+        try:
+            inside = os.path.commonpath([base_real, target_real]) == base_real
+        except ValueError:  # 不同盘符等 → 必在界外
+            inside = False
+        if not inside:
+            die("include path {!r} escapes baseline directory".format(item))
+        if not os.path.isfile(target_real):
+            die("include fragment {!r} not found".format(item))
+        try:
+            frag = yaml.safe_load(open(target_real))
+        except Exception as e:
+            sys.stderr.write("plan.py: cannot parse baseline YAML: {}\n".format(e))
+            sys.exit(3)
+        if not isinstance(frag, dict) or not isinstance(frag.get("ars"), list):
+            die("include fragment {!r} missing 'ars' list".format(item))
+        ars.extend(frag["ars"])
+    return {"schema_version": top["schema_version"], "auth": top.get("auth"), "ars": ars}
+
+
+def load_inputs(ar_probes, appl_path):
+    d = load_ar_probes(ar_probes)
+    try:
+        appl = yaml.safe_load(open(appl_path))
+    except Exception as e:  # yaml 语法/open 失败 → 数据错 exit 3, 不 traceback
+        sys.stderr.write("plan.py: cannot parse baseline YAML: {}\n".format(e))
+        sys.exit(3)
+    _gate_schema(appl, _APPL_SCHEMA_VERSIONS, "applicability")
     return d, appl
 
 

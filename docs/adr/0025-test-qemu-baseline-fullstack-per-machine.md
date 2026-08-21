@@ -30,4 +30,6 @@ References: CONTEXT.md `baseline`(本次新增)/ `ob smoke` / `test layer`；[AD
 
 - **可逆性**:从全栈 per-machine 合并回共享引擎,要归并 N 份已分叉代码,成本随分叉深度上升;故本决策随时间趋难逆,正合 ADR 门槛(hard to reverse + surprising + real trade-off 三条全中)。
 
+- **数据布局 v2（2026-08-21 增补,schema_version: 2）**:per-machine 的 `ar_probes.yaml` 升级为 **include 驱动的薄顶层 + 按 suite 分片**——顶层只含注释头块 + `schema_version` + `auth` + `include: [相对路径列表]`,**不允许顶层 `ars:`**;分片落 `ar_probes.d/<suite>.yaml`,每片 = 局部注释 + `ars:`,不重复 auth/schema_version。动因:b865g8 基线 915KB/24453 行/1366 条 AR,agent 全量读爆 context、大文件内编辑定位困难;按 suite 拆片后 agent 借既有 `--suite` 过滤只读目标分片。include 契约:相对顶层文件解析;分片缺失 die、路径逃出 baseline 目录 die、跨分片 AR id 重复 die;`depends_on` 跨 suite 合法（merge 后 resolve_status 不变）。**所有 machine 一律目录化**（含主仓 romulus demo,为未来 `ob smoke` 收编 `ob test-qemu --suite smoke` 保持结构统一）。未来新 machine 可不走 gen_baseline.py,由人工/agent 直接打磨分片——薄顶层 + include 清单对此友好。
+
 - **future-candidate**:若前提变化——出现"绝大多数 machine 共享同一份稳定 probe 引擎"且"组织上允许跨项目共享代码"(如团队合并 / 统一权限模型 / 单团队维护多 machine)——重新评估是否抽共享引擎层。届时按本 ADR 的"组织约束优先"原则重判。

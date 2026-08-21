@@ -206,14 +206,16 @@ fi
 # 不硬编码 AR ID → 对任何 machine 通用(romulus / custom 机都行)。
 rm -f "$tq_out"
 if ! python3 -c "
-import json, yaml, sys
+import json, os, sys
 report = json.load(open(sys.argv[1]))
 recs_list = report['records']
 recs = {r['ar']: r['status'] for r in recs_list}
 # records 唯一(评审 🟡1: 重复 AR 折叠丢, 防漏集/假绿)
 assert len(recs_list) == len(recs), 'duplicate AR in records: %d records vs %d unique' % (len(recs_list), len(recs))
-d = yaml.safe_load(open(sys.argv[2]))
-appl = yaml.safe_load(open(sys.argv[3]))
+# 布局 v2: ar_probes 是薄顶层+分片, 直读 d['ars'] 拿不到 AR — 复用 runner loader
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'baseline', 'runner'))
+import plan  # noqa: E402
+d, appl = plan.load_inputs(sys.argv[2], sys.argv[3])
 tq_rc = int(sys.argv[4])
 default = appl.get('default', 'applicable')
 overrides = appl.get('overrides', {})
