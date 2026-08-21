@@ -577,8 +577,9 @@ Run <machine>'s baseline AR probes on its RUNNING QEMU instance (probe mode;
 
 Options:
   --suite <name>   Only run ARs in this suite (built-in per-machine suites
-                   include 'smoke' — the 5-AR reachability gate: Redfish
-                   root/Manager/firmware, IPMI mc info, SSH TCP; ADR-0028)
+                   include 'smoke' — the 7-AR reachability gate: Redfish
+                   root/Manager/firmware, IPMI mc info, SSH TCP, serial
+                   console login, Web UI; ADR-0028)
   --ar <id>        Only run the named AR
   --report <path>  Dump JSON report to PATH
   -v, --verbose    Per-AR live fail/error lines also carry code= when
@@ -596,9 +597,16 @@ Environment:
                                 IPMI creds (smoke SMOKE-04) — env wins over
                                 ar_probes.yaml auth.ipmi (fallback auth);
                                 if absent everywhere the ipmi probe errors 3.
+  OB_TQ_CONSOLE_USER / OB_TQ_CONSOLE_PASSWORD
+                                Serial console login creds (smoke SMOKE-06) —
+                                env wins over ar_probes.yaml auth.console
+                                (fallback auth); if absent everywhere the
+                                console probe falls back to OB_TQ_USER /
+                                OB_TQ_PASSWORD, else errors 3.
   OB_TQ_TIMEOUT                 Per-probe HTTP timeout seconds (default 10)
-  (OB_TQ_SSH_PORT / OB_TQ_IPMI_PORT are exported from the instance's PID
-  file for the smoke suite's ssh_tcp / ipmi probes — not user-facing knobs.)
+  (OB_TQ_SSH_PORT / OB_TQ_IPMI_PORT / OB_TQ_CONSOLE_SOCK are exported from
+  the instance's PID file for the smoke suite's ssh_tcp / ipmi / console
+  probes — not user-facing knobs.)
 
 Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish
           port from the instance's PID file (no port overrides honored).
@@ -768,8 +776,9 @@ cmd_test_qemu() {
     if [[ $_dry -eq 0 ]]; then
         local _auth_user="${OB_TQ_USER:-}" _auth_pass="${OB_TQ_PASSWORD:-}"
         local _ipmi_user="${OB_TQ_IPMI_USER:-}" _ipmi_pass="${OB_TQ_IPMI_PASSWORD:-}"
+        local _console_user="${OB_TQ_CONSOLE_USER:-}" _console_pass="${OB_TQ_CONSOLE_PASSWORD:-}"
         local _auth_out="" _arc=0
-        if [[ -z "$_auth_user" || -z "$_auth_pass" || -z "$_ipmi_user" || -z "$_ipmi_pass" ]]; then
+        if [[ -z "$_auth_user" || -z "$_auth_pass" || -z "$_ipmi_user" || -z "$_ipmi_pass" || -z "$_console_user" || -z "$_console_pass" ]]; then
             _auth_out=$(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
 import yaml, os, sys
 try:
@@ -785,18 +794,22 @@ u, p = pick("redfish")
 print(u); print(p)
 u, p = pick("ipmi")
 print(u); print(p)
+u, p = pick("console")
+print(u); print(p)
 ') || _arc=$?
             if [[ $_arc -ne 0 ]]; then
                 error "Cannot parse $_dir/ar_probes.yaml auth (YAML malformed — see parse error above)."
                 exit 3
             fi
-            # env 已设者胜, 只从 YAML 补缺(print 四行 redfish user/pass + ipmi user/pass)
+            # env 已设者胜, 只从 YAML 补缺(print 六行: redfish/ipmi/console 各 user/pass)
             local -a _auth_lines=()
             mapfile -t _auth_lines <<< "$_auth_out"
             [[ -z "$_auth_user" ]] && _auth_user="${_auth_lines[0]:-}"
             [[ -z "$_auth_pass" ]] && _auth_pass="${_auth_lines[1]:-}"
             [[ -z "$_ipmi_user" ]] && _ipmi_user="${_auth_lines[2]:-}"
             [[ -z "$_ipmi_pass" ]] && _ipmi_pass="${_auth_lines[3]:-}"
+            [[ -z "$_console_user" ]] && _console_user="${_auth_lines[4]:-}"
+            [[ -z "$_console_pass" ]] && _console_pass="${_auth_lines[5]:-}"
         fi
         if [[ -z "$_auth_user" ]]; then
             error "No Redfish user for '$MACHINE' baseline probes."
@@ -812,6 +825,13 @@ print(u); print(p)
         # per-interface 凭据(ADR-0028 smoke 收编): ipmi 凭据 env > auth.ipmi > auth 顶层;
         # 全缺则不 export — 纯 redfish suite 不受影响, ipmi probe 自行 error 3 指名。
         [[ -n "$_ipmi_user" && -n "$_ipmi_pass" ]] && export OB_TQ_IPMI_USER="$_ipmi_user" OB_TQ_IPMI_PASSWORD="$_ipmi_pass"
+        # console 凭据同理(env > auth.console > auth 顶层; 2026-08-21 b865g8 smoke
+        # 移植 SMOKE-06): 该 machine console 登录账号 sysadmin ≠ redfish 账号
+        # toutiao(nologin), 不注入则 probe fallback OB_TQ_USER 拿错账号登录失败。
+        # 用 if 而非 && 列表收尾: && 列表条件假时返回 1, if 形式对调用上下文免疫。
+        if [[ -n "$_console_user" && -n "$_console_pass" ]]; then
+            export OB_TQ_CONSOLE_USER="$_console_user" OB_TQ_CONSOLE_PASSWORD="$_console_pass"
+        fi
     fi
 
     # ── 前置 4: RUNNING QEMU instance (probe-only; 绝不探死端口防假"BMC 坏") ──
