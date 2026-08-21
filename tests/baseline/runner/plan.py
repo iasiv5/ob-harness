@@ -26,13 +26,15 @@ import yaml
 _ALLOWED_APPL = ("applicable", "skip", "xfail")
 # probe-type 白名单(ADR-0028 smoke 收编): none 是 planner-only sentinel——
 # 仅 skip/cascade_skip AR 合法(无可执行探测定义), 永不进入 runner probe 分派。
-_ALLOWED_PROBE = ("redfish", "ipmi", "ssh_tcp", "none")
+_ALLOWED_PROBE = ("redfish", "ipmi", "ssh_tcp", "console", "web", "none")
 # assert 原语 × probe-type 兼容矩阵: 矩阵外组合 = 数据错 → die() exit 3。
 _PROBE_ASSERTS = {
     "redfish": ("status_in", "json_path_exists", "json_path_match",
                 "body_contains_any", "json_path_nonempty_any"),
     "ipmi": ("exitcode_zero", "output_contains"),
     "ssh_tcp": ("tcp_connectable",),
+    "console": ("login_prompt_reached", "shell_prompt_reached"),
+    "web": ("status_in", "content_type_match", "body_contains_any"),
     "none": (),
 }
 _ALLOWED_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")
@@ -275,6 +277,27 @@ def build_plan(a, st):
         interval = req.get("interval", 5)
         method = ""
         path = ""
+    elif p == "console":
+        # console request 分叉: 可选 timeout 正整数(缺省 30, pexpect 三阶段交互总超时);
+        # 无凭据无 method/path(socket/凭据走 env)。
+        if set(req) - {"timeout"}:
+            die("AR '{}' console request allows only 'timeout' (got keys {})".format(ar, sorted(req)))
+        v = req.get("timeout")
+        if v is not None and (type(v) is not int or v <= 0):
+            die("AR '{}' console request.timeout must be a positive integer (got {!r})".format(ar, v))
+        method = ""
+        path = ""
+    elif p == "web":
+        # web request 分叉: path 必填 + scheme 可选(HTTP GET 静态资源, 无 method/body)。
+        if set(req) - {"path", "scheme"}:
+            die("AR '{}' web request allows only 'path' and optional 'scheme' (got keys {})".format(ar, sorted(req)))
+        path = req.get("path", "")
+        if not isinstance(path, str) or has_control_chars(path):
+            die("AR '{}' web request.path has control chars or non-str".format(ar))
+        scheme = req.get("scheme")
+        if scheme is not None and scheme not in ("http", "https"):
+            die("AR '{}' web request.scheme must be 'http' or 'https' (got {!r})".format(ar, scheme))
+        method = "GET"  # web 语义隐含 GET, 但 runner 分派不消费 method 字段
     else:
         # method 白名单 + path 拒控制字符: 两者直接进入 HTTP argv。
         method = req.get("method", "")
@@ -286,8 +309,8 @@ def build_plan(a, st):
     status, reason, source = st
     return {"ar": ar, "status": status, "probe": p, "method": method,
             "path": path, "body": req.get("body"), "asserts": a.get("assert", []),
-            "attempts": attempts, "interval": interval,
-            "reason": reason, "source": source}
+            "attempts": attempts, "interval": interval, "timeout": req.get("timeout"),
+            "scheme": req.get("scheme"), "reason": reason, "source": source}
 
 
 def plan(ar_probes, appl_path, ar_filter, suite_filter):

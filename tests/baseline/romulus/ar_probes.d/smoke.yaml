@@ -4,7 +4,7 @@
 # rc==0(旧 judge 同款, 只验 rc——mc info 输出无稳定可断子串); SMOKE-05 = SSH TCP
 # 就绪门(默认 30 次 × 5s, 对齐旧 OB_SMOKE_READY_ATTEMPTS)。
 ars:
-  - ar: SMOKE-01
+  - ar: SMOKE-01 (Redfish service root reachability)
     name: Redfish service root reachable
     probe: redfish
     suite: smoke
@@ -21,7 +21,7 @@ ars:
       Redfish 根服务可达且是真实 ServiceRoot(结构标记任一命中, 防
       placeholder/错误页误判 pass)。
 
-  - ar: SMOKE-02
+  - ar: SMOKE-02 (Redfish Manager resource reachability)
     name: Redfish Manager resource reachable
     probe: redfish
     suite: smoke
@@ -37,7 +37,7 @@ ars:
     rationale: >
       Managers/bmc 资源可达且是真实 Manager 文档(结构标记任一命中)。
 
-  - ar: SMOKE-03
+  - ar: SMOKE-03 (Redfish BMC version reported non-empty)
     name: BMC firmware version reported non-empty
     probe: redfish
     suite: smoke
@@ -52,7 +52,7 @@ ars:
       固件版本上报非空(接受规范名 FirmwareVersion 或 alias SoftwareVersion;
       json_path_exists 会把空串误判 pass, 故用 nonempty 判定)。
 
-  - ar: SMOKE-04
+  - ar: SMOKE-04 (IPMI over LAN reachability)
     name: IPMI mc info exits zero
     probe: ipmi
     suite: smoke
@@ -65,7 +65,7 @@ ars:
       IPMI(lanplus)通道可达, ipmitool mc info rc==0 即过(与旧 smoke judge
       同款——mc info 输出无稳定可断子串, 不做 output 断言)。
 
-  - ar: SMOKE-05
+  - ar: SMOKE-05 (SSH TCP port reachability)
     name: SSH TCP port accepting connections
     probe: ssh_tcp
     suite: smoke
@@ -78,3 +78,36 @@ ars:
     rationale: >
       SSH TCP 就绪门(30 次 × 5s 有界轮询, 对齐旧 OB_SMOKE_READY_ATTEMPTS);
       超时判 fail(BMC truth), 不是 infra error。
+
+  - ar: SMOKE-06 (Serial console login reachability)
+    name: Serial console login reachable
+    probe: console
+    suite: smoke
+    request:
+      timeout: 30
+    assert:
+      - type: shell_prompt_reached
+    depends_on: []
+    rationale: >
+      串口控制台完整登录到 shell prompt(pexpect 三阶段: login prompt →
+      password prompt → shell prompt)。socket 路径走 OB_TQ_CONSOLE_SOCK env
+      (ob test-qemu 从 PID file serial_sock 字段注入), 凭据走
+      OB_TQ_CONSOLE_USER/OB_TQ_CONSOLE_PASSWORD 或 fallback OB_TQ_USER/OB_TQ_PASSWORD。
+
+  - ar: SMOKE-07 (BMC Web UI reachability)
+    name: Web UI reachable
+    probe: web
+    suite: smoke
+    request:
+      path: /
+      scheme: https
+    assert:
+      - type: status_in
+        value: [200]
+      - type: content_type_match
+        value: text/html
+    depends_on: []
+    rationale: >
+      Web UI 根路径 HTTPS 200 + Content-Type text/html。host/port 走 argv
+      (与 redfish 同通道, QEMU 默认转发 443 → redfish_port); scheme https
+      显式声明(默认即 https, 可省略, 留此显式示例)。

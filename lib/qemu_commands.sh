@@ -840,9 +840,10 @@ print(u); print(p)
 
         # ── 从 PID 文件读真实 Redfish 端口 (qemu_instance_liveness 已填 PIDFILE_*; 不假设默认值) ──
         _port="$PIDFILE_REDFISH_PORT"
-        # smoke suite probe-type 端口注入(ADR-0028): ipmi/ssh_tcp probe 从 env 读端口,
+        # smoke suite probe-type 端口/socket 注入(ADR-0028): ipmi/ssh_tcp/console probe 从 env 读配置,
         # 与 redfish 的 --port argv 通道并存; 值来自实例 PID 文件(同一事实源)。
         export OB_TQ_SSH_PORT="$PIDFILE_SSH_PORT" OB_TQ_IPMI_PORT="$PIDFILE_IPMI_PORT"
+        [[ -n "$PIDFILE_SERIAL_SOCK" ]] && export OB_TQ_CONSOLE_SOCK="$PIDFILE_SERIAL_SOCK"
     fi
 
     # ── 调共享 runner (host/port argv + 数据/凭据 env 注入; runner exit 0/1 透传为 ob exit 0/1) ──

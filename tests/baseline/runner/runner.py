@@ -198,13 +198,26 @@ def main():
                     probe_args += ["--password", o["password"]]
                 if r["body"] is not None:
                     probe_args += ["--body", json.dumps(r["body"])]
-            elif probe_type in ("ipmi", "ssh_tcp"):
+            elif probe_type == "web":
+                # web probe: host/port/path 走 argv(与 redfish 同构), 无凭据;
+                # scheme 可选(request.scheme 或 OB_TQ_WEB_SCHEME, 默认 https)
+                probe_args = [sys.executable,
+                              os.path.join(script_dir, "probe_web.py"),
+                              "--host", o["host"], "--port", o["port"],
+                              "--path", r["path"],
+                              "--asserts", json.dumps(r["asserts"]),
+                              "--timeout", o["timeout"]]
+                if r.get("scheme"):
+                    probe_args += ["--scheme", r["scheme"]]
+            elif probe_type in ("ipmi", "ssh_tcp", "console"):
                 probe_args = [sys.executable,
                               os.path.join(script_dir, "probe_%s.py" % probe_type),
                               "--asserts", json.dumps(r["asserts"])]
                 if probe_type == "ssh_tcp":
                     probe_args += ["--attempts", str(r.get("attempts") or 30),
                                    "--interval", str(r.get("interval") or 5)]
+                elif probe_type == "console":
+                    probe_args += ["--timeout", str(r.get("timeout") or 30)]
             else:
                 die("AR '{}' has non-executable probe '{}'".format(r["ar"], probe_type), 3)
             # 只捕获 stdout(与 bash out=$(...) 语义一致), probe stderr 自然
