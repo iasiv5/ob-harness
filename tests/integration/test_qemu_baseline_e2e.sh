@@ -212,8 +212,9 @@ recs_list = report['records']
 recs = {r['ar']: r['status'] for r in recs_list}
 # records 唯一(评审 🟡1: 重复 AR 折叠丢, 防漏集/假绿)
 assert len(recs_list) == len(recs), 'duplicate AR in records: %d records vs %d unique' % (len(recs_list), len(recs))
-# 布局 v2: ar_probes 是薄顶层+分片, 直读 d['ars'] 拿不到 AR — 复用 runner loader
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'baseline', 'runner'))
+# 布局 v2: ar_probes 是薄顶层+分片, 直读 d['ars'] 拿不到 AR — 复用 runner loader。
+# python3 -c 下无 __file__, runner 目录用 bash 侧 $root_dir 经 argv[5] 传入(防 cwd 漂移)。
+sys.path.insert(0, sys.argv[5])
 import plan  # noqa: E402
 d, appl = plan.load_inputs(sys.argv[2], sys.argv[3])
 tq_rc = int(sys.argv[4])
@@ -254,7 +255,7 @@ else:
 assert report['verdict'] == re_verdict, 'report verdict %s != recomputed %s' % (report['verdict'], re_verdict)
 assert tq_rc == exp_rc, 'tq_rc %s != expected %s (verdict %s)' % (tq_rc, exp_rc, re_verdict)
 print('AR set + per-status + verdict recompute + tq_rc consistency ok')
-" "$report_json" "$_baseline_dir/ar_probes.yaml" "$_baseline_dir/applicability.yaml" "$tq_rc" 2>&1; then
+" "$report_json" "$_baseline_dir/ar_probes.yaml" "$_baseline_dir/applicability.yaml" "$tq_rc" "$root_dir/tests/baseline/runner" 2>&1; then
     rm -f "$report_json"
     _stop_if_started
     exit 1
