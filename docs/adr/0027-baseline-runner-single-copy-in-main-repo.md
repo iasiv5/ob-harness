@@ -8,14 +8,17 @@ custom 机 `contexts/baseline/<machine>/runner/`）。实践中两份引擎**逐
 引擎层实际零 machine 定制（凭据/端口/QEMU 参数全在数据 YAML 与 ob cmd 层，runner 以
 `OB_TQ_*` env 钩子 + argv 注入消费）。本 ADR 定调：**runner 六文件归一为主仓单副本
 `tests/baseline/runner/`**，machine 差异只存在于数据 YAML；`contexts/baseline/<machine>/`
-收窄为**纯数据 + 数据生产线**（ar_probes.yaml / applicability.yaml + gen_baseline.py /
-reconcile.py 等 corpus→YAML 工具），不再含运行时代码。
+收窄为**纯数据**（ar_probes.yaml / applicability.yaml / ar_probes.d/ 分片），不再含
+运行时代码。（2026-08-24 修订：建线时附带的 corpus→YAML 工具 gen_baseline.py /
+reconcile.py 已从 custom 机子仓退役删除——布局 v2 后分片手工演化，重跑生成会摧毁增量，
+且 reconcile.py 未跟上布局 v2 已失效；溯源靠每条 AR 自包含的 source{sheet,row,file}
++ fields，校准锚点摘录至 applicability.yaml 头部注释。）
 
 对 ADR-0025 的关系是**修订其引擎不共享结论、保留其数据 per-machine 结论**：0025 拒绝
 共享引擎的核心理由是组织约束（"做项目 A 的团队不一定有权限动项目 B 的代码"）。该前提
-在本仓不成立——romulus 与 b865g8 由同一维护者驱动，"两份权限隔离团队各自的代码"实为
+在本仓不成立——社区机与 custom 机由同一维护者驱动，"两份权限隔离团队各自的代码"实为
 同一人手动双向同步的同一份代码，0025 所防的治理耦合不存在，反而每改一次 runner 要双写
-两仓（b865g8 python 化同步即双写实证）。0025 的数据侧结论（每机 baseline 数据自成体系、
+两仓（custom 机 python 化同步即双写实证）。0025 的数据侧结论（每机 baseline 数据自成体系、
 独立迭代、落点二分）原样保留；[ADR-0026](0026-test-qemu-baseline-lineage-routing.md)
 的谱系硬路由语义不变，仅路由标的从"runner+数据一体目录"收窄为"纯数据目录"（runner
 目录固定 `tests/baseline/runner/`，由 `cmd_test_qemu` 以 `OB_TQ_AR_PROBES` /
@@ -24,8 +27,9 @@ reconcile.py 等 corpus→YAML 工具），不再含运行时代码。
 **两仓耦合由 `schema_version` 门禁承担**：runner 与数据分属两个 git 仓后，失去"同一份
 plan.py 白名单校验两份数据"的免费保障。方案是两份 YAML 顶层声明 `schema_version: N`，
 plan.py 校验（`type(v) is not int or v not in {支持集}`——bool 是 int 子类，`true` 不得
-因 `True == 1` 穿透为版本 1），不匹配 exit 3（数据错不进 α truth）。custom 谱系的
-gen_baseline.py 生成时盖章，数据生产线自带保障。
+因 `True == 1` 穿透为版本 1），不匹配 exit 3（数据错不进 α truth）。custom 谱系数据建线时由
+生成工具盖章（工具已退役，见上文 2026-08-24 修订），日常变更靠 runner fail-closed
+校验兜底。
 
 Status: accepted（2026-08-20，/grill-with-docs 十问定案）
 
@@ -39,7 +43,7 @@ References: [ADR-0025](0025-test-qemu-baseline-fullstack-per-machine.md)（本 A
 1. **主仓单副本 + env 注入（接受）** —— runner 归一 `tests/baseline/runner/`，
    `cmd_test_qemu` 路由出数据目录后以 env 注入。消除人工同步纪律与未来分叉风险；
    新 machine 接入 = 只建数据目录。
-2. **维持逐字节人工同步（拒绝）** —— 现状。双写成本每次改动实付（b865g8 python 化
+2. **维持逐字节人工同步（拒绝）** —— 现状。双写成本每次改动实付（custom 机 python 化
    同步 commit 为证），且同步是纪律不是机制，一次漏同步即静默分叉。
 3. **runner 加 `--data-dir` 显式参数（拒绝）** —— agent 面对的接口是 `ob test-qemu`，
    参数只发生在 ob 内部，env 钩子已存在且零改动；`--data-dir` 是净负债（多一个参数面
@@ -59,7 +63,7 @@ References: [ADR-0025](0025-test-qemu-baseline-fullstack-per-machine.md)（本 A
   驱动薄顶层 + `ar_probes.d/<suite>.yaml` 分片（契约详见
   [ADR-0025](0025-test-qemu-baseline-fullstack-per-machine.md) 增补节）。runner 侧落点：
   plan.py `load_inputs` 实现 include 解析（缺失/越界/重复 AR id 皆 die），**只认 v2 布局、
-  不保留单文件兼容层**——主仓 runner 与 romulus demo 一次改完自洽，b865g8 子仓的
+  不保留单文件兼容层**——主仓 runner 与 romulus demo 一次改完自洽，custom 机子仓的
   gen_baseline.py 改输出新布局 + 重跑生成 + 子仓 commit 纳入同一任务收尾，不可用窗口归零。
   schema 演进流程照旧 fail-closed：支持集更新为 `{2}`，旧 v1 数据 exit 3 + remedy。
 - **可逆性**：退回 per-machine = 子仓 cp 六文件回去，成本低；但"单副本"确立后回退同样
