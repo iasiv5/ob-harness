@@ -664,8 +664,18 @@ Options:
   -d, --dry-run    List ARs + applicability, no probe (no running instance needed)
   -h, --help       Show this help
 
+Prerequisites:
+  Typical setup path: init → build → start-qemu → test-qemu.
+  test-qemu itself checks PyYAML, source manifest lineage, and the
+  lineage-routed baseline dir (see baseline dir below). Probe runs also
+  require credentials (env or ar_probes.yaml auth, see Environment) and
+  a running QEMU instance. --dry-run skips credentials and
+  running-instance checks, but still checks local baseline assets.
+  exit-code 3 means a missing precondition/config/infra gate — follow
+  the printed remedy and retry.
+
 Environment:
-  OB_TQ_USER / OB_TQ_PASSWORD   Redfish creds — env wins over argv flags and over
+  OB_TQ_USER / OB_TQ_PASSWORD   Redfish creds — env wins over
                                 ar_probes.yaml auth (keeps secrets out of 'ps';
                                 environ is owner-only). Missing ones fall back to
                                 ar_probes.yaml auth.redfish / auth.
@@ -728,6 +738,10 @@ Exit codes (test-qemu-specific):
       baseline dir for <machine> — see remedy line), OR one or more probes hit
       a transient infra error mid-run (VERDICT: ERROR) — the instance may be
       fine; re-run / check connectivity rather than treat it as a baseline fail.
+
+Examples:
+  $OB_CMD test-qemu romulus --suite smoke   # Run the 8-AR smoke gate on a running romulus instance
+  $OB_CMD test-qemu romulus --ar SMOKE-03 -v        # Re-run one AR with per-AR fail detail
 EOF
 }
 

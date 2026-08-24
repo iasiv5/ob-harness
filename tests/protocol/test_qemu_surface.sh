@@ -35,6 +35,15 @@ assert_true "--suite 说明提及 smoke suite" grep -q "smoke" <<<"$out"
 _obhelp=$("$OB" --help 2>&1) || true
 assert_false "顶层 usage 无 ob smoke 命令残留" grep -qE "^  smoke " <<<"$_obhelp"
 
+# (1c) help surface 契约(2026-08-24 help 补齐): Prerequisites/Examples 段 + 示例锚点
+assert_true "test-qemu help has Prerequisites" grep -q "^Prerequisites:" <<<"$out"
+assert_true "test-qemu help has Examples" grep -q "^Examples:" <<<"$out"
+assert_true "test-qemu help has SMOKE-03 example" grep -q "SMOKE-03" <<<"$out"
+assert_false "test-qemu help 无过期 'over argv flags' 表述" grep -q "over argv flags" <<<"$out"
+
+# (1d) 顶层 usage 有 test-qemu smoke 示例(2026-08-24 help 补齐)
+assert_true "顶层 usage 有 test-qemu smoke 示例" grep -q "test-qemu romulus --suite smoke" <<<"$_obhelp"
+
 # (2) parse_args 私有参数穿透(🔴1): --suite/--ar/--report 越过全局 parser, 不被 Unknown option 拦
 _tq_p1="$(mktemp)"; _tq_p2="$(mktemp)"   # mktemp(评审 🟢3): 多用户并行跑 protocol 不互踩 /tmp 固定名
 rc=0; "$OB" test-qemu fake-m --suite users --ar BMC-3-1-2 --report "$_tq_p1" >"$_tq_p2" 2>&1 || rc=$?
