@@ -134,8 +134,10 @@ def probe(sock_path, user, password, timeout):
         body_parts.append("password prompt reached")
     except pexpect.TIMEOUT:
         child.close()
-        return stage, 1, "timeout waiting for password prompt {!r}; got: {}".format(
-            password_prompt, child.before or "<empty>")
+        # 注意: 不把 password_prompt 值拼进诊断 —— 它来自
+        # OB_TQ_CONSOLE_PASSWORD_PROMPT(env 名含 PASSWORD), CodeQL 判为敏感源
+        return stage, 1, "timeout waiting for password prompt; got: {}".format(
+            child.before or "<empty>")
     except pexpect.EOF:
         child.close()
         return stage, 1, "EOF before password prompt; got: {}".format(child.before or "<empty>")
@@ -194,10 +196,7 @@ def _sanitize_for_output(value, secrets=()):
 
 def _emit(result, rc, secrets=()):
     safe_result = _sanitize_for_output(result, secrets)
-    payload = json.dumps(safe_result, ensure_ascii=False)
-    # 输出前已按凭据字面值+键值对形态双重净化(见 _sanitize_for_output)
-    # codeql[py/clear-text-logging-sensitive-data]
-    sys.stdout.write(payload + "\n")
+    print(json.dumps(safe_result, ensure_ascii=False))
     return rc
 
 
