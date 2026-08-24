@@ -26,6 +26,7 @@ CLI:
 import argparse
 import json
 import os
+import re
 import sys
 
 import pexpect
@@ -157,8 +158,38 @@ def probe(sock_path, user, password, timeout):
     return stage, 0, "; ".join(body_parts)
 
 
+def _redact_text(text):
+    # Redact common secret patterns while keeping diagnostics useful.
+    redacted = text
+    redacted = re.sub(r"(?i)(password\s*[:=]\s*)(\S+)", r"\1<redacted>", redacted)
+    redacted = re.sub(r"(?i)(passwd\s*[:=]\s*)(\S+)", r"\1<redacted>", redacted)
+    redacted = re.sub(r"(?i)(token\s*[:=]\s*)(\S+)", r"\1<redacted>", redacted)
+    redacted = re.sub(r"(?i)(secret\s*[:=]\s*)(\S+)", r"\1<redacted>", redacted)
+    return redacted
+
+
+def _sanitize_for_output(value):
+    if isinstance(value, str):
+        return _redact_text(value)
+    if isinstance(value, dict):
+        sanitized = {}
+        for k, v in value.items():
+            key = str(k).lower()
+            if any(s in key for s in ("password", "passwd", "token", "secret")):
+                sanitized[k] = "<redacted>"
+            else:
+                sanitized[k] = _sanitize_for_output(v)
+        return sanitized
+    if isinstance(value, list):
+        return [_sanitize_for_output(v) for v in value]
+    if isinstance(value, tuple):
+        return tuple(_sanitize_for_output(v) for v in value)
+    return value
+
+
 def _emit(result, rc):
-    print(json.dumps(result, ensure_ascii=False))
+    safe_result = _sanitize_for_output(result)
+    print(json.dumps(safe_result, ensure_ascii=False))
     return rc
 
 
