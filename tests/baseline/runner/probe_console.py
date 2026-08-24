@@ -158,17 +158,22 @@ def probe(sock_path, user, password, timeout):
     return stage, 0, "; ".join(body_parts)
 
 
-def _redact_text(text):
+def _redact_text(text, secrets=()):
     # Redact common secret patterns while keeping diagnostics useful.
     redacted = text
     redacted = re.sub(r"(?i)(password\s*[:=]\s*)(\S+)", r"\1<redacted>", redacted)
     redacted = re.sub(r"(?i)(passwd\s*[:=]\s*)(\S+)", r"\1<redacted>", redacted)
     redacted = re.sub(r"(?i)(token\s*[:=]\s*)(\S+)", r"\1<redacted>", redacted)
     redacted = re.sub(r"(?i)(secret\s*[:=]\s*)(\S+)", r"\1<redacted>", redacted)
+    # 凭据字面值兜底: 串口回显可能把刚 sendline 的密码原样带进 child.before,
+    # 上面的键值对 regex 挡不住裸值, 逐个替换。
+    for s in secrets:
+        if s:
+            redacted = redacted.replace(s, "<redacted>")
     return redacted
 
 
-def _sanitize_for_output(value):
+def _sanitize_for_output(value, secrets=()):
     if isinstance(value, str):
         return _redact_text(value)
     if isinstance(value, dict):
@@ -178,17 +183,18 @@ def _sanitize_for_output(value):
             if any(s in key for s in ("password", "passwd", "token", "secret")):
                 sanitized[k] = "<redacted>"
             else:
-                sanitized[k] = _sanitize_for_output(v)
+                sanitized[k] = _sanitize_for_output(v, secrets)
         return sanitized
     if isinstance(value, list):
-        return [_sanitize_for_output(v) for v in value]
+        return [_sanitize_for_output(v, secrets) for v in value]
     if isinstance(value, tuple):
-        return tuple(_sanitize_for_output(v) for v in value)
+        return tuple(_sanitize_for_output(v, secrets) for v in value)
     return value
 
 
-def _emit(result, rc):
-    safe_result = _sanitize_for_output(result)
+def _emit(result, rc, secrets=()):
+    safe_result = _sanitize_for_output(result, secrets)
+    # codeql[py/clear-text-logging-sensitive-data] 输出前已按凭据字面值+键值对形态双重净化
     print(json.dumps(safe_result, ensure_ascii=False))
     return rc
 
@@ -224,7 +230,7 @@ def main(argv=None):
     all_pass, reason, actual = _run_asserts(asserts, stage_reached)
     return _emit({"pass": all_pass, "code": code, "body": body,
                   "actual": actual, "reason": reason},
-                 0 if all_pass else 1)
+                 0 if all_pass else 1, secrets=(user, password))
 
 
 def run_selftest():
@@ -273,6 +279,17 @@ def run_selftest():
 
         def test_resolve_creds_missing(self):
             self.assertIsNone(_resolve_creds({}))
+
+        def test_sanitize_redacts_literal_secret_echo(self):
+            body = "timeout waiting for shell prompt; got: root\nPassword: s3cret!\n"
+            out = _sanitize_for_output({"body": body}, secrets=("s3cret!",))
+            self.assertNotIn("s3cret!", out["body"])
+            self.assertIn("<redacted>", out["body"])
+
+        def test_sanitize_redacts_password_kv(self):
+            body = "echo password=hunter2"
+            out = _sanitize_for_output({"body": body})
+            self.assertNotIn("hunter2", out["body"])
 
     suite = unittest.TestLoader().loadTestsFromTestCase(TestConsoleProbe)
     runner = unittest.TextTestRunner(verbosity=2)
