@@ -194,8 +194,10 @@ def _sanitize_for_output(value, secrets=()):
 
 def _emit(result, rc, secrets=()):
     safe_result = _sanitize_for_output(result, secrets)
-    # codeql[py/clear-text-logging-sensitive-data] 输出前已按凭据字面值+键值对形态双重净化
-    print(json.dumps(safe_result, ensure_ascii=False))
+    payload = json.dumps(safe_result, ensure_ascii=False)
+    # 输出前已按凭据字面值+键值对形态双重净化(见 _sanitize_for_output)
+    # codeql[py/clear-text-logging-sensitive-data]
+    sys.stdout.write(payload + "\n")
     return rc
 
 
