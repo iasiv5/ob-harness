@@ -1,26 +1,33 @@
-# romulus baseline AR (需求条目) — 5 条 redfish probe AR 覆盖 core/users/webui 场景。
+# romulus baseline AR 
+
+# ══════════════════════════════════════════════════════════════════
+# schema 方言版本 — 布局 v2(薄顶层 + 分片), runner fail-closed 校验
+# ══════════════════════════════════════════════════════════════════
 schema_version: 2
-# Schema 布局 v2 (per-machine, ADR-0025/0027 增补): 薄顶层 + 按 suite 分片。
-#   顶层 = schema_version + auth + include(相对路径列表); 顶层不允许 ars:。
-#   分片 = ar_probes.d/<suite>.yaml, 每片 = 局部注释 + ars:; merge 顺序 =
-#   include 顺序 × 分片内原序(suite-contiguous)。每条 AR 字段顺序:
-#   ar / name / probe / suite / request{method,path,body} / assert[{type,...}] / depends_on / rationale
-# assert 原语 (tests/baseline/runner/probe_redfish.py, 共享单副本 ADR-0027):
-#   status_in        {value: [code,...]}
-#   json_path_exists {path: dotted}
-#   json_path_match  {path: dotted, value: expected}
-# auth: per-interface 凭据(ADR-0025 per-machine; 各接口凭据可不同, 某些 custom 平台的
-#   console/WEB/IPMI/REDFISH/SSH 各异)。redfish = Redfish probe 用(本 spike 唯一 probe 类型);
-#   ipmi/ssh/console 预留给后续 probe 类型扩展。cmd_test_qemu 读 auth.redfish, 缺则 fallback
-#   auth 顶层 user/password(向后兼容)。
+
+# ══════════════════════════════════════════════════════════════════
+# per-interface 凭据 — redfish/ipmi/ssh_tcp/console/web
+# ══════════════════════════════════════════════════════════════════
 auth:
   redfish:
     user: root
     password: "0penBmc"
-  # ipmi:    {user: ..., password: ...}   # 后续 ipmi probe 扩展
-  # ssh:     {user: ..., password: ...}   # 后续 ssh probe 扩展
-  # console: {user: ..., password: ...}   # 后续 console probe 扩展
+  ipmi:
+    user: root
+    password: "0penBmc"
+  ssh:
+    user: root
+    password: "0penBmc"
+  console:
+    user: root
+    password: "0penBmc"
+  web:
+    user: root
+    password: "0penBmc"
+
+# ══════════════════════════════════════════════════════════════════
+# suite 分片引用 — merge 顺序 = include 顺序 × 分片内原序
+# ══════════════════════════════════════════════════════════════════
 include:
-  - ar_probes.d/core.yaml
-  - ar_probes.d/users.yaml
-  - ar_probes.d/webui.yaml
+  - ar_probes.d/smoke.yaml
+  - ar_probes.d/mgmt.yaml

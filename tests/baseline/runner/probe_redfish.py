@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """共享 Redfish probe engine + assert primitives.
 
-Shared probe engine (单副本, ADR-0027; machine 差异只在数据 YAML。NOT shared
-with `ob smoke`).  host/port/auth are injected by
-the caller (cmd_test_qemu / run.sh); nothing is hardcoded.
+Shared probe engine (单副本, ADR-0027; machine 差异只在数据 YAML).
+host/port/auth are injected by the caller (cmd_test_qemu / run.sh);
+nothing is hardcoded.
 
 Assert primitives (state assertions, not timing — zero flake by design):
   status_in(code, value_list)         HTTP code in list
@@ -38,7 +38,7 @@ import sys
 import urllib.error
 import urllib.request
 
-# bmcweb ships a self-signed cert; mirror `ob smoke`'s `curl -sk` (no cert verify).
+# bmcweb ships a self-signed cert; no cert verify (local QEMU BMC, caller-trusted).
 # Spike scope: test-qemu talks to a local QEMU BMC the operator trusts.
 _SSL_CTX = ssl._create_unverified_context()
 
@@ -112,6 +112,23 @@ def json_path_match(body, jp, expected):
     return found and val == expected
 
 
+def body_contains_any(body, subs):
+    """Any substring in subs hits the raw body (smoke 结构标记判定, ADR-0028)."""
+    return any(s in body for s in subs)
+
+
+def json_path_nonempty_any(body, jps):
+    """Any dotted path resolves to a non-empty string (alias 容忍 + 非空判定)."""
+    obj = _parse_body(body)
+    if obj is None:
+        return False
+    for jp in jps:
+        found, val = _walk_json_path(obj, jp)
+        if found and isinstance(val, str) and val:
+            return True
+    return False
+
+
 def run_asserts(asserts, code, body):
     """Run each assert against (code, body).
 
@@ -137,6 +154,14 @@ def run_asserts(asserts, code, body):
                 return False, "path '{}' not found".format(jp), None
             if val != want:
                 return False, "path '{}' expected {!r} got {!r}".format(jp, want, val), val
+        elif t == "body_contains_any":
+            subs = a.get("value", [])
+            if not body_contains_any(body, subs):
+                return False, "body contains none of {}".format(subs), None
+        elif t == "json_path_nonempty_any":
+            jps = a.get("path", [])
+            if not json_path_nonempty_any(body, jps):
+                return False, "no non-empty value at any of {}".format(jps), None
         else:
             return False, "unknown assert type {!r}".format(t), None
     return True, "ok", None
@@ -302,6 +327,13 @@ def run_selftest():
     chk("cred env fallback", _resolve_auth(None, None, {"OB_TQ_USER": "x", "OB_TQ_PASSWORD": "y"}), ("x", "y"))
     chk("cred env partial", _resolve_auth("a", None, {"OB_TQ_PASSWORD": "y"}), ("a", "y"))
     chk("cred none", _resolve_auth(None, None, {}), (None, None))
+    # smoke 结构标记原语(ADR-0028): alias/非空/placeholder 判定
+    chk("contains_any hit", body_contains_any('{"RedfishVersion":"1"}', ["@Redfish.Copyright", "RedfishVersion"]), True)
+    chk("contains_any miss", body_contains_any("<html>placeholder</html>", ["@Redfish.Copyright", "RedfishVersion"]), False)
+    chk("nonempty_any alias", json_path_nonempty_any('{"SoftwareVersion":"x"}', ["FirmwareVersion", "SoftwareVersion"]), True)
+    chk("nonempty_any empty-str rejected", json_path_nonempty_any('{"FirmwareVersion":""}', ["FirmwareVersion"]), False)
+    chk("nonempty_any non-str rejected", json_path_nonempty_any('{"FirmwareVersion":3}', ["FirmwareVersion"]), False)
+    chk("nonempty_any all miss", json_path_nonempty_any('{"Other":"x"}', ["FirmwareVersion", "SoftwareVersion"]), False)
 
     all_ok = True
     for name, ok, got, want in checks:
@@ -334,7 +366,8 @@ def main(argv=None):
     asserts = json.loads(args.asserts) if args.asserts else []
     # schema 校验(评审二轮 🟡): 未知 assert type = baseline 数据错, 输出 error + exit 3(不判 fail)。
     # 兜底 planner(方案 A): 直接调 probe 绕过 runner 时也防 unknown type 折叠成 BMC fail。
-    _allowed = ("status_in", "json_path_exists", "json_path_match")
+    _allowed = ("status_in", "json_path_exists", "json_path_match",
+                "body_contains_any", "json_path_nonempty_any")
     for a in asserts:
         if a.get("type") not in _allowed:
             print(json.dumps({"pass": False, "error": True, "code": None, "body": "",

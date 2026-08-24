@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu/cmd_smoke/cmd_test_qemu). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu / ob smoke / ob test-qemu / QEMU instance.
+# lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu/cmd_test_qemu). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu / ob test-qemu / QEMU instance.
 # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
 # 形态对照: L1 exit-seam 命令族(顶层命令直接 exit, 无 dispatcher 收口), 区别于 lib/devtool_subcmd.sh 的 L3 leaf-pure handler(return exit-code, 由 cmd_dev 收口 exit)。
 
@@ -160,7 +160,7 @@ cmd_start_qemu() {
     # ── Safety confirmation（仅交互 TTY）──
     # 非 TTY(CI/agent) 跳过确认直接起, 对齐 CONTEXT confirmation banner「正常起 QEMU
     # 一律跳过、无需 --force」—— 起新 QEMU 非路径风险; banner 只留给 kill 既有实例
-    # (上方 conflict 块, 非 TTY 需 --force)。使 `start-qemu → smoke → stop-qemu` 在 CI 非交互跑通。
+    # (上方 conflict 块, 非 TTY 需 --force)。使 `start-qemu → test-qemu → stop-qemu` 在 CI 非交互跑通。
     if [[ -t 0 ]]; then
         local ca_rc=0
         confirm_action "start QEMU for" "$MACHINE" || ca_rc=$?
@@ -490,294 +490,10 @@ cmd_deploy_to_qemu() {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
-# ob smoke — probe-only smoke prober (OOB smoke)。术语见 CONTEXT.md QEMU instance / exit-code 契约.
-# 形态对照 cmd_start_qemu/cmd_deploy_to_qemu: smoke 不拥有 QEMU 生命周期——不 bring-up
-#   (不调 qemu_prepare_launch/qemu_execute_launch)、不 teardown、无 EXIT trap。它探针一个 RUNNING
-#   instance(由 ob start-qemu 起好), 读 PID 文件的真实转发端口(更深接口, 反映实际跑的实例),
-#   跑 Redfish(root/Managers/SoftwareVersion)/IPMI/system-ready 五条断言(α: 纯 truth-reporter, 零 per-machine 期望画像/baseline)。
-# 断言判函数 leaf-pure(lib/smoke_assertions.sh); probe 采集经 nameref outvars(非 module 全局,
-#   对照 resolve_command_machine 的 nameref 范式, 使 probe 可被 protocol 层直接单测)。
-# ════════════════════════════════════════════════════════════════════════════
-
-# _smoke_tcp_probe <port> — bash /dev/tcp 探 TCP 端口可连(sshpass-independent, timeout 3s)。
-# return 0=可连 / 非0=拒绝或超时。cmd_smoke 私有(exit-seam 内, 有 I/O 副作用, 不 exit)。
-_smoke_tcp_probe() {
-    local port="$1"
-    timeout 3 bash -c "exec 3<>/dev/tcp/127.0.0.1/$port" 2>/dev/null
-}
-
-# _smoke_wait_ssh_tcp <port> — BMC 就绪门(sshpass-independent, smoke 自有)。有界轮询 TCP 端口可连。
-# 不中止 smoke: 超时只 warn, 让断言自己判 deterministic pass/fail(端口未就绪 → system-ready 断言 fail)。
-# 理由: start-qemu 的 BMC-ready 等待是 sshpass-dependent 且 warn-only, smoke 必须自己 gate 探针时机。
-_smoke_wait_ssh_tcp() {
-    local port="$1"
-    local attempts=0
-    local max_attempts="${OB_SMOKE_READY_ATTEMPTS:-30}"
-    info "Waiting for BMC SSH port $port to accept connections (up to $((max_attempts*5))s)..."
-    while [[ $attempts -lt $max_attempts ]]; do
-        attempts=$((attempts + 1))
-        if _smoke_tcp_probe "$port"; then
-            info "BMC SSH port $port connectable after attempt $attempts (~$((attempts*5))s)"
-            return 0
-        fi
-        printf "\r  Waiting... attempt %d/%d" "$attempts" "$max_attempts"
-        sleep 5
-    done
-    echo ""
-    warn "BMC SSH port $port not connectable within $((max_attempts*5))s; running assertions anyway."
-    return 1
-}
-
-# _smoke_curl_fetch <url> <code_ref> <body_ref> — curl 取一个 Redfish 资源, 经 nameref 回填
-# code/body。两个 Redfish probe(root/Managers)的公共底座: max-time + 传输失败单次重试。
-#   --max-time: bmcweb 偶发挂起时无上界 curl 会阻塞到对端断开(实测 >120s 才报 HTTP 000),
-#     挂死探测整体; 10s 对齐 test-qemu OB_TQ_TIMEOUT 默认, env OB_SMOKE_HTTP_TIMEOUT 可调。
-#   重试一次: 单次传输失败(连接 reset/TLS 握手超时/连接拒绝)常是瞬时抖动, 立即判 ✗ 会把
-#     infra 抖动冒充 α truth(实测同一实例一次 smoke Managers 000 ✗ / 重跑 1s 全绿)。连续
-#     两次失败才维持 "000" 交 judge 判 ✗ — 与 test-qemu "error=infra, 重跑" 语义对齐。
-# rc≠0(含部分传输后失败, 此时 -w 末行未产出, 解析只会得垃圾)→ code 留 "000", body 空。
-# 不 exit; set -e-safe(|| rc=$?)。
-_smoke_curl_fetch() {
-    local url="$1"
-    local -n _scf_code="$2"
-    local -n _scf_body="$3"
-    _scf_code="000"; _scf_body=""
-    local out="" rc=0
-    out=$(curl -sk --max-time "${OB_SMOKE_HTTP_TIMEOUT:-10}" -u root:0penBmc \
-          -w $'\n__OB_HTTP__%{http_code}' "$url" 2>/dev/null) || rc=$?
-    if [[ "$rc" -ne 0 ]]; then
-        rc=0
-        out=$(curl -sk --max-time "${OB_SMOKE_HTTP_TIMEOUT:-10}" -u root:0penBmc \
-              -w $'\n__OB_HTTP__%{http_code}' "$url" 2>/dev/null) || rc=$?
-    fi
-    if [[ "$rc" -eq 0 && -n "$out" ]]; then
-        _scf_code="${out##*$'\n'}"         # 末行 = __OB_HTTP__<code>
-        _scf_code="${_scf_code#__OB_HTTP__}"
-        _scf_body="${out%$'\n'*}"           # 去末行 = body
-    fi
-    # 两次 curl 都失败 → 维持 "000"(judge 据此判 fail)
-    return 0
-}
-
-# _smoke_probe_redfish <port> <code_ref> <body_ref> — curl 取 Redfish 根, 经 nameref 回填 code/body。
-# nameref 回填(非 _VF_* 全局), protocol 可测(对照 resolve_command_machine nameref 范式)。
-# curl 整体失败(连接拒绝)→ code 留 "000", body 空(经 _smoke_curl_fetch 的 max-time+重试)。
-_smoke_probe_redfish() {
-    local port="$1"
-    _smoke_curl_fetch "https://localhost:$port/redfish/v1" "$2" "$3"
-}
-
-# _smoke_probe_redfish_managers <port> <code_ref> <body_ref> — curl 取 Redfish Managers/bmc
-# (OpenBMC 标准 manager id, 全 image 通用, 非 per-machine 知识), 经 nameref 回填 code/body。
-# 形态对照 _smoke_probe_redfish; 一次 probe 喂 managers + swversion 两个 judge(深一层接口)。
-_smoke_probe_redfish_managers() {
-    local port="$1"
-    _smoke_curl_fetch "https://localhost:$port/redfish/v1/Managers/bmc" "$2" "$3"
-}
-
-# _smoke_probe_ipmi <port> <rc_ref> <out_ref> — 一条 ipmitool mc info, 经 nameref 回填 rc/out。
-_smoke_probe_ipmi() {
-    local port="$1"
-    local -n _spi_rc="$2"
-    local -n _spi_out="$3"
-    _spi_rc=0; _spi_out=""
-    _spi_out=$(ipmitool -I lanplus -H localhost -p "$port" -U root -P 0penBmc mc info 2>&1) || _spi_rc=$?
-    return 0
-}
-
-# _smoke_probe_ssh_tcp <port> <rc_ref> — TCP 探 SSH 转发端口, 经 nameref 回填 rc。
-_smoke_probe_ssh_tcp() {
-    local port="$1"
-    local -n _sps_rc="$2"
-    _sps_rc=0
-    _smoke_tcp_probe "$port" || _sps_rc=$?
-    return 0
-}
-
-# _smoke_render_verdict <total> <passed> <failed_names_ref> <failed_raws_ref> <machine>
-#   cmd_smoke 私有 verdict 渲染(leaf-pure 风格: 不 exit, return 0=all-pass / 1=any-fail;
-#   exit 收口留 cmd_smoke)。消费 total/passed + failed_names[]/failed_raws[](nameref 只读),
-#   打 summary 行 + 失败 breakdown(✗ + RAW) + α-banner(>&2)。
-#   前置(lockstep): total/passed/failed_names 由 cmd_smoke 维护——每次 fail 同时 total++ 与
-#   failed_names+=, 故 ${#failed_names[@]} == total-passed(本函数不另做 mismatch 校验)。
-_smoke_render_verdict() {
-    local total="$1" passed="$2"
-    local -n _srv_fn="$3"     # failed_names (只读消费)
-    local -n _srv_fr="$4"     # failed_raws (只读消费)
-    local machine="$5"
-    echo ""
-    if [[ "$passed" -eq "$total" ]]; then
-        echo -e "${GREEN}Smoke summary: $passed/$total assertions passed${NC}"
-        info "ob smoke: all smoke assertions passed for '$machine'."
-        return 0
-    fi
-    echo -e "${RED}Smoke summary: $passed/$total assertions passed${NC}"
-    echo ""
-    error "Failed assertions (${#_srv_fn[@]}):"
-    local i
-    for (( i=0; i<${#_srv_fn[@]}; i++ )); do
-        echo -e "  ${RED}✗ ${_srv_fn[$i]}${NC}"
-        echo    "----- RAW response (for localization) -----"
-        echo    "${_srv_fr[$i]}"
-        echo    "-------------------------------------------"
-    done
-    echo ""
-    error "ob smoke: smoke assertions failed for '$machine' (see ✗ rows + RAW responses above)."
-    # α 重申: exit 1 当下向 stderr 喂一行 α 语义, 防 caller 据全局 "1 = broken" 误判 smoke 坏。
-    # warn 默认走 stdout, 显式 >&2 落 stderr(不污染 stdout 真相报告)。
-    warn "exit 1 here is the α truth-reporter contract: the ✗ rows above report the BMC interface's ACTUAL state, NOT a smoke command failure — read the ✗ rows to see which interface and why (debug the BMC interface, not smoke)." >&2
-    # 调和提示(A1): Managers/SoftwareVersion ✗ 与 test-qemu 层 pass 同时成立有已知形态 —
-    # smoke 是固定哨兵(零 per-machine, 不能校准), 持久 image 缺口会让它对某 image 常红;
-    # per-machine baseline 曾以校准吸收同款缺口(romulus 先例, 记录在 tests/baseline/)。
-    # 这是信息索引非 remedy(解耦原则: peer 命令互相不做流程 nudge): 指出瞬时/持久的区分法
-    # 与校准历史落点, 不指使 caller 下一步跑哪条命令。
-    local _srv_cal=""
-    for _srv_cal in "${_srv_fn[@]}"; do
-        if [[ "$_srv_cal" == *"Managers"* || "$_srv_cal" == *"SoftwareVersion"* ]]; then
-            info "Managers/SoftwareVersion ✗ has two known shapes: (a) transient bmcweb hiccup — a re-run of smoke distinguishes it (each probe already retries once); (b) a persistent image gap — the romulus precedent was absorbed by per-machine baseline calibration (notes in tests/baseline/<machine>/applicability.yaml); the calibrated per-machine verdict lives in the test-qemu layer, orthogonal to this smoke row." >&2
-            break
-        fi
-    done
-    return 1
-}
-
-cmd_smoke() {
-    detect_harness_root
-
-    # ── 前置 1: machine arg 必填(probe-only 命令不做交互选号——scope 裁剪; 但列出可 smoke 的对象) ──
-    # smoke 的合法对象 = running QEMU 实例(非 initialized machines, 见前置 2), 故列 qemu_instance_list,
-    # 不引向 ob status(那是 build 的 initialized-machine 语义, 会把用户引向未启动的 machine)。
-    # 缺参数仍 exit 3(precondition missing, exit 契约不变)。
-    if [[ -z "$MACHINE" ]]; then
-        error "No machine specified."
-        local -a _smoke_targets=()
-        mapfile -t _smoke_targets < <(qemu_instance_list)
-        if [[ ${#_smoke_targets[@]} -eq 0 ]]; then
-            error "No QEMU instance is running. smoke probes a running instance — run '$OB_CMD start-qemu <machine>' first."
-        else
-            error "Running QEMU instances you can smoke:"
-            local _t
-            for _t in "${_smoke_targets[@]}"; do
-                printf '  %-20s %s\n' "$_t" "$(qemu_instance_summarize_brief "$_t")" >&2
-            done
-        fi
-        error "Specify a machine: $OB_CMD smoke <machine>"
-        exit 3
-    fi
-
-    # ── 前置 2: RUNNING QEMU instance(smoke 不 bring-up, 只探活实例——绝不探死端口, 防假"BMC 坏") ──
-    derive_qemu_paths
-    local _smoke_lock_fd="" _smoke_lock_owned=""
-    _qemu_lifecycle_lock_or_exit "$MACHINE" _smoke_lock_fd _smoke_lock_owned
-    local _liv=""
-    qemu_instance_liveness "$MACHINE" _liv   # 恒 return 0 + outvar 状态(ADR-0024), 消灭 set-e footgun
-    case "$_liv" in
-        nopid)
-            error "No QEMU instance running for '$MACHINE' (no PID file)."
-            error "Run '$OB_CMD start-qemu $MACHINE' first."
-            exit 3
-            ;;
-        exited|recycled)
-            qemu_instance_clean_stale "$MACHINE"
-            error "QEMU instance for '$MACHINE' is not running (stale PID file cleaned)."
-            error "Run '$OB_CMD start-qemu $MACHINE' first."
-            exit 3
-            ;;
-        running)
-            ;;
-    esac
-
-    # ── 从实例 PID 文件读真实转发端口(不假设默认值, 命中真端口; smoke 不接受 port override) ──
-    local s_ssh="$PIDFILE_SSH_PORT"
-    local s_redfish="$PIDFILE_REDFISH_PORT"
-    local s_ipmi="$PIDFILE_IPMI_PORT"
-    echo ""
-    info "Smoke-probing forwarded ports: SSH $s_ssh / Redfish $s_redfish / IPMI $s_ipmi (UDP)"
-
-    # ── BMC 就绪门(sshpass-independent TCP 轮询 SSH 端口; smoke own, 不依赖 start-qemu 的 sshpass 门) ──
-    _smoke_wait_ssh_tcp "$s_ssh" || true
-
-    # ── 跑 5 条断言(probe → judge; judge 向 stdout 打 ✓/✗ 行 + return 0/1) ──
-    # Redfish(root + Managers + SoftwareVersion)/ IPMI / system-ready; Managers probe 喂后两条 Redfish judge。
-    echo ""
-    step_header "Smoke assertions for '$MACHINE'"
-    local -i total=0 passed=0
-    local -a failed_names=() failed_raws=()
-    # probe outvars(经 nameref 回填; 名字与 probe 内 nameref local 不撞, 防 bash 循环引用告警)
-    local p_redfish_code="" p_redfish_body=""
-    local p_mgr_code="" p_mgr_body=""
-    local p_ipmi_rc="" p_ipmi_out=""
-    local p_ssh_rc=""
-
-    # Redfish 根可达
-    total=$((total+1))
-    _smoke_probe_redfish "$s_redfish" p_redfish_code p_redfish_body
-    local r1=0; smoke_judge_redfish_root "$p_redfish_code" "$p_redfish_body" || r1=$?
-    if [[ $r1 -eq 0 ]]; then passed=$((passed+1)); else
-        failed_names+=("Redfish root reachable")
-        failed_raws+=("interface: Redfish @ https://localhost:$s_redfish/redfish/v1"$'\n'"HTTP code: $p_redfish_code"$'\n'"RAW body:"$'\n'"$p_redfish_body")
-    fi
-
-    # Redfish Managers 可达(深一层接口: Managers/bmc 资源; 一次 probe 喂 managers + swversion 两 judge)
-    total=$((total+1))
-    _smoke_probe_redfish_managers "$s_redfish" p_mgr_code p_mgr_body
-    local r4=0; smoke_judge_redfish_managers "$p_mgr_code" "$p_mgr_body" || r4=$?
-    if [[ $r4 -eq 0 ]]; then passed=$((passed+1)); else
-        failed_names+=("Redfish Managers reachable")
-        failed_raws+=("interface: Redfish @ https://localhost:$s_redfish/redfish/v1/Managers/bmc"$'\n'"HTTP code: $p_mgr_code"$'\n'"RAW body:"$'\n'"$p_mgr_body")
-    fi
-
-    # Redfish SoftwareVersion(BMC 上报固件版本 — 功能态断言; 复用 managers probe body)
-    total=$((total+1))
-    local r5=0; smoke_judge_redfish_swversion "$p_mgr_body" || r5=$?
-    if [[ $r5 -eq 0 ]]; then passed=$((passed+1)); else
-        failed_names+=("Redfish SoftwareVersion reported")
-        failed_raws+=("interface: Redfish Managers body @ https://localhost:$s_redfish/redfish/v1/Managers/bmc"$'\n'"RAW body:"$'\n'"$p_mgr_body")
-    fi
-
-    # IPMI over LAN
-    total=$((total+1))
-    _smoke_probe_ipmi "$s_ipmi" p_ipmi_rc p_ipmi_out
-    local r2=0; smoke_judge_ipmi_lan "$p_ipmi_rc" "$p_ipmi_out" || r2=$?
-    if [[ $r2 -eq 0 ]]; then
-        passed=$((passed+1))
-    else
-        failed_names+=("IPMI over LAN works")
-        local _ipmi_raw="interface: IPMI @ localhost:$s_ipmi/UDP (ipmitool mc info)"$'\n'"ipmitool return code: $p_ipmi_rc"$'\n'"RAW output:"$'\n'"$p_ipmi_out"
-        # Generic (non per-machine) diagnostic: a non-zero ipmitool rc on a reachable
-        # Redfish BMC most often means the image itself lacks an RMCP+/LAN responder.
-        # Phrased as generic Redfish/IPMI protocol knowledge (not naming any machine).
-        if [[ "$p_ipmi_rc" != "0" ]]; then
-            _ipmi_raw+=$'\n'"possible cause: image may lack an RMCP+/LAN responder (phosphor-ipmi-netbridged not installed/enabled) — image-side, not a smoke defect; Redfish remains the canonical probe."
-        fi
-        failed_raws+=("$_ipmi_raw")
-    fi
-
-    # System ready signal(SSH 端口 TCP 可连)
-    total=$((total+1))
-    _smoke_probe_ssh_tcp "$s_ssh" p_ssh_rc
-    local r3=0; smoke_judge_system_ready "$p_ssh_rc" || r3=$?
-    if [[ $r3 -eq 0 ]]; then passed=$((passed+1)); else
-        failed_names+=("System ready signal (SSH port TCP-connectable)")
-        failed_raws+=("interface: SSH TCP @ localhost:$s_ssh"$'\n'"tcp connect rc: $p_ssh_rc"$'\n'"(port not accepting connections — BMC sshd may still be booting)")
-    fi
-
-    # ── α verdict: 渲染经 _smoke_render_verdict(leaf-pure 风格, return 0/1); exit 收口留本 cmd_smoke ──
-    # 无 --allow-fail / 无 per-machine expected-profile / 无 baseline: 回归检测是 caller 的事(零 per-machine 知识)。
-    local _vrc=0
-    _smoke_render_verdict "$total" "$passed" failed_names failed_raws "$MACHINE" || _vrc=$?
-    _qemu_lifecycle_lock_release_if_owned "$_smoke_lock_fd" "$_smoke_lock_owned"
-    case "$_vrc" in
-        0) return 0 ;;            # smoke 不拥有 QEMU → 不 teardown, 直接 return
-        *) exit 1 ;;              # smoke 不拥有 QEMU → 无 EXIT trap, 直接 exit 1
-    esac
-}
-
-# ════════════════════════════════════════════════════════════════════════════
 # ob test-qemu — baseline AR probe runner (probe-only)。术语见 CONTEXT.md baseline / ob test-qemu / exit-code 契约.
-# 形态对照 cmd_smoke: probe-only (不 boot/teardown, 无 EXIT trap), 读 PID 文件真实 Redfish 端口。
-#   与 smoke 正交姊妹: smoke 浅冒烟 5 哨兵 + 零 per-machine 守 per-push 绿灯; test-qemu 逐条深测
-#   per-machine baseline 的 QEMU 可仿真 AR 子集, 产 pass/fail/skip/xfail/xpass, nightly/PR-to-main 频率。
+# probe-only (不 boot/teardown, 无 EXIT trap), 读 PID 文件真实 Redfish 端口。
+#   逐条深测 per-machine baseline 的 QEMU 可仿真 AR 子集, 产 pass/fail/skip/xfail/xpass;
+#   内建 smoke suite(ADR-0028 收编, 5 AR 可达性门)守 per-push 绿灯, 其余 suite 守 nightly/PR-to-main。
 # per-machine 全栈独立 (ADR-0025): 每 machine baseline 目录自包含 AR 数据 + probe 引擎, 不共享。
 #   落点二分 + 谱系路由 (ADR-0026): community 谱系(community source label)→ tests/baseline/<machine>/
 #   (随上游); custom 谱系(custom source label)→ contexts/baseline/<machine>/ (不随上游)。各找各的,
@@ -851,6 +567,82 @@ test_qemu_resolve_baseline_dir() {
 }
 
 # test_qemu_usage — cmd_test_qemu 的 -h/--help 输出 (ob test-qemu --help)。自包含 test-qemu 专属说明。
+# test_qemu_export_auth BASELINE_DIR — 前置 3 凭据解析 + export(直测 leaf, 2026-08-21 抽出):
+#   env OB_TQ_USER/OB_TQ_PASSWORD 优先, 缺者从 ar_probes.yaml auth 补(redfish/ipmi/
+#   console/web 四 interface, 各自 fallback auth 顶层); redfish 缺 → exit 3 指名;
+#   per-interface 全缺不 export(probe 自行 error 3 指名, 纯 redfish suite 不受影响)。
+#   密码经 env 注入 runner/probe(argv ps 全局可见, environ owner-only, 评审 🟡2+🟢1)。
+#   双源校验: user/password 各满足 env 或 YAML 至少一源。YAML malformed → exit 3。
+#   $() 捕获 + || _arc=$? 显式判 rc(评审 🟡1): process substitution 的 read 在 set -e 下
+#   EOF exit 1 会先于显式 exit 3 触发 errexit。
+test_qemu_export_auth() {
+    local _dir="$1"
+    local _auth_user="${OB_TQ_USER:-}" _auth_pass="${OB_TQ_PASSWORD:-}"
+    local _ipmi_user="${OB_TQ_IPMI_USER:-}" _ipmi_pass="${OB_TQ_IPMI_PASSWORD:-}"
+    local _console_user="${OB_TQ_CONSOLE_USER:-}" _console_pass="${OB_TQ_CONSOLE_PASSWORD:-}"
+    local _web_user="${OB_TQ_WEB_USER:-}" _web_pass="${OB_TQ_WEB_PASSWORD:-}"
+    local _auth_out="" _arc=0
+    if [[ -z "$_auth_user" || -z "$_auth_pass" || -z "$_ipmi_user" || -z "$_ipmi_pass" || -z "$_console_user" || -z "$_console_pass" || -z "$_web_user" || -z "$_web_pass" ]]; then
+        _auth_out=$(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
+import yaml, os, sys
+try:
+    d = yaml.safe_load(open(os.environ["OB_TQ_YAML"])) or {}
+except Exception as e:
+    sys.stderr.write("cmd_test_qemu: cannot parse %s: %s\n" % (os.environ["OB_TQ_YAML"], e))
+    sys.exit(3)
+a = d.get("auth") or {}
+def pick(k):
+    sub = a.get(k) if isinstance(a.get(k), dict) else None
+    return (sub or {}).get("user") or a.get("user") or "", (sub or {}).get("password") or a.get("password") or ""
+for k in ("redfish", "ipmi", "console", "web"):
+    u, p = pick(k)
+    print(u); print(p)
+') || _arc=$?
+        if [[ $_arc -ne 0 ]]; then
+            error "Cannot parse $_dir/ar_probes.yaml auth (YAML malformed — see parse error above)."
+            exit 3
+        fi
+        # env 已设者胜, 只从 YAML 补缺(print 八行: redfish/ipmi/console/web 各 user/pass)
+        local -a _auth_lines=()
+        mapfile -t _auth_lines <<< "$_auth_out"
+        [[ -z "$_auth_user" ]] && _auth_user="${_auth_lines[0]:-}"
+        [[ -z "$_auth_pass" ]] && _auth_pass="${_auth_lines[1]:-}"
+        [[ -z "$_ipmi_user" ]] && _ipmi_user="${_auth_lines[2]:-}"
+        [[ -z "$_ipmi_pass" ]] && _ipmi_pass="${_auth_lines[3]:-}"
+        [[ -z "$_console_user" ]] && _console_user="${_auth_lines[4]:-}"
+        [[ -z "$_console_pass" ]] && _console_pass="${_auth_lines[5]:-}"
+        [[ -z "$_web_user" ]] && _web_user="${_auth_lines[6]:-}"
+        [[ -z "$_web_pass" ]] && _web_pass="${_auth_lines[7]:-}"
+    fi
+    if [[ -z "$_auth_user" ]]; then
+        error "No Redfish user for '$MACHINE' baseline probes."
+        error "Set OB_TQ_USER env, or auth.redfish.user (fallback auth.user) in $_dir/ar_probes.yaml."
+        exit 3
+    fi
+    if [[ -z "$_auth_pass" ]]; then
+        error "No Redfish password for '$MACHINE' baseline probes."
+        error "Set OB_TQ_PASSWORD env, or auth.redfish.password (fallback auth.password) in $_dir/ar_probes.yaml."
+        exit 3
+    fi
+    export OB_TQ_USER="$_auth_user" OB_TQ_PASSWORD="$_auth_pass"
+    # per-interface 凭据(ADR-0028 smoke 收编): ipmi 凭据 env > auth.ipmi > auth 顶层;
+    # 全缺则不 export — 纯 redfish suite 不受影响, ipmi probe 自行 error 3 指名。
+    [[ -n "$_ipmi_user" && -n "$_ipmi_pass" ]] && export OB_TQ_IPMI_USER="$_ipmi_user" OB_TQ_IPMI_PASSWORD="$_ipmi_pass"
+    # console 凭据同理(env > auth.console > auth 顶层; 2026-08-21 b865g8 smoke
+    # 移植 SMOKE-06): 该 machine console 登录账号 sysadmin ≠ redfish 账号
+    # toutiao(nologin), 不注入则 probe fallback OB_TQ_USER 拿错账号登录失败。
+    # web 凭据同理(SMOKE-08 web login): b865g8 WEB 账号 toutiao(≠ console 的
+    # sysadmin), 不注入则 probe fallback 拿错账号登录失败。
+    # 用 if 而非 && 列表收尾: && 列表条件假时返回 1, if 形式对调用上下文免疫。
+    if [[ -n "$_console_user" && -n "$_console_pass" ]]; then
+        export OB_TQ_CONSOLE_USER="$_console_user" OB_TQ_CONSOLE_PASSWORD="$_console_pass"
+    fi
+    if [[ -n "$_web_user" && -n "$_web_pass" ]]; then
+        export OB_TQ_WEB_USER="$_web_user" OB_TQ_WEB_PASSWORD="$_web_pass"
+    fi
+    return 0
+}
+
 test_qemu_usage() {
     cat <<EOF
 Usage: $OB_CMD test-qemu <machine> [options]
@@ -860,7 +652,10 @@ Run <machine>'s baseline AR probes on its RUNNING QEMU instance (probe mode;
 (需求条目) is probed and verdicted pass/fail/skip/xfail/xpass.
 
 Options:
-  --suite <name>   Only run ARs in this suite
+  --suite <name>   Only run ARs in this suite (built-in per-machine suites
+                   include 'smoke' — the 8-AR reachability gate: Redfish
+                   root/Manager/firmware, IPMI mc info, SSH TCP, serial
+                   console login, Web UI, Web UI login; ADR-0028)
   --ar <id>        Only run the named AR
   --report <path>  Dump JSON report to PATH
   -v, --verbose    Per-AR live fail/error lines also carry code= when
@@ -869,12 +664,41 @@ Options:
   -d, --dry-run    List ARs + applicability, no probe (no running instance needed)
   -h, --help       Show this help
 
+Prerequisites:
+  Typical setup path: init → build → start-qemu → test-qemu.
+  test-qemu itself checks PyYAML, source manifest lineage, and the
+  lineage-routed baseline dir (see baseline dir below). Probe runs also
+  require credentials (env or ar_probes.yaml auth, see Environment) and
+  a running QEMU instance. --dry-run skips credentials and
+  running-instance checks, but still checks local baseline assets.
+  exit-code 3 means a missing precondition/config/infra gate — follow
+  the printed remedy and retry.
+
 Environment:
-  OB_TQ_USER / OB_TQ_PASSWORD   Redfish creds — env wins over argv flags and over
+  OB_TQ_USER / OB_TQ_PASSWORD   Redfish creds — env wins over
                                 ar_probes.yaml auth (keeps secrets out of 'ps';
                                 environ is owner-only). Missing ones fall back to
                                 ar_probes.yaml auth.redfish / auth.
+  OB_TQ_IPMI_USER / OB_TQ_IPMI_PASSWORD
+                                IPMI creds (smoke SMOKE-04) — env wins over
+                                ar_probes.yaml auth.ipmi (fallback auth);
+                                if absent everywhere the ipmi probe errors 3.
+  OB_TQ_CONSOLE_USER / OB_TQ_CONSOLE_PASSWORD
+                                Serial console login creds (smoke SMOKE-06) —
+                                env wins over ar_probes.yaml auth.console
+                                (fallback auth); if absent everywhere the
+                                console probe falls back to OB_TQ_USER /
+                                OB_TQ_PASSWORD, else errors 3.
+  OB_TQ_WEB_USER / OB_TQ_WEB_PASSWORD
+                                Web UI login creds (smoke SMOKE-08 login
+                                block) — env wins over ar_probes.yaml
+                                auth.web (fallback auth); if absent
+                                everywhere the web probe falls back to
+                                OB_TQ_USER / OB_TQ_PASSWORD, else errors 3.
   OB_TQ_TIMEOUT                 Per-probe HTTP timeout seconds (default 10)
+  (OB_TQ_SSH_PORT / OB_TQ_IPMI_PORT / OB_TQ_CONSOLE_SOCK are exported from
+  the instance's PID file for the smoke suite's ssh_tcp / ipmi / console
+  probes — not user-facing knobs.)
 
 Boundary: probe-only — does NOT boot or tear down QEMU; reads the Redfish
           port from the instance's PID file (no port overrides honored).
@@ -914,6 +738,10 @@ Exit codes (test-qemu-specific):
       baseline dir for <machine> — see remedy line), OR one or more probes hit
       a transient infra error mid-run (VERDICT: ERROR) — the instance may be
       fine; re-run / check connectivity rather than treat it as a baseline fail.
+
+Examples:
+  $OB_CMD test-qemu romulus --suite smoke   # Run the 8-AR smoke gate on a running romulus instance
+  $OB_CMD test-qemu romulus --ar SMOKE-03 -v        # Re-run one AR with per-AR fail detail
 EOF
 }
 
@@ -992,7 +820,7 @@ cmd_test_qemu() {
 
     # ── 前置 2: baseline 目录按谱系路由 (ADR-0026; community→tests/, custom→contexts/) ──
     # 排序原则: 前置按"缺失时用户修复成本"排序 — baseline 是结构性缺失(建目录级投入)且
-    # 零 QEMU 依赖, 先于 QEMU 运行态检查暴露; liveness 段与 cmd_smoke 同构。
+    # 零 QEMU 依赖, 先于 QEMU 运行态检查暴露; liveness 段是 probe-only 标准前置。
     # 谱系 = source label 单维度。label 是唯一权威事实源: 一个 harness 绑定唯一 source,
     # binary 目录由 label 派生(derive_qemu_paths: qemu-bin/$label), 共线非独立信号。
     # 经 test_qemu_resolve_lineage strict 读取(ADR-0026 2026-08-18 修订): manifest 缺失/
@@ -1036,52 +864,12 @@ cmd_test_qemu() {
     # ── 前置 3: 凭据解析 — env OB_TQ_USER/OB_TQ_PASSWORD 优先, 缺者从 ar_probes.yaml auth 补 ──
     # 凭据只依赖 baseline dir(读 ar_probes.yaml), 修复成本低但检查零成本 — 与 baseline 同属
     # 本地可判定前置, 先于 QEMU 运行态。仅 probe 需要: dry-run 不 probe, 凭据无用
-    # (与 run.sh DRY_RUN 分支的凭据豁免对齐)。
-    # (评审 🟡2 + 🟢1: 密码经 env 注入 runner/probe — argv 是 ps 全局可见的, environ owner-only;
-    #  双源校验防 env 与 YAML 打架: user/password 各满足 env 或 YAML 至少一源, 缺则 exit 3 指名。)
-    # $() 捕获 + || _arc=$? 显式判 rc(评审 🟡1): process substitution 的 read 在 set -e 下 EOF
-    # exit 1 会先于显式 exit 3 触发 errexit, 把 malformed YAML 误报成 exit 1(α truth 污染)。
+    # (与 run.sh DRY_RUN 分支的凭据豁免对齐)。实现抽为 test_qemu_export_auth(直测 leaf)。
     if [[ $_dry -eq 0 ]]; then
-        local _auth_user="${OB_TQ_USER:-}" _auth_pass="${OB_TQ_PASSWORD:-}"
-        local _auth_out="" _arc=0
-        if [[ -z "$_auth_user" || -z "$_auth_pass" ]]; then
-            _auth_out=$(OB_TQ_YAML="$_dir/ar_probes.yaml" python3 -c '
-import yaml, os, sys
-try:
-    d = yaml.safe_load(open(os.environ["OB_TQ_YAML"])) or {}
-except Exception as e:
-    sys.stderr.write("cmd_test_qemu: cannot parse %s: %s\n" % (os.environ["OB_TQ_YAML"], e))
-    sys.exit(3)
-a = d.get("auth") or {}
-rf = a.get("redfish") if isinstance(a.get("redfish"), dict) else None
-print((rf or {}).get("user") or a.get("user") or "")
-print((rf or {}).get("password") or a.get("password") or "")
-') || _arc=$?
-            if [[ $_arc -ne 0 ]]; then
-                error "Cannot parse $_dir/ar_probes.yaml auth (YAML malformed — see parse error above)."
-                exit 3
-            fi
-            # env 已设者胜, 只从 YAML 补缺(print 两行, $() 已去尾换行)
-            [[ -z "$_auth_user" ]] && _auth_user="${_auth_out%%$'\n'*}"
-            if [[ -z "$_auth_pass" ]]; then
-                _auth_pass="${_auth_out#*$'\n'}"
-                [[ "$_auth_pass" == "$_auth_out" ]] && _auth_pass=""   # 单行兜底(无第二行)
-            fi
-        fi
-        if [[ -z "$_auth_user" ]]; then
-            error "No Redfish user for '$MACHINE' baseline probes."
-            error "Set OB_TQ_USER env, or auth.redfish.user (fallback auth.user) in $_dir/ar_probes.yaml."
-            exit 3
-        fi
-        if [[ -z "$_auth_pass" ]]; then
-            error "No Redfish password for '$MACHINE' baseline probes."
-            error "Set OB_TQ_PASSWORD env, or auth.redfish.password (fallback auth.password) in $_dir/ar_probes.yaml."
-            exit 3
-        fi
-        export OB_TQ_USER="$_auth_user" OB_TQ_PASSWORD="$_auth_pass"
+        test_qemu_export_auth "$_dir"
     fi
 
-    # ── 前置 4: RUNNING QEMU instance (probe-only, 对齐 cmd_smoke; 绝不探死端口防假"BMC 坏") ──
+    # ── 前置 4: RUNNING QEMU instance (probe-only; 绝不探死端口防假"BMC 坏") ──
     # liveness/lock/port 仅 probe 需要; dry-run 是 baseline 资产检查(planner-only), 不碰
     # BMC —— 与 run.sh DRY_RUN 分支的前置豁免对齐。
     local _test_lock_fd="" _test_lock_owned="" _liv="" _port=""
@@ -1107,6 +895,10 @@ print((rf or {}).get("password") or a.get("password") or "")
 
         # ── 从 PID 文件读真实 Redfish 端口 (qemu_instance_liveness 已填 PIDFILE_*; 不假设默认值) ──
         _port="$PIDFILE_REDFISH_PORT"
+        # smoke suite probe-type 端口/socket 注入(ADR-0028): ipmi/ssh_tcp/console probe 从 env 读配置,
+        # 与 redfish 的 --port argv 通道并存; 值来自实例 PID 文件(同一事实源)。
+        export OB_TQ_SSH_PORT="$PIDFILE_SSH_PORT" OB_TQ_IPMI_PORT="$PIDFILE_IPMI_PORT"
+        [[ -n "$PIDFILE_SERIAL_SOCK" ]] && export OB_TQ_CONSOLE_SOCK="$PIDFILE_SERIAL_SOCK"
     fi
 
     # ── 调共享 runner (host/port argv + 数据/凭据 env 注入; runner exit 0/1 透传为 ob exit 0/1) ──

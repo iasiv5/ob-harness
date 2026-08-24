@@ -98,15 +98,6 @@ tools/trace_collect.sh | python3 tools/coverage_radar.py - --cross-check
 | build-first 编排(image 重建 + QEMU 重启,端口复用) | cmd_deploy_to_qemu | orchestration/deploy_to_qemu.sh;integration/ob_deploy_to_qemu.sh | exit 函数,radar 低估;build-first 链 + QEMU 在跑则端口复用(ADR-0011) |
 | machine-selection 序言(经 resolve_command_machine) | cmd_deploy_to_qemu;resolve_command_machine | protocol/deploy_to_qemu_machine_selection.sh;protocol/qemu_commands_guard_surface.sh | 经 resolve_command_machine 同 cmd_build(ADR-0019);empty/nontty remedy 字节级不变 |
 
-## smoke
-
-| 功能点 | 涉及函数 | 覆盖 test | 备注 |
-|---|---|---|---|
-| probe-only 命令编排(前置 exit 3 + 读实例端口 + 5 断言 + verdict) | cmd_smoke | protocol/smoke_exit_contract.sh;protocol/smoke_surface.sh;protocol/smoke_substep_isolation.sh;integration/smoke_e2e.sh | exit 函数,radar 低估;exit 0/1/3 + 5 ✓ 行 + α-banner 存在性锁 |
-| verdict 渲染(summary + 失败 breakdown + α-banner) | _smoke_render_verdict | unit/smoke_verdict.sh | leaf-pure 风格(return 0/1,不 exit);3 case + 通道锁(error 诊断行/α-banner→stderr,summary/✗/RAW/info→stdout) |
-| 断言判定(Redfish root/Managers/SoftwareVersion + IPMI + system-ready) | smoke_judge_redfish_root;smoke_judge_redfish_managers;smoke_judge_redfish_swversion;smoke_judge_ipmi_lan;smoke_judge_system_ready | protocol/smoke_assertions_judgment.sh;orchestration/smoke_orchestration.sh | leaf-pure(lib/smoke_assertions.sh) |
-| probe 采集(curl/ipmitool/tcp → nameref outvars) | _smoke_probe_redfish;_smoke_probe_redfish_managers;_smoke_probe_ipmi;_smoke_probe_ssh_tcp;_smoke_tcp_probe;_smoke_wait_ssh_tcp | orchestration/smoke_orchestration.sh | cmd_smoke 私有,PATH-stub 单测 |
-
 ## 横切(通用)
 
 | 功能点 | 涉及函数 | 覆盖 test | 备注 |

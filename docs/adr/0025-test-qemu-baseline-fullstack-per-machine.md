@@ -4,7 +4,7 @@
 
 Status: accepted
 
-References: CONTEXT.md `baseline`(本次新增)/ `ob smoke` / `test layer`；[ADR-0017](0017-knowhow-distribution-boundary.md)(`contexts/` 不随上游分发边界——本 ADR 把 baseline 数据接上同一条 product/user 分发边界)；[ADR-0020](0020-ob-smoke-probe-only-smoke-prober.md)(smoke probe-only / 零 per-machine 知识,仅约束 smoke 层;test-qemu 作为新层允许 per-machine,本 ADR 把"允许"推到"全栈 per-machine 为默认")；[ADR-0023](0023-defer-smoke-assertion-runner.md)(防循环推荐 ADR 先例)。
+References: CONTEXT.md `baseline`(本次新增)/ `smoke suite` / `test layer`；[ADR-0017](0017-knowhow-distribution-boundary.md)(`contexts/` 不随上游分发边界——本 ADR 把 baseline 数据接上同一条 product/user 分发边界)；[ADR-0020](0020-ob-smoke-probe-only-smoke-prober.md)(smoke probe-only / 零 per-machine 知识,仅约束 smoke 层;test-qemu 作为新层允许 per-machine,本 ADR 把"允许"推到"全栈 per-machine 为默认")；[ADR-0023](0023-defer-smoke-assertion-runner.md)(防循环推荐 ADR 先例)。
 
 ## Considered Options
 
@@ -26,10 +26,10 @@ References: CONTEXT.md `baseline`(本次新增)/ `ob smoke` / `test layer`；[AD
 
 - **与 ADR-0020 划界**:ADR-0020"零 per-machine 知识"**仅约束 smoke 层**(浅冒烟,5 条哨兵,聚合 α verdict,无 per-machine profile);test-qemu 层本 ADR 确立全栈 per-machine。两层哲学不同但并存:smoke 守 per-push 绿灯(零 per-machine 保信号干净),test-qemu 做逐条深测(per-machine 承载领域差异)。不冲突。
 
-- **CONTEXT.md 维护**:本次新增 `baseline` 术语条目(开发基线/功能基线,固件领域 ubiquitous language,= 一组 AR,被 test-qemu 验证的对象)。`ob smoke` 条目维持不变(与 baseline 正交)。
+- **CONTEXT.md 维护**:本次新增 `baseline` 术语条目(开发基线/功能基线,固件领域 ubiquitous language,= 一组 AR,被 test-qemu 验证的对象)。`smoke suite` 条目随 ADR-0028 收编更新(baseline 目录内建 smoke 分片)。
 
 - **可逆性**:从全栈 per-machine 合并回共享引擎,要归并 N 份已分叉代码,成本随分叉深度上升;故本决策随时间趋难逆,正合 ADR 门槛(hard to reverse + surprising + real trade-off 三条全中)。
 
-- **数据布局 v2（2026-08-21 增补,schema_version: 2）**:per-machine 的 `ar_probes.yaml` 升级为 **include 驱动的薄顶层 + 按 suite 分片**——顶层只含注释头块 + `schema_version` + `auth` + `include: [相对路径列表]`,**不允许顶层 `ars:`**;分片落 `ar_probes.d/<suite>.yaml`,每片 = 局部注释 + `ars:`,不重复 auth/schema_version。动因:b865g8 基线 915KB/24453 行/1366 条 AR,agent 全量读爆 context、大文件内编辑定位困难;按 suite 拆片后 agent 借既有 `--suite` 过滤只读目标分片。include 契约:相对顶层文件解析;分片缺失 die、路径逃出 baseline 目录 die、跨分片 AR id 重复 die;`depends_on` 跨 suite 合法（merge 后 resolve_status 不变）。**所有 machine 一律目录化**（含主仓 romulus demo,为未来 `ob smoke` 收编 `ob test-qemu --suite smoke` 保持结构统一）。未来新 machine 可不走 gen_baseline.py,由人工/agent 直接打磨分片——薄顶层 + include 清单对此友好。
+- **数据布局 v2（2026-08-21 增补,schema_version: 2）**:per-machine 的 `ar_probes.yaml` 升级为 **include 驱动的薄顶层 + 按 suite 分片**——顶层只含注释头块 + `schema_version` + `auth` + `include: [相对路径列表]`,**不允许顶层 `ars:`**;分片落 `ar_probes.d/<suite>.yaml`,每片 = 局部注释 + `ars:`,不重复 auth/schema_version。动因:b865g8 基线 915KB/24453 行/1366 条 AR,agent 全量读爆 context、大文件内编辑定位困难;按 suite 拆片后 agent 借既有 `--suite` 过滤只读目标分片。include 契约:相对顶层文件解析;分片缺失 die、路径逃出 baseline 目录 die、跨分片 AR id 重复 die;`depends_on` 跨 suite 合法（merge 后 resolve_status 不变）。**所有 machine 一律目录化**（含主仓 romulus demo,为 smoke 收编 `ob test-qemu --suite smoke` 保持结构统一——已收编,ADR-0028,各 machine 落 `ar_probes.d/smoke.yaml`）。未来新 machine 可不走 gen_baseline.py,由人工/agent 直接打磨分片——薄顶层 + include 清单对此友好。
 
 - **future-candidate**:若前提变化——出现"绝大多数 machine 共享同一份稳定 probe 引擎"且"组织上允许跨项目共享代码"(如团队合并 / 统一权限模型 / 单团队维护多 machine)——重新评估是否抽共享引擎层。届时按本 ADR 的"组织约束优先"原则重判。

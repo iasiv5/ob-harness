@@ -1,71 +1,67 @@
 #!/usr/bin/env python3
-"""ob smoke baseline-diff —— 两次 smoke 输出的回归闸门(只读)。
+"""smoke suite baseline-diff —— 两份 `ob test-qemu --suite smoke --report` JSON
+的回归闸门(只读)。
 
-给定 baseline 与 current 两次 `ob smoke` 的输出文件, 解析其中的断言行
-(`  ✓ <name> (...)` / `  ✗ <name> (...)`), 按断言名配对, 把两类判为回归(退化):
-**✓→✗**(同名退化) 与 **baseline 无此名 + current ✗**(新出现的失败断言)。
-✗→✓ 改善仍作 info; ✓→✓/✗→✗ 不变; 新出现的 ✓ 与消失的断言名只作 info 打印, 不据此 fail。
+给定 baseline 与 current 两次 smoke suite 的 JSON report(report.py 实测契约:
+顶层 {verdict, counts, records}, 配对键 records[].ar, 判定字段 records[].status
+∈ pass/fail/skip/xfail/xpass/error), 按 AR 配对, 把两类判为回归(退化):
+**pass→fail**(同名退化) 与 **baseline 无此 AR + current fail**(新出现的失败 AR)。
+fail→pass 改善仍作 info; skip/error 行不参与(error 属 infra 非真相)。
 
-【设计: 为何按"断言名"而非整行配对】
-  smoke 每条断言行 = `mark + 断言名 + (细节)`, 细节含 HTTP code / ipmitool rc /
-  固件版本等运行态信息, baseline 与 current 几乎总不同。若按整行配对, 一条
-  ✓→✗ 退化会被误读成"旧 ✓ 行消失 + 新 ✗ 行出现"(归入 info, 不 fail), 闸门失效。
-  故配对 key 取断言名(行首 mark 后、首个 ` (` 前的稳定头部), 如
-  "Redfish root reachable"、"IPMI over LAN works"、"System ready signal"。
+【设计: 为何按 AR 配对】
+  report 每条 record 含 code/body/reason 等运行态信息, baseline 与 current 几乎
+  总不同。按 records[].ar(AR ID, 如 SMOKE-04)配对, 判定只看 status 语义, 细节
+  变化不构成假回归。
 
 【什么算回归】  两类 → exit 1:
-    (1) baseline=✓ 且 current=✗(同名 ✓→✗ 退化);
-    (2) baseline 无此名 + current=✗(新出现的失败断言 — 一个全新的 ✗ 理应拦截)。
-  不算回归(作 info): ✗→✓ 改善、✓→✓/✗→✗ 不变、新出现的 ✓、消失的断言名。
+    (1) baseline=pass 且 current=fail(同名 pass→fail 退化);
+    (2) baseline 无此 AR + current=fail(新出现的失败 AR — 全新的 fail 理应拦截)。
+  不算回归(作 info): fail→pass 改善、新出现的非 fail AR、消失的 AR。
+  skip/error 记录整体不参与配对判定(infra/skip 非 α 真相)。
 
 【什么时候用】
-  - CI 把 `ob smoke` 当回归闸门: 改前 smoke → baseline, 改后 smoke → current,
-    `smoke_diff baseline current` exit 0 = 无退化、exit 1 = 有退化。
-  - agent modify→verify 回路: 改前/改后两次 smoke 比对, 机器无关地判回归
-    (ADR-0020: 回归判定归 caller, smoke 自身保持 α 纯报真相、零 per-machine 知识)。
+  CI 把 smoke suite 当回归闸门: 改前/改后两次
+  `ob test-qemu <machine> --suite smoke --report <tmp>` → smoke_diff →
+  exit 0 = 无退化、exit 1 = 有退化(temporal gate 归 caller, ADR-0020/0028)。
 
 【怎么用】
-  $ python3 tools/smoke_diff.py <baseline> <current>
+  $ python3 tools/smoke_diff.py <baseline.json> <current.json>
   $ python3 tools/smoke_diff.py --help
-  退出码: 0 = 无回归; 1 = 检出回归(✓→✗ 退化 或 新出现的 ✗); 2 = 参数/文件错误。
+  退出码: 0 = 无回归; 1 = 检出回归(pass→fail 退化 或 新出现的 fail); 2 = 参数/文件错误。
 
-【边界】只读, 不修改输入文件。重复断言行(如 smoke fail 时 breakdown 段重打
-  `✗ <name>`)按首次出现保留(judge 行先打, 带 detail; breakdown 重打后打, 无 detail)。
+【边界】只读, 不修改输入文件。重复 AR 按首次出现保留(report 生成侧已保证唯一)。
 """
-import re
+import json
 import sys
-
-ASSERT_RE = re.compile(r'^\s*([✓✗])\s+(.+)$')
-
-
-def canonical_name(text):
-    """断言行 mark 后的稳定头部: 首个 ' (' 前的文本; 无括号细节则整段。
-
-    例: 'Redfish root reachable (HTTP 200, ...)' -> 'Redfish root reachable'
-        'System ready signal (SSH port TCP-connectable)' -> 'System ready signal'
-        'IPMI over LAN works' -> 'IPMI over LAN works'
-    """
-    idx = text.find(' (')
-    head = text[:idx] if idx != -1 else text
-    return head.strip()
 
 
 def parse(path):
-    """解析 smoke 输出文件 -> 有序 dict {canonical_name: (mark, raw_line)}。
+    """解析 report JSON -> 有序 dict {ar: status}。
 
-    重复同名行(breakdown 段重打)按首次出现保留(judge 行带 detail, 先打)。
+  skip/error 记录整体丢弃(infra/skip 非 α 真相, 不参与回归判定)。
+  Schema 漂移 fail-closed(评审 🔴): 任一 record 非 dict / ar 非非空 str /
+  status 不在白名单 / AR 重复 → ValueError(exit 2)——静默丢弃会把 schema
+  漂移(如 status 误写成 verdict)折叠成"消失 AR"假放行。
     """
+    with open(path, encoding='utf-8') as f:
+        doc = json.load(f)
+    if not isinstance(doc, dict) or not isinstance(doc.get('records'), list):
+        raise ValueError('not a test-qemu report (want top-level {verdict, counts, records})')
     seen = {}
-    with open(path, encoding='utf-8', errors='replace') as f:
-        for raw in f:
-            line = raw.rstrip('\n')
-            m = ASSERT_RE.match(line)
-            if not m:
-                continue
-            mark = m.group(1)
-            name = canonical_name(m.group(2))
-            if name not in seen:           # keep-first: judge 行先于 breakdown 重打
-                seen[name] = (mark, line.strip())
+    for rec in doc['records']:
+        if not isinstance(rec, dict):
+            raise ValueError('record is not a mapping: {!r}'.format(rec))
+        ar = rec.get('ar')
+        st = rec.get('status')
+        if not isinstance(ar, str) or not ar:
+            raise ValueError('record has bad "ar": {!r}'.format(rec))
+        if st not in ('pass', 'fail', 'skip', 'xfail', 'xpass', 'error'):
+            raise ValueError('record {!r} has bad "status": {!r}'.format(ar, st))
+        if ar in seen:
+            raise ValueError('duplicate record for AR {!r}'.format(ar))
+        if st in ('skip', 'error'):
+            continue  # infra/skip 非 α 真相
+        seen[ar] = st
     return seen
 
 
@@ -76,77 +72,75 @@ def main(argv):
         return 0 if ('-h' in argv or '--help' in argv) else 2
 
     base_path, cur_path = args[0], args[1]
-    for p in (base_path, cur_path):
-        try:
-            open(p, encoding='utf-8').close()
-        except OSError as e:
-            print(f"error: cannot read {p}: {e}", file=sys.stderr)
-            return 2
+    try:
+        base = parse(base_path)
+    except (OSError, ValueError) as e:
+        print(f"error: cannot parse {base_path}: {e}", file=sys.stderr)
+        return 2
+    try:
+        cur = parse(cur_path)
+    except (OSError, ValueError) as e:
+        print(f"error: cannot parse {cur_path}: {e}", file=sys.stderr)
+        return 2
 
-    base = parse(base_path)
-    cur = parse(cur_path)
-
-    regressions = []        # ✓→✗ (退化, fail)
-    improvements = []       # ✗→✓ (改善, info)
-    added = []              # 仅 current 出现 (info)
+    regressions = []        # pass→fail (退化, fail)
+    improvements = []       # fail→pass (改善, info)
+    added = []              # 仅 current 出现的非 fail (info)
     removed = []            # 仅 baseline 出现 (info)
 
-    for name, (cmark, cline) in cur.items():
-        if name in base:
-            bmark, bline = base[name]
-            if bmark == '✓' and cmark == '✗':
-                regressions.append((name, bline, cline))
-            elif bmark == '✗' and cmark == '✓':
-                improvements.append((name, bline, cline))
-        elif cmark == '✗':
-            # 新出现的 ✗(baseline 无此名)也算回归: 一个全新的失败断言理应拦截。
-            # bline 置 None, 渲染时打 (absent — new assertion)。
-            regressions.append((name, None, cline))
+    for ar, cst in cur.items():
+        if ar in base:
+            bst = base[ar]
+            if bst == 'pass' and cst == 'fail':
+                regressions.append(ar)
+            elif bst == 'fail' and cst == 'pass':
+                improvements.append(ar)
+        elif cst == 'fail':
+            # baseline 无此 AR + current fail 也算回归: 全新 fail 理应拦截。
+            regressions.append(ar)
         else:
-            added.append((name, cline))
+            added.append(ar)
 
-    for name, (bmark, bline) in base.items():
-        if name not in cur:
-            removed.append((name, bline))
+    for ar in base:
+        if ar not in cur:
+            removed.append(ar)
 
     # ── 报告 ──
     print(f"smoke baseline-diff: {base_path} vs {cur_path}")
-    print(f"  baseline 断言: {len(base)} 条 / current 断言: {len(cur)} 条")
+    print(f"  baseline AR: {len(base)} 条 / current AR: {len(cur)} 条")
 
     if regressions:
         print("")
-        print(f"REGRESSION — 检出 {len(regressions)} 条退化(✓→✗ 或 baseline 无此名的新 ✗):")
-        for name, bline, cline in regressions:
-            print(f"  ✗ {name}")
-            if bline is None:
-                print(f"      baseline : (absent — new assertion, not present in baseline)")
+        print(f"REGRESSION — 检出 {len(regressions)} 条退化(pass→fail 或 baseline 无此 AR 的新 fail):")
+        for ar in regressions:
+            if ar in base:
+                print(f"  ✗ {ar}  baseline: pass → current: fail")
             else:
-                print(f"      baseline : {bline}")
-            print(f"      current  : {cline}")
+                print(f"  ✗ {ar}  baseline: (absent — new AR, not present in baseline) → current: fail")
 
     if improvements:
         print("")
-        print(f"info — {len(improvements)} 条 ✗→✓ 改善(不算回归):")
-        for name, bline, cline in improvements:
-            print(f"  ✓ {name}")
+        print(f"info — {len(improvements)} 条 fail→pass 改善(不算回归):")
+        for ar in improvements:
+            print(f"  ✓ {ar}")
 
     if added:
         print("")
-        print(f"info — {len(added)} 条新出现的 ✓ 断言(不算回归):")
-        for name, cline in added:
-            print(f"  + {name}")
+        print(f"info — {len(added)} 条新出现的非 fail AR(不算回归):")
+        for ar in added:
+            print(f"  + {ar}")
 
     if removed:
         print("")
-        print(f"info — {len(removed)} 条消失断言(不算回归):")
-        for name, bline in removed:
-            print(f"  - {name}")
+        print(f"info — {len(removed)} 条消失 AR(不算回归):")
+        for ar in removed:
+            print(f"  - {ar}")
 
     print("")
     if regressions:
-        print(f"FAIL: {len(regressions)} 条回归(✓→✗ 或 新 ✗) — 闸门拦截")
+        print(f"FAIL: {len(regressions)} 条回归(pass→fail 或 新 fail) — 闸门拦截")
         return 1
-    print("OK: 无回归(✓→✗ 或 新 ✗) — 闸门放行")
+    print("OK: 无回归(pass→fail 或 新 fail) — 闸门放行")
     return 0
 
 

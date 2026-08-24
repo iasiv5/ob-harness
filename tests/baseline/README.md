@@ -69,7 +69,7 @@ cp tests/baseline/romulus/applicability.yaml tests/baseline/<new-machine>/
 然后：① 替换分片为你方 baseline 的 QEMU 可仿真子集（编号沿引
 原需求文档，顶层 `schema_version: 2` 与薄顶层结构必须保留——plan.py 版本门禁）；② 校准
 `applicability.yaml`（见下节，同样保留 `schema_version`）；③ 按需在共享
-`runner/` 扩展 probe 类型（当前仅 redfish；ipmi/ssh/console 的 auth 位已预留）。
+`runner/` 扩展 probe 类型（已支持 redfish/ipmi/ssh_tcp；`none` 为 skip-only planner sentinel，console 的 auth 位已预留）。
 runner 探测是确定性脚本 + assert 原语（状态断言非计时断言，零 flake），
 LLM 不参与 runtime 判定。
 
@@ -85,8 +85,10 @@ LLM 不参与 runtime 判定。
 - `assemble.py` — record 装配层：probe 输出协议校验（不一致记 error
   不假 PASS）+ 五态判定 + skip record 组装（函数形态，无 CLI）。
 - `probe_redfish.py` — Redfish probe 引擎 + assert 原语（`--selftest`
-  无网络自检）；`report.py` — VERDICT 汇总 + 逐条行 + JSON report
-  （含 `oneline`/`live_line`/`run_report` 供 runner import；CLI 形态保留）。
+  无网络自检）；`probe_ipmi.py` / `probe_ssh_tcp.py` — ipmitool / TCP 就绪门
+  probe（ADR-0028 smoke 收编; 同款 `--selftest`）；`report.py` — VERDICT 汇总 +
+  逐条行 + JSON report（含 `oneline`/`live_line`/`run_report` 供 runner
+  import；CLI 形态保留）。
 
 ## applicability 维护规则（xfail 不是永久停车场；降级锚点不是永久降级）
 

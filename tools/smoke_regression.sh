@@ -1,35 +1,36 @@
 #!/usr/bin/env bash
-# tools/smoke_regression.sh — α-safe temporal CI 回归闸门(改前/改后两次 smoke 时序比对)。
+# tools/smoke_regression.sh — α-safe temporal CI 回归闸门(改前/改后两次 smoke suite 时序比对)。
 #
-# 链路:
-#   校验 <machine> 有在跑的 QEMU 实例(ob smoke 自带前置, exit 3 = 无实例) →
-#   捕获 baseline smoke 快照(运行时临时文件) → 执行 <change-cmd> →
-#   重新 smoke 捕获 current → tools/smoke_diff.py baseline current →
+# 链路(ADR-0028: ob smoke 已收编为 ob test-qemu --suite smoke):
+#   校验 <machine> 有在跑的 QEMU 实例(ob test-qemu 自带前置, exit 3 = 无实例) →
+#   捕获 baseline smoke suite JSON report(运行时临时文件) → 执行 <change-cmd> →
+#   重新捕获 current → tools/smoke_diff.py baseline current →
 #   按 diff 的 exit 0/1 透传为 gate 的 exit 0/1。
 #
 # 【边界: α-safety(最关键)】
-#   baseline/current 都是**运行时临时产物**(mktemp, 同机改前/改后两次 smoke 的时序比对),
+#   baseline/current 都是**运行时临时产物**(mktemp, 同机改前/改后两次 smoke suite 的时序比对),
 #   绝不引入受版本管理、以具体 machine 命名的 baseline/profile 文件——那是 ADR-0020 option-3
-#   明确拒绝的「per-machine expected-profile」形态(spatial 期望), 违反 smoke 的「零 per-machine
-#   知识」。本闸门是 ADR-0020 option-1 背书的 **temporal diff**(机器无关)。
+#   明确拒绝的「per-machine expected-profile」形态(spatial 期望)。本闸门是 ADR-0020 option-1
+#   背书的 **temporal diff**(机器无关, gate 归 caller 侧)。
 #
 # 【边界: 不拥有 QEMU 生命周期】
-#   同 smoke 的 probe-only 假设: 实例全程在跑。本脚本不 start/stop QEMU(ob 优先——
-#   生命周期归 ob start-qemu/stop-qemu)。ob smoke exit 3(前置缺失, 无在跑实例)→ 透传 exit 3
-#   + remedy(指向 ob start-qemu), 不当成 gate 失败。
+#   probe-only 假设: 实例全程在跑。本脚本不 start/stop QEMU(ob 优先——
+#   生命周期归 ob start-qemu/stop-qemu)。ob test-qemu exit 3(前置缺失, 无在跑实例/infra
+#   ERROR)→ 透传 exit 3 + remedy(指向 ob start-qemu), 不当成 gate 失败, 也不把 ERROR
+#   report 交给 diff 后误放行。
 #
 # 【exit 语义】 透传 ob 约定的 0/1/2/3:
-#   0 = 无回归(diff 放行); 1 = 检出回归(diff 拦截, ✓→✗ 或 新出现的 ✗);
+#   0 = 无回归(diff 放行); 1 = 检出回归(diff 拦截, pass→fail 或 新出现的 fail);
 #   2 = 参数/工具错误; 3 = 前置缺失(无在跑 QEMU 实例, 先 ob start-qemu)。
-#   注: ob smoke 自身 exit 1(如 gb200nvl 的 IPMI ✗ 合法真相)不算 gate 失败——
+#   注: ob test-qemu 自身 exit 1(某 AR fail, 合法真相)不算 gate 失败——
 #   只要 baseline 与 current 两边一致(无退化), gate 仍 exit 0。gate 的 exit 由 diff 决定。
 #
-# 【可测性】 smoke-capture 经 PATH 找 `ob`(command -v ob, 测试时注入 stub `ob`);
+# 【可测性】 capture 经 PATH 找 `ob`(command -v ob, 测试时注入 stub `ob`);
 #   未在 PATH 时回退仓库根 ./ob。capture 封成 _sr_capture 便于 stub 注入。
 #
 # 用法:
 #   tools/smoke_regression.sh <machine> -- <change-cmd...>
-#   tools/smoke_regression.sh gb200nvl-obmc -- true              # no-op: baseline vs current 应无退化
+#   tools/smoke_regression.sh b865g8-a2-bytedance -- true          # no-op: baseline vs current 应无退化
 #   tools/smoke_regression.sh romulus -- ob deploy-to-qemu romulus  # 改后比对
 set -euo pipefail
 
@@ -54,22 +55,19 @@ _sr_cleanup() {
 }
 trap _sr_cleanup EXIT
 
-# _sr_capture <machine> <outfile> — 跑 ob smoke, stdout+stderr 落 outfile, 返回 0/2/3。
-#   ob smoke exit 0/1 = α 真相(1 = 某断言失败, 如 gb200nvl IPMI ✗ 合法)→ 捕获文本, 返回 0(继续);
-#   exit 3 = 前置缺失(无在跑实例)→ 把 remedy(已在 outfile)打到 stderr, 返回 3(透传, 非 gate 失败);
+# _sr_capture <machine> <outfile> — 跑 ob test-qemu --suite smoke --report, JSON 落 outfile, 返回 0/2/3。
+#   ob test-qemu rc 0/1 = α 真相(1 = 某 AR fail, 合法)→ 捕获 report, 返回 0(继续);
+#   rc 3 = 前置缺失/infra ERROR → 把 remedy(已打到终端)透传给 caller, 返回 3
+#     (不把 ERROR report 交给 diff — error 记录被丢弃后 diff 会误放行);
 #   其他 = 异常 → 返回 2。
 _sr_capture() {
     local machine="$1" outfile="$2" rc=0
-    "$OB_CMD" smoke "$machine" > "$outfile" 2>&1 || rc=$?
+    "$OB_CMD" test-qemu "$machine" --suite smoke --report "$outfile" || rc=$?
     case "$rc" in
         0|1) return 0 ;;
-        3)
-            # ob smoke 已把 remedy 打到 stderr(已并入 outfile); 透传给 caller 看
-            cat "$outfile" >&2
-            return 3 ;;
+        3) return 3 ;;
         *)
-            echo "smoke_regression: 'ob smoke $machine' exited $rc unexpectedly:" >&2
-            cat "$outfile" >&2
+            echo "smoke_regression: 'ob test-qemu $machine --suite smoke' exited $rc unexpectedly:" >&2
             return 2 ;;
     esac
 }
@@ -77,10 +75,10 @@ _sr_capture() {
 _sr_usage() {
     cat <<'EOF'
 Usage: tools/smoke_regression.sh <machine> -- <change-cmd...>
-  α-safe temporal CI gate: baseline smoke → change-cmd → current smoke → diff.
-  Exit: 0 = no regression; 1 = regression (✓→✗ or new ✗); 2 = usage/error; 3 = no running QEMU instance.
+  α-safe temporal CI gate: baseline smoke suite report → change-cmd → current report → diff.
+  Exit: 0 = no regression; 1 = regression (pass→fail or new fail); 2 = usage/error; 3 = no running QEMU instance.
 Examples:
-  tools/smoke_regression.sh gb200nvl-obmc -- true
+  tools/smoke_regression.sh b865g8-a2-bytedance -- true
   tools/smoke_regression.sh romulus -- ob deploy-to-qemu romulus
 EOF
 }
@@ -119,7 +117,7 @@ main() {
     TMP_FILES+=("$base_file" "$cur_file")
 
     # ── baseline 捕获 ──
-    echo "smoke_regression: capturing baseline (ob smoke $machine)..." >&2
+    echo "smoke_regression: capturing baseline (ob test-qemu --suite smoke)..." >&2
     local brc=0
     _sr_capture "$machine" "$base_file" || brc=$?
     if [[ $brc -ne 0 ]]; then
@@ -136,7 +134,7 @@ main() {
     fi
 
     # ── current 捕获 ──
-    echo "smoke_regression: capturing current (ob smoke $machine)..." >&2
+    echo "smoke_regression: capturing current (ob test-qemu --suite smoke)..." >&2
     local krc=0
     _sr_capture "$machine" "$cur_file" || krc=$?
     if [[ $krc -ne 0 ]]; then

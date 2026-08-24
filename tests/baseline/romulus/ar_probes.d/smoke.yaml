@@ -1,0 +1,148 @@
+# smoke suite — 8 AR 服务可达性门(旧 `ob smoke` 收编, ADR-0028):
+#   SMOKE-01  Redfish 根服务可达且是真实 ServiceRoot(结构标记防 placeholder 误判)
+#   SMOKE-02  Redfish Managers/bmc 资源可达且是真实 Manager 文档
+#   SMOKE-03  Redfish BMC 固件版本非空(FirmwareVersion 或 alias SoftwareVersion)
+#   SMOKE-04  IPMI(lanplus) mc info rc==0
+#   SMOKE-05  SSH TCP 端口可连(仅 TCP 握手, 不登录)
+#   SMOKE-06  Console 串口完整登录到 shell prompt(pexpect 三阶段)
+#   SMOKE-07  Web UI 根路径 HTTPS 200 + Content-Type: text/html
+#   SMOKE-08  Web 登录(POST /login 建会话) + 已登录会话资源可达
+
+ars:
+  - ar: SMOKE-01       (Redfish service root reachability)
+    name: Redfish service root reachable
+    probe: redfish
+    suite: smoke
+    request:
+      method: GET
+      path: /redfish/v1
+    assert:
+      - type: status_in
+        value: [200]
+      - type: body_contains_any
+        value: ["@Redfish.Copyright", "RedfishVersion", "ServiceRoot.v1"]
+    depends_on: []
+    rationale: >
+      Redfish 根服务可达且是真实 ServiceRoot(结构标记任一命中, 防
+      placeholder/错误页误判 pass)。
+
+  - ar: SMOKE-02       (Redfish Manager resource reachability)
+    name: Redfish Manager resource reachable
+    probe: redfish
+    suite: smoke
+    request:
+      method: GET
+      path: /redfish/v1/Managers/bmc
+    assert:
+      - type: status_in
+        value: [200]
+      - type: body_contains_any
+        value: ["ManagerType", "\"UUID\"", "#Manager"]
+    depends_on: []
+    rationale: >
+      Managers/bmc 资源可达且是真实 Manager 文档(结构标记任一命中)。
+
+  - ar: SMOKE-03       (Redfish BMC version reported non-empty)
+    name: BMC firmware version reported non-empty
+    probe: redfish
+    suite: smoke
+    request:
+      method: GET
+      path: /redfish/v1/Managers/bmc
+    assert:
+      - type: json_path_nonempty_any
+        path: [FirmwareVersion, SoftwareVersion]
+    depends_on: []
+    rationale: >
+      固件版本上报非空(接受规范名 FirmwareVersion 或 alias SoftwareVersion;
+      json_path_exists 会把空串误判 pass, 故用 nonempty 判定)。
+
+  - ar: SMOKE-04       (IPMI over LAN reachability)
+    name: IPMI mc info exits zero
+    probe: ipmi
+    suite: smoke
+    request:
+      command: mc_info
+    assert:
+      - type: exitcode_zero
+    depends_on: []
+    rationale: >
+      IPMI(lanplus)通道可达, ipmitool mc info rc==0 即过(与旧 smoke judge
+      同款——mc info 输出无稳定可断子串, 不做 output 断言)。
+
+  - ar: SMOKE-05       (SSH TCP port reachability)
+    name: SSH TCP port accepting connections
+    probe: ssh_tcp
+    suite: smoke
+    request:
+      attempts: 30
+      interval: 5
+    assert:
+      - type: tcp_connectable
+    depends_on: []
+    rationale: >
+      SSH TCP 就绪门(30 次 × 5s 有界轮询, 对齐旧 OB_SMOKE_READY_ATTEMPTS);
+      超时判 fail(BMC truth), 不是 infra error。
+
+  - ar: SMOKE-06       (Serial console login reachability)
+    name: Serial console login reachable
+    probe: console
+    suite: smoke
+    request:
+      timeout: 30
+    assert:
+      - type: shell_prompt_reached
+    depends_on: []
+    rationale: >
+      串口控制台完整登录到 shell prompt(pexpect 三阶段: login prompt →
+      password prompt → shell prompt)。socket 路径走 OB_TQ_CONSOLE_SOCK env
+      (ob test-qemu 从 PID file serial_sock 字段注入), 凭据走
+      OB_TQ_CONSOLE_USER/OB_TQ_CONSOLE_PASSWORD 或 fallback OB_TQ_USER/OB_TQ_PASSWORD。
+
+  - ar: SMOKE-07       (BMC Web UI reachability)
+    name: Web UI reachable
+    probe: web
+    suite: smoke
+    request:
+      path: /
+      scheme: https
+    assert:
+      - type: status_in
+        value: [200]
+      - type: content_type_match
+        value: text/html
+    depends_on: []
+    rationale: >
+      Web UI 根路径 HTTPS 200 + Content-Type text/html。host/port 走 argv
+      (与 redfish 同通道, QEMU 默认转发 443 → redfish_port); scheme https
+      显式声明(默认即 https, 可省略, 留此显式示例)。
+
+  - ar: SMOKE-08       (BMC Web UI login + post-login session reachability)
+    name: Web UI login + post-login session resource reachable
+    probe: web
+    suite: smoke
+    request:
+      path: /redfish/v1/SessionService/Sessions
+      scheme: https
+      login:
+        path: /login
+        content_type: application/json
+        body: '{"username":"{user}","password":"{password}"}'
+        csrf: false
+        ok_statuses: [200, 201]
+        logout_path: /logout
+        logout_method: POST
+    assert:
+      - type: status_in
+        value: [200]
+      - type: content_type_match
+        value: application/json
+    depends_on: []
+    rationale: >
+      登录成功(凭据有效 + 会话建立) + 已登录会话资源可达: POST /login(JSON
+      username/password) 建会话 → 带 SESSION cookie GET SessionService/Sessions
+      200(匿名 401), 末了 best-effort POST /logout(带 XSRF-TOKEN) 清会话防积累。
+      Web UI 是 SPA, 服务端无"首页渲染"可断 — 不声称"看到首页"。凭据走
+      OB_TQ_WEB_USER/OB_TQ_WEB_PASSWORD(fallback OB_TQ_*), 不落 argv。
+      login 形态基于 bmcweb 会话语义(JSON username/password, 小写键; web 会话
+      与 Redfish 共享 session store); romulus 侧待社区 QEMU 实例 live 校准。

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # tests/protocol/start_qemu_noninteractive.sh — lock cmd_start_qemu's non-TTY
-# confirmation-skip branch (bundled with ob smoke to make `start-qemu → smoke →
+# confirmation-skip branch (bundled with ob test-qemu to make `start-qemu → test-qemu →
 # stop-qemu` runnable non-interactively in CI/agent contexts).
 #
 # Background: cmd_start_qemu wraps its safety confirmation (confirm_action + the
@@ -9,7 +9,7 @@
 # Before this guard, confirm_action's `read` hit EOF on non-TTY → return 1 →
 # cmd_start_qemu exit 1 (blocked). This test locks the non-TTY branch so a revert
 # is caught at the fast protocol layer, not only by the slow integration layer
-# (smoke_e2e.sh exercises it end-to-end).
+# (integration/test_qemu_baseline_e2e.sh exercises the chain end-to-end).
 #
 # Two sections:
 #   (A) STRUCTURAL — the confirmation block IS gated by `[[ -t 0 ]]`, and a

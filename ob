@@ -138,12 +138,6 @@ parse_args() {
                 shift
             fi
             ;;
-        smoke)
-            if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
-                MACHINE="$1"
-                shift
-            fi
-            ;;
         test-qemu)
             if [[ $# -gt 0 ]] && [[ "$1" != -* ]]; then
                 MACHINE="$1"
@@ -213,21 +207,22 @@ Run without arguments to enter interactive menu mode.
 
 Commands:
   init           [<machine>]  One-click initialize OpenBMC dev environment
-  build          [<machine>]  Build an initialized machine's image (interactive if omitted)
+  build          [<machine>]  Build an initialized machine's image (interactive if omitted; uninitialized → exit-code 3, run init first)
   status                      Show current OpenBMC source binding status
   start-qemu     [<machine>]  Launch QEMU with built BMC image
   stop-qemu      [<machine>]  Stop a running QEMU instance
   deploy-to-qemu [<machine>]  Rebuild image and restart QEMU for clean verification
-  smoke          [<machine>]  Probe a running QEMU-backed BMC (read-only OOB probe; no bring-up/teardown)
   test-qemu      [<machine>]  Run <machine>'s baseline AR probes on its running QEMU instance (probe-only; pass/fail/skip/xfail/xpass; --dry-run lists ARs without an instance)
   dev            [--machine <machine>] <list|modify|build|refresh|reset|status|finish>  Develop recipes via devtool (TTY prompts if omitted)
 
 Global Options:
   -d, --dry-run         Print actions without executing
-  -s, --skip-deps       Reuse existing deps.json, skip dependency resolution (init only)
-  -u, --url <url>       Use a custom OpenBMC repository URL (init only)
   -v, --verbose         Verbose output
   -h, --help            Show this help
+
+init Options:
+  -s, --skip-deps       Reuse existing deps.json, skip dependency resolution
+  -u, --url <url>       Use a custom OpenBMC repository URL
 
 start-qemu Options:
   --ssh-port <port>       SSH port forwarding    (default: 2222)
@@ -242,32 +237,15 @@ stop-qemu Options:
   --force                 Stop without confirmation
   --all                   Stop all running QEMU instances
 
-smoke Options:
-  <machine>               Whose running QEMU instance to probe (required positional)
-  Boundary: smoke is a READ-ONLY probe of ONE already-running instance. It does
-            NOT boot or tear down QEMU, installs NO EXIT trap, and honors NO port
-            overrides (--ssh-port/--redfish-port/--ipmi-port) nor --dry-run: the
-            three ports are read from the instance's PID file, so smoke reflects
-            the actual running instance, not a wish.
-  Prerequisite: a running instance started via '$OB_CMD start-qemu <machine>'. With no
-            instance (no PID file, or stale PID) smoke exits 3 and will NOT boot
-            one — run '$OB_CMD start-qemu <machine>' first.
-  Assertions (exactly 5, each probes the running BMC):
-            1. Redfish root reachable           (HTTP 200 + Redfish marker)
-            2. Redfish Managers reachable       (HTTP 200 + Manager resource marker)
-            3. Redfish SoftwareVersion reported (BMC reports firmware version)
-            4. IPMI over LAN works              (ipmitool mc info exit 0; needs an RMCP+/LAN responder in the image)
-            5. System ready signal              (SSH forwarded port TCP-connectable)
-  Exit codes (smoke-specific — they OVERRIDE the global "1 = broken" line below):
-            0   All 5 assertions passed.
-            1   α truth-reporter: one or more assertions reported the BMC's ACTUAL
-                state (a "✗" row). This reports WHAT THE BMC INTERFACE ANSWERED —
-                it is NOT "smoke is broken". Read the ✗ rows + RAW responses to
-                see which interface and why (e.g. image lacks an RMCP+/LAN
-                responder → IPMI ✗). Debug the named BMC interface, not smoke.
-            3   No running QEMU instance (precondition) — '$OB_CMD start-qemu' first.
-  Environment:
-    OB_SMOKE_READY_ATTEMPTS  Poll attempts for BMC SSH-port readiness (default 30, 5s each)
+deploy-to-qemu Options:
+  Boundary: build-first mutation — deploy may inspect the current QEMU
+            instance and ask for confirmation first, but it does not stop
+            or mutate QEMU until after a successful image build. Build
+            failure leaves QEMU untouched and exits 1. If a previous
+            instance was running, its forwarded ports are reused unless
+            CLI port flags were provided; otherwise deploy starts fresh
+            with default/env ports. User abort exits 2; instance drift
+            during build exits 3.
 
 test-qemu Options:
   <machine>               Whose baseline to test (required positional; a RUNNING instance is required unless --dry-run)
@@ -310,15 +288,16 @@ Exit Codes:
   3   Precondition missing (e.g. machine not initialized / not built);
       satisfy it via ob (run the suggested '$OB_CMD ...' first), then retry
 
-Environment Variables (lower priority than command-line options):
-  OB_OPENBMC_URL          Custom OpenBMC repository URL (init, non-interactive mode)
-  OB_QEMU_SSH_PORT        SSH port override
-  OB_QEMU_REDFISH_PORT    Redfish port override
-  OB_QEMU_IPMI_PORT       IPMI port override
-  OB_QEMU_HTTP_PORT       HTTP port override
-  OB_QEMU_SERIAL_LOG      Serial log path override
-  OB_QEMU_BINARY_URL      Custom QEMU binary download URL
-  OB_NPM_REGISTRY         Override npm registry URL (set empty to disable auto-detection)
+Environment Variables (command scope shown in parentheses; matching CLI
+flags override env values where available):
+  OB_OPENBMC_URL          Custom OpenBMC repository URL (init)
+  OB_QEMU_SSH_PORT        QEMU launch SSH port override (start-qemu/deploy-to-qemu)
+  OB_QEMU_REDFISH_PORT    QEMU launch Redfish port override (start-qemu/deploy-to-qemu)
+  OB_QEMU_IPMI_PORT       QEMU launch IPMI port override (start-qemu/deploy-to-qemu)
+  OB_QEMU_HTTP_PORT       QEMU launch HTTP port override (start-qemu/deploy-to-qemu)
+  OB_QEMU_SERIAL_LOG      QEMU launch serial log path (start-qemu/deploy-to-qemu)
+  OB_QEMU_BINARY_URL      QEMU binary provisioning (start-qemu/deploy-to-qemu)
+  OB_NPM_REGISTRY         Image build npm registry override; set empty to disable auto-detection (build/deploy-to-qemu)
 
 Examples:
   $OB_CMD init                          # List machines and choose interactively
@@ -332,7 +311,8 @@ Examples:
   $OB_CMD stop-qemu romulus             # Stop romulus QEMU instance
   $OB_CMD stop-qemu --all               # Stop all running instances
   $OB_CMD deploy-to-qemu romulus        # Rebuild romulus image + restart QEMU (port-reuse if running)
-  $OB_CMD smoke romulus                 # Probe running romulus QEMU (5 assertions; exit 1 = α BMC truth, not a smoke bug; see smoke Options)
+  $OB_CMD test-qemu romulus --suite smoke  # Run the 8-AR smoke gate (needs a running instance: start-qemu first)
+  $OB_CMD test-qemu romulus --ar SMOKE-03 -v    # Re-run one AR with fail detail
   $OB_CMD dev --machine romulus list ipmi    # Search recipes matching 'ipmi'
   $OB_CMD dev --machine romulus modify phosphor-ipmi-host   # devtool modify, outputs srctree
   $OB_CMD dev --machine romulus build phosphor-ipmi-host  # devtool build single recipe (do_build); exit-code carries result
@@ -384,11 +364,6 @@ main() {
 
     if [[ "$COMMAND" == "deploy-to-qemu" ]]; then
         cmd_deploy_to_qemu
-        return $?
-    fi
-
-    if [[ "$COMMAND" == "smoke" ]]; then
-        cmd_smoke
         return $?
     fi
 

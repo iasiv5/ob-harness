@@ -29,6 +29,21 @@ assert_reset
 out=$("$OB" test-qemu --help 2>&1) || true
 assert_true "test-qemu registered (--help mentions test-qemu)" grep -q "test-qemu" <<<"$out"
 
+# (1b) smoke suite surface(ADR-0028 收编): --help 提及内建 smoke suite;
+#      旧 `ob smoke` 顶层命令已退役 — 主 usage 不再注册该命令。
+assert_true "--suite 说明提及 smoke suite" grep -q "smoke" <<<"$out"
+_obhelp=$("$OB" --help 2>&1) || true
+assert_false "顶层 usage 无 ob smoke 命令残留" grep -qE "^  smoke " <<<"$_obhelp"
+
+# (1c) help surface 契约(2026-08-24 help 补齐): Prerequisites/Examples 段 + 示例锚点
+assert_true "test-qemu help has Prerequisites" grep -q "^Prerequisites:" <<<"$out"
+assert_true "test-qemu help has Examples" grep -q "^Examples:" <<<"$out"
+assert_true "test-qemu help has SMOKE-03 example" grep -q "SMOKE-03" <<<"$out"
+assert_false "test-qemu help 无过期 'over argv flags' 表述" grep -q "over argv flags" <<<"$out"
+
+# (1d) 顶层 usage 有 test-qemu smoke 示例(2026-08-24 help 补齐)
+assert_true "顶层 usage 有 test-qemu smoke 示例" grep -q "test-qemu romulus --suite smoke" <<<"$_obhelp"
+
 # (2) parse_args 私有参数穿透(🔴1): --suite/--ar/--report 越过全局 parser, 不被 Unknown option 拦
 _tq_p1="$(mktemp)"; _tq_p2="$(mktemp)"   # mktemp(评审 🟢3): 多用户并行跑 protocol 不互踩 /tmp 固定名
 rc=0; "$OB" test-qemu fake-m --suite users --ar BMC-3-1-2 --report "$_tq_p1" >"$_tq_p2" 2>&1 || rc=$?
@@ -179,5 +194,42 @@ assert_eq "probe no-creds no-QEMU → exit 3" "$rc" "3"
 assert_true "credentials remedy before liveness" grep -q "No Redfish user" <<<"$out"
 assert_false "liveness remedy not reached" grep -q "No QEMU instance running" <<<"$out"
 rm -rf "$_tq_cred_root"
+
+# (9) auth.web → OB_TQ_WEB_* 定向回归锁(SMOKE-08, 2026-08-21): 直测 leaf
+#     test_qemu_export_auth(前置 3 抽出) — 四 interface 各自 YAML 解析 + env-wins。
+#     subshell 捕获 export 后的 env(exit 3 路径不杀测试进程)。
+_tq_auth_root=$(mktemp -d)
+mkdir -p "$_tq_auth_root"
+cat > "$_tq_auth_root/ar_probes.yaml" <<'YAML'
+schema_version: 2
+auth:
+  redfish:
+    user: redfish_user
+    password: redfish_pass
+  web:
+    user: web_user
+    password: web_pass
+include: []
+YAML
+(
+    source "${_repo_root:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/lib/qemu_commands.sh" 2>/dev/null
+    MACHINE=fake-m test_qemu_export_auth "$_tq_auth_root"
+    env | grep -E '^OB_TQ_(USER|PASSWORD|IPMI_|CONSOLE_|WEB_)' | sort
+) > "$_tq_auth_root/env_out" 2>&1
+assert_true "auth.web 解析: OB_TQ_WEB_USER=web_user" grep -q '^OB_TQ_WEB_USER=web_user$' "$_tq_auth_root/env_out"
+assert_true "auth.web 解析: OB_TQ_WEB_PASSWORD=web_pass" grep -q '^OB_TQ_WEB_PASSWORD=web_pass$' "$_tq_auth_root/env_out"
+assert_true "auth.redfish 解析: OB_TQ_USER=redfish_user" grep -q '^OB_TQ_USER=redfish_user$' "$_tq_auth_root/env_out"
+assert_false "ipmi/console 未配置 → 不 export(八行下标不串位)" \
+    grep -qE '^OB_TQ_(IPMI|CONSOLE)_USER=web_user$' "$_tq_auth_root/env_out"
+# env-wins: 外部 OB_TQ_WEB_* 已设 → YAML 不覆盖
+(
+    source "${_repo_root:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/lib/qemu_commands.sh" 2>/dev/null
+    MACHINE=fake-m OB_TQ_WEB_USER=env_wins OB_TQ_WEB_PASSWORD=env_wins \
+        test_qemu_export_auth "$_tq_auth_root"
+    env | grep -E '^OB_TQ_WEB_' | sort
+) > "$_tq_auth_root/env_out2" 2>&1
+assert_true "OB_TQ_WEB_USER env 胜出 YAML" grep -q '^OB_TQ_WEB_USER=env_wins$' "$_tq_auth_root/env_out2"
+assert_true "OB_TQ_WEB_PASSWORD env 胜出 YAML" grep -q '^OB_TQ_WEB_PASSWORD=env_wins$' "$_tq_auth_root/env_out2"
+rm -rf "$_tq_auth_root"
 
 assert_summary

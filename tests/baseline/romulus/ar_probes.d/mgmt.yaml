@@ -1,0 +1,12 @@
+# mgmt suite — 管理功能占位(skip AR 演示 applicability 机制)
+
+ars:
+  - ar: BMC-8-1-5
+    name: KVM virtual media attach
+    probe: none
+    suite: mgmt
+    depends_on: []
+    rationale: >
+      KVM/Virtual Media 挂载能力依赖硬件 USB gadget + 主机端
+      设备树节点, QEMU 纯软件仿真无法模拟介质插入/弹出交互,
+      无 Redfish 只读端点可探测。applicability 标 skip。
