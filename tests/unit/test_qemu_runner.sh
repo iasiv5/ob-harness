@@ -901,4 +901,102 @@ PY
 fi
 rm -rf "$_tmp6" "$_tmp_runner"
 
+# ── ipmi command 只读白名单 + --command 通道(2026-08-25 V2.1 第一批导入) ──
+# 测试矩阵: a/b/c/d 改动前红(要打通的能力); b2/e 改动前绿且回归锁(不能破坏的现状)。
+_tmp7=$(mktemp -d)
+mkdir -p "$_tmp7/ar_probes.d" "$_tmp7/fakebin"
+cat > "$_tmp7/appl.yaml" <<'YAML'
+schema_version: 1
+default: applicable
+YAML
+_mk_ipmi_top() {  # $1 = request YAML 行
+  cat > "$_tmp7/ar_probes.d/cmd.yaml" <<YAML
+ars:
+  - ar: CMD-A
+    name: ipmi command fixture
+    probe: ipmi
+    suite: s
+    request: {command: $1}
+    assert:
+      - type: exitcode_zero
+    depends_on: []
+YAML
+  cat > "$_tmp7/ar_probes.yaml" <<'YAML'
+schema_version: 2
+auth: {user: r, password: x}
+include: [ar_probes.d/cmd.yaml]
+YAML
+}
+
+# a) 白名单命令 chassis status → dry-run exit 0(改动前红: 现仅 mc_info 通过)
+_mk_ipmi_top 'chassis status'
+rc=0; OB_TQ_AR_PROBES="$_tmp7/ar_probes.yaml" OB_TQ_APPL="$_tmp7/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp7/out_a" 2>&1 || rc=$?
+assert_eq "ipmi whitelist command dry-run → exit 0" "$rc" "0"
+
+# b) 非白名单写命令 sel clear → exit 3 + read-only 文案(改动前红: 现文案 must be 'mc_info')
+_mk_ipmi_top 'sel clear'
+rc=0; OB_TQ_AR_PROBES="$_tmp7/ar_probes.yaml" OB_TQ_APPL="$_tmp7/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp7/out_b" 2>&1 || rc=$?
+assert_eq "ipmi non-whitelist command → exit 3" "$rc" "3"
+assert_true "non-whitelist remedy mentions read-only" grep -q "read-only" "$_tmp7/out_b"
+
+# b2) YAML list command → exit 3 且无 traceback(回归锁: 现状 != 比较即干净 exit 3;
+#     防 frozenset in 匹配对 unhashable list 抛 TypeError 污染成 exit 1)
+_mk_ipmi_top '[chassis, status]'
+rc=0; OB_TQ_AR_PROBES="$_tmp7/ar_probes.yaml" OB_TQ_APPL="$_tmp7/appl.yaml" \
+    bash "$RUNNER" --host 127.0.0.1 --port 1 --user r --password x --dry-run >"$_tmp7/out_b2" 2>&1 || rc=$?
+assert_eq "ipmi list-type command → exit 3" "$rc" "3"
+if grep -q "Traceback" "$_tmp7/out_b2"; then
+  assert_eq "list-type command no traceback" "traceback-found" "clean"
+else
+  assert_eq "list-type command no traceback" "clean" "clean"
+fi
+
+# c) probe 直测 --command 透传到 ipmitool argv(改动前红: probe 无 --command 参数)
+cat > "$_tmp7/fakebin/ipmitool" <<'SH'
+#!/bin/sh
+printf '%s\n' "$@" >> "$IPMI_ARGV_FILE"
+exit 0
+SH
+chmod +x "$_tmp7/fakebin/ipmitool"
+rc=0
+IPMI_ARGV_FILE="$_tmp7/argv_c" PATH="$_tmp7/fakebin:$PATH" OB_TQ_IPMI_PORT=2623 \
+OB_TQ_IPMI_USER=u OB_TQ_IPMI_PASSWORD=p \
+    python3 "$(dirname "$RUNNER")/probe_ipmi.py" \
+    --command "chassis status" --asserts '[{"type":"exitcode_zero"}]' >/dev/null 2>&1 || rc=$?
+assert_eq "probe --command 直测 → exit 0" "$rc" "0"
+if [[ -s "$_tmp7/argv_c" ]]; then
+  assert_eq "probe argv 尾部 = chassis status" \
+    "$(tail -2 "$_tmp7/argv_c" | paste -sd' ')" "chassis status"
+else
+  assert_eq "probe argv 落盘(fake ipmitool 被调)" "missing" "present"
+fi
+
+# _live_ipmi_case: 全链 fixture 经 run.sh 跑真 probe + fake ipmitool, 断言 argv 尾部
+_live_ipmi_case() {  # $1 = command 值, $2 = 期望 argv 尾部, $3 = argv 落盘后缀
+  _mk_ipmi_top "$1"
+  rc=0
+  OB_TQ_AR_PROBES="$_tmp7/ar_probes.yaml" OB_TQ_APPL="$_tmp7/appl.yaml" \
+  OB_TQ_USER=r OB_TQ_PASSWORD=x OB_TQ_IPMI_PORT=2623 \
+  IPMI_ARGV_FILE="$_tmp7/argv_$3" PATH="$_tmp7/fakebin:$PATH" \
+      bash "$RUNNER" --host 127.0.0.1 --port 1 --suite s >"$_tmp7/out_$3" 2>&1 || rc=$?
+  assert_eq "全链 ipmi [$1] → exit 0" "$rc" "0"
+  if [[ -s "$_tmp7/argv_$3" ]]; then
+    assert_eq "全链 ipmi argv 尾部 = [$2]" \
+      "$(tail -$(echo "$2" | wc -w) "$_tmp7/argv_$3" | paste -sd' ')" "$2"
+  else
+    assert_eq "全链 ipmi argv 落盘(fake ipmitool 被调)" "missing" "present"
+  fi
+}
+
+# d) 全链非默认命令 chassis status(改动前红: runner 不传 --command 时 probe 跑默认 mc info)
+_live_ipmi_case 'chassis status' 'chassis status' d
+
+# e) 全链 mc_info 归一(回归锁: 现状 planner 接受 mc_info + probe 默认 mc info 恰好成立;
+#    实施后归一化必须保持该行为)
+_live_ipmi_case 'mc_info' 'mc info' e
+
+rm -rf "$_tmp7"
+
 assert_summary

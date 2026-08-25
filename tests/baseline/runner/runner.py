@@ -221,6 +221,10 @@ def main():
                 probe_args = [sys.executable,
                               os.path.join(script_dir, "probe_%s.py" % probe_type),
                               "--asserts", json.dumps(r["asserts"])]
+                if probe_type == "ipmi":
+                    # command 已在 plan.py 白名单校验+归一(空格形态); 缺省兜底
+                    # "mc info" 覆盖无 command 字段的旧计划行。
+                    probe_args += ["--command", r.get("command") or "mc info"]
                 if probe_type == "ssh_tcp":
                     probe_args += ["--attempts", str(r.get("attempts") or 30),
                                    "--interval", str(r.get("interval") or 5)]

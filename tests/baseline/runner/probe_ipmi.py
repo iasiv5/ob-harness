@@ -17,7 +17,9 @@ Assert primitives:
   output_contains{value}   body 子串命中(value 非空 str, plan.py 已校验)
 
 CLI:
-  probe_ipmi.py --asserts '<JSON>' [--selftest]
+  probe_ipmi.py --asserts '<JSON>' [--command '<ipmitool 子命令>'] [--selftest]
+  --command: 空格形态 ipmitool 子命令(plan.py 白名单归一后经 runner 传入;
+  缺省 "mc info")
 """
 import argparse
 import json
@@ -78,6 +80,9 @@ def main(argv=None):
     p = argparse.ArgumentParser(add_help=True)
     p.add_argument("--selftest", action="store_true")
     p.add_argument("--asserts", default=None)
+    # --command: ipmitool 子命令(空格形态, plan.py 白名单归一后经 runner 传入;
+    # 缺省 "mc info" 向后兼容直跑/旧调用形态)。
+    p.add_argument("--command", default="mc info")
     args = p.parse_args(argv)
 
     if args.selftest:
@@ -107,7 +112,7 @@ def main(argv=None):
                       "actual": None, "reason": "ipmitool not found"}, 3)
 
     proc = subprocess.run(
-        _build_argv(port, user), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        _build_argv(port, user, args.command), stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
         text=True, encoding="utf-8", errors="replace", check=False,
         env=dict(os.environ, IPMI_PASSWORD=password))
     body = proc.stdout or ""
@@ -140,6 +145,9 @@ def run_selftest():
     chk("argv shape", av, ["ipmitool", "-I", "lanplus", "-E", "-H", "localhost",
                            "-p", "2623", "-U", "ipmiuser", "mc", "info"])
     chk("argv no password", any("0penBmc" in x or "ipmiuser!@#" in x for x in av), False)
+    # --command 透传(2026-08-25 V2.1 导入): 空格形态命令 split 进 argv 尾部
+    av2 = _build_argv(2623, "ipmiuser", "chassis status")
+    chk("argv custom command tail", av2[-2:], ["chassis", "status"])
     chk("argv no -P", any(x == "-P" for x in av), False)
     # 凭据 fallback 链
     chk("creds ipmi-specific", _resolve_creds({"OB_TQ_IPMI_USER": "a", "OB_TQ_IPMI_PASSWORD": "b"}), ("a", "b"))

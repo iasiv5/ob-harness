@@ -8,10 +8,11 @@ runner.py in-process import 消费(旧 \x1f 分隔 stdout 帧已随 bash 主循�
 
 plan() 返回 list[dict], 元素字段:
   ar / status / probe / method / path / body / asserts / attempts / interval
-  / reason / source
+  / reason / source / command
   status ∈ applicable / skip / xfail / cascade_skip(runner 把 cascade_skip
   归并读作 skip); method/path 为原字符串(schema 校验保证无控制字符);
-  body/asserts 为已解析对象; reason/source 为原字符串。
+  body/asserts 为已解析对象; reason/source 为原字符串; command 为 ipmi probe
+  的白名单归一后命令(空格形态, 非 ipmi probe 为 None)。
 
 plan() 内 sys.exit(3)(YAML 语法/schema 违规: default status 白名单 / AR ID 空
   或含控制字符或重复 / depends_on 未知 / orphan override / 未知 assert
@@ -38,6 +39,21 @@ _PROBE_ASSERTS = {
     "none": (),
 }
 _ALLOWED_METHODS = ("GET", "POST", "PUT", "PATCH", "DELETE", "HEAD")
+# ipmi 只读命令白名单(2026-08-25 V2.1 第一批导入): 防线语义——只允许读类查询,
+# set/clear/reset/raw 写动作一律不在列(进了就违反受保护 QEMU 实例只读探测约束);
+# 精确字符串匹配(空格形态, 与 ipmitool CLI 一致); "mc_info" 在校验处归一为
+# "mc info"(SMOKE-04 存量), 故不在此列。清单 = baseline AR 实际消费的命令集。
+_IPMI_READONLY_COMMANDS = frozenset({
+    "mc info", "mc guid", "mc selftest", "mc watchdog get",
+    "chassis status", "chassis bootparam get 5", "chassis policy list",
+    "sdr info", "sdr elist", "sensor list",
+    "sel info", "sel list", "sel time get",
+    "fru print 0",
+    "lan print 1", "lan6 print 1",
+    "sol info 1",
+    "channel info 1", "channel getciphers ipmi 1",
+    "user list 1",
+})
 # 布局 v2(ADR-0025/0027 增补)起 ar_probes 与 applicability 方言分家:
 # ar_probes = 2(include 驱动薄顶层), applicability = 1(布局未变)。
 _AR_SCHEMA_VERSIONS = (2,)
@@ -289,17 +305,27 @@ def build_plan(a, st):
     req = req_raw or {}
     attempts = None
     interval = None
+    command = None
     if not req:
         if st[0] not in ("skip", "cascade_skip"):
             die("AR '{}' missing request (required unless applicability is skip)".format(ar))
         method = ""
         path = ""
     elif p == "ipmi":
-        # ipmi request 分叉(ADR-0028): 目前仅 mc_info; 未知键 = 字段写错。
+        # ipmi request 分叉(ADR-0028 → 2026-08-25 V2.1 第一批导入): command 走只读
+        # 白名单(防线: set/clear/raw 一律拒绝——白名单外即数据错 exit 3); mc_info 为
+        # SMOKE-04 存量值, 归一为 ipmitool 空格形态 "mc info"; 未知键 = 字段写错。
         if set(req) - {"command"}:
             die("AR '{}' ipmi request allows only 'command' (got keys {})".format(ar, sorted(req)))
-        if req.get("command") != "mc_info":
-            die("AR '{}' ipmi request.command must be 'mc_info' (got {!r})".format(ar, req.get("command")))
+        command = req.get("command")
+        if not isinstance(command, str):
+            # 类型门禁先行: list/dict 与 str 比较虽不炸, 但 frozenset in 匹配对
+            # unhashable 会 TypeError 裸崩污染成 exit 1, 必须在白名单前拦下。
+            die("AR '{}' ipmi request.command must be a string (got {!r})".format(ar, command))
+        if command == "mc_info":
+            command = "mc info"
+        if command not in _IPMI_READONLY_COMMANDS:
+            die("AR '{}' ipmi request.command must be a read-only ipmitool command from the whitelist (got {!r})".format(ar, req.get("command")))
         method = ""
         path = ""
     elif p == "ssh_tcp":
@@ -353,7 +379,7 @@ def build_plan(a, st):
             "path": path, "body": req.get("body"), "asserts": a.get("assert", []),
             "attempts": attempts, "interval": interval, "timeout": req.get("timeout"),
             "scheme": req.get("scheme"), "reason": reason, "source": source,
-            "login": req.get("login")}
+            "login": req.get("login"), "command": command}
 
 
 def plan(ar_probes, appl_path, ar_filter, suite_filter):
