@@ -9,14 +9,14 @@
 - **重试失败的 bare mirror** → `./ob init <machine> -s`（跳过依赖解析，只重填 mirror）
 - **预览副作用** → `./ob init <machine> -d`（仅对**已 init 过的** machine 有意义）
 
-两条最该先知道的：(1) BitBake 赋值操作符优先级 `??=` < `?=` < `=`——`.inc` 覆盖 OE-core 默认值用 `?=`/`=`，别用最弱的 `??=`（会被 OE-core 的 `?=` 覆盖）；(2) 冷启动（主仓未克隆）首次 init **不要**用 `-d`——machine 列表来自克隆后的 setup 输出，主仓没落地时 machine 校验无效、会给"通过"的误导。详细踩坑见尾部 §已知陷阱 / §故障排除 / §已知限制。
+两条最该先知道的：(1) BitBake 赋值操作符优先级 `??=` < `?=` < `=`——`.inc` 覆盖 OE-core 默认值用 `?=`/`=`，别用最弱的 `??=`（会被 OE-core 的 `?=` 覆盖）；(2) 冷启动（主仓未克隆）首次 init **不要**用 `-d`——machine 列表来自克隆后的 setup 输出，主仓没落地时 machine 校验无效、会给"通过"的误导。第三条高发坑：数据中心 IP 被 sourceware/codeberg/salsa/savannah 封禁时 mirror 失败是**确定性**的，重试无解——按 403/429/timeout 签名路由到 rewrite 表或 git2 tarball 种子（详见故障排除 #2b/#2c），入表前必验 pinned SRCREV。详细踩坑见尾部 §已知陷阱 / §故障排除 / §已知限制。
 
 ## 元数据
 
 - **类型**: Workflow
 - **适用场景**: 初始化 OpenBMC 开发环境（bare mirror 填充、构建配置生成）和编译固件镜像
 - **创建日期**: 2026-05-31
-- **最后更新**: 2026-06-08
+- **最后更新**: 2026-08-28
 
 ---
 
@@ -59,7 +59,7 @@
 `ob init` 完成后，以下条件应全部满足：
 
 1. `workspace/openbmc/.git` 存在
-2. `workspace/openbmc/build/<machine>/conf/local.conf` 中 `MACHINE = "<machine>"` 已设置
+2. `workspace/openbmc/build/<machine>/conf/local.conf` 中 MACHINE 已设为 `<machine>`（ob 沿用 openbmc 上游 setup 的 `MACHINE ??= "<machine>"` 弱赋值约定，留环境变量覆差点；conf 链无更强赋值时生效值即 `<machine>`）
 3. `workspace/openbmc/build/<machine>/conf/local.conf` 末尾包含 `include externalsrc-<machine>.inc`
 4. `workspace/openbmc/build/<machine>/conf/externalsrc-<machine>.inc` 存在，包含 `DL_DIR`、`SSTATE_DIR` 和 `INHERIT += "externalsrc"`
 5. `workspace/openbmc/build/<machine>/deps.json` 存在，是合法 JSON 且为 recipe 数组
@@ -216,6 +216,36 @@ rm -rf workspace/downloads/git2/<gitsrcname-of-failed-repo>
 **症状**：`could not determine hash algorithm` 或连接超时（如 infradead.org）
 **处理**：`ob` 内置 URL 重写表（当前仅 `infradead.org → github.com/sigma-star`）。新域名需在 `lib/bare_mirror.sh:bare_mirror_provision` 拥有的 URL rewrite table 添加条目。
 
+#### 2b. 数据中心 IP 被 FOSS 基础设施封禁（403 / 429 / connect timeout 三签名）
+
+2026-08 实战：腾讯云 IP 上 romulus 首次 init 6/103 mirror 失败且跨重试稳定复现。三类签名对应三种成因，**全部不可靠重试解决**：
+
+| 签名 | 实例 | 成因 | 处置 |
+|------|------|------|------|
+| HTTP 403（秒级失败） | sourceware.org（binutils-gdb/glibc/bzip2-tests） | 站点拒绝数据中心 ASN | rewrite 到 GitHub mirror |
+| HTTP 429 + 文案 "Your IP address has been blocked" | codeberg.org（xmlto） | 站点显式 IP 黑名单 | rewrite 到仍同步的迁移前上游（xmlto → pagure.io） |
+| HTTP 429（无 Retry-After） | salsa.debian.org（debianutils） | 限流/拉黑，持续 ≥3h 无解除 | 无 mirror 时用 git2 tarball 种子（见 2c） |
+| TCP connect timeout（>120s） | git.savannah.gnu.org（config） | 网络层不可达 | rewrite 到 GitHub mirror |
+
+**rewrite 条目入表前必须验证 pinned SRCREV 存在于候选 mirror**（mirror 缺 commit 时 init 仍"成功"，`ob build` do_fetch 才爆，假成功后置）。且条目必须与 deps.json 的 clone_url **逐字一致（含 scheme）**：recipe 带 `protocol=https` 的 clone_url 已归一成 `https://`（sourceware 系全如此），不带 protocol 的保留 `git://`（infradead 如此）——照抄别的条目的 scheme 形式是高发陷阱（rewrite 匹配是全等比较，不命中时静默走原 URL，只在 -v 下可见）。验证手法：
+1. GitHub 托管候选 → REST API 免克隆查 commit：`GET /repos/<owner>/<repo>/commits/<40位SHA>`，200=有、404/422=无（404 需先查 `/repos/<owner>/<repo>` 区分仓库不存在）。
+2. 非 GitHub 候选 → 小仓库直接 `git clone --bare` 到 /tmp 后 `git cat-file -e <SHA>^{commit}`。
+
+已验证条目（2026-08，openbmc master 快照）：binutils-gdb→`RTEMS/sourceware-mirror-binutils-gdb`、glibc→`kraj/glibc`、bzip2-tests→`CodeLinaro-mirror/qrdk_bzip2-tests`、config→`arthenica/gnu-config`、xmlto→`pagure.io/xmlto.git`（codeberg 迁移前上游，仍在同步）。
+
+#### 2c. 无可达 mirror 时的兜底：Yocto 官方 git2 tarball 种子
+
+适用：源站封禁 + 无第三方 git mirror（debianutils 的 `debian/5.23.2` 在 GitHub/GitLab.com 全部候选均缺）。downloads.yoctoproject.org/mirror/sources/ 缓存 Autobuilder 的 bitbake git2 目录包 `git2_<gitsrcname>.tar.gz`（gitsrcname 与 BitBake git2 目录名逐字一致），更新频繁且多数 openbmc 依赖都收：
+
+```bash
+url=https://downloads.yoctoproject.org/mirror/sources/git2_<gitsrcname>.tar.gz
+curl -sO "$url" && mkdir /tmp/seed && tar xzf git2_*.tar.gz -C /tmp/seed
+git --git-dir=/tmp/seed cat-file -e <pinned-SHA>^{commit}   # 种子也必须验 SHA
+cp -r /tmp/seed workspace/downloads/git2/<gitsrcname>       # 装完 init 即视作 existing 跳过
+```
+
+注意：这是手动兜底（ob 的 rewrite 表只支持 URL→URL，不支持 tarball 种子）——ob 待补项：mirror provisioning 增加 seed 来源；装完必须在 report 里看到该 repo 从 FAIL 消失才算闭环。
+
 #### 3. BitBake 变量未展开
 
 **症状**：`[WARN] Unresolved BitBake variable in clone_url for <repo>: ${GITLAB_IP}/...`
@@ -292,6 +322,7 @@ EXTRA_OEMESON += "-Dredfish-updateservice-use-dbus=disabled"
 | 限制 | 原因 | Workaround |
 |------|------|-----------|
 | `mtd-utils` 从 infradead.org 不可克隆 | 部分构建服务器无法访问 infradead.org | 内置 URL 重写至 GitHub mirror |
+| sourceware/savannah/codeberg/salsa 对数据中心 IP 封禁（403/429/超时，重试无效） | FOSS 基础设施拒绝云厂商 ASN | rewrite 表（已含 5 条 2026-08 验证条目）；无 mirror 时用 git2 tarball 种子，见故障排除 #2b/#2c |
 | `json_test_data` commit 丢失 | 上游 force push 重写历史 | 使用最新 master HEAD |
 | 个别 bare mirror 失败不阻塞 init | 设计决策：允许部分失败，BitBake 按需从远程拉取 | 重跑 init 或手动补 mirror |
 | `--skip-deps` 需要已有 deps.json | 跳过 bitbake -g + Tinfoil，直接复用缓存 | 先完整跑一次 init |

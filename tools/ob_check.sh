@@ -158,6 +158,12 @@ else
 fi
 
 # ── 2. shellcheck baseline(合成 flat + 纯文本 multiset;不 per-file 避 SC2034 跨文件假阳) ──
+# fail-closed:shellcheck 缺失时门禁必须显式失败并跳过比对/重生成——否则 line 164 的
+# `|| true` 会把 "command not found" 错误文本喂进 parse,空 Counter 误判 REGEN,
+# 把错误文本 cp 进 baseline(fail-open 污染,2026-08-28 实测发生)。
+if ! command -v shellcheck >/dev/null 2>&1; then
+    bad "shellcheck 未安装——baseline 门禁 fail-closed(不比对不重生成;修复: sudo apt-get install shellcheck 后重跑)"
+else
 flat=/tmp/ob_check_sc.flat
 : > "$flat"
 for f in "${OB_SOURCES[@]}"; do cat "$f" >> "$flat"; done
@@ -200,6 +206,7 @@ case "$decision" in
     *)
         bad "shellcheck baseline 判定异常: $verdict" ;;
 esac
+fi
 
 # ── 3. exit-contract(多文件:默认扫 ob + lib/*.sh) ──
 if python3 tools/exit_contract.py >/tmp/ob_check_ec.out 2>&1; then

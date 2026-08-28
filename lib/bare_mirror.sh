@@ -180,6 +180,31 @@ bare_mirror_provision() {
         local _url_rewrites=(
             "git://git.infradead.org/mtd-utils.git"
             "https://github.com/sigma-star/mtd-utils.git"
+
+            # sourceware.org: 403 for datacenter/cloud IPs (stable across retries).
+            # GitHub mirrors verified to contain the pinned SRCREVs of current
+            # openbmc master recipes (checked per-commit before adding).
+            # NOTE: entries must match the deps.json clone_url VERBATIM — the
+            # scheme depends on each recipe's protocol= spelling (recipes with
+            # protocol=https normalize to https://; no protocol keeps git://).
+            "https://sourceware.org/git/binutils-gdb.git"
+            "https://github.com/RTEMS/sourceware-mirror-binutils-gdb.git"
+            "https://sourceware.org/git/bzip2-tests.git"
+            "https://github.com/CodeLinaro-mirror/qrdk_bzip2-tests.git"
+            "https://sourceware.org/git/glibc.git"
+            "https://github.com/kraj/glibc.git"
+
+            # git.savannah.gnu.org: TCP connect timeout (port 443, >120s) from
+            # cloud networks. arthenica/gnu-config tracks savannah config.git.
+            "https://git.savannah.gnu.org/git/config.git"
+            "https://github.com/arthenica/gnu-config.git"
+
+            # codeberg.org: explicit per-IP block ("Your IP address has been
+            # blocked by Codeberg", HTTP 429). pagure.io/xmlto is the upstream
+            # the codeberg project migrated FROM; still reachable and synced
+            # (contains codeberg master history incl. current pinned SRCREV).
+            "https://codeberg.org/xmlto/xmlto.git"
+            "https://pagure.io/xmlto.git"
         )
         for (( _i=0; _i<${#_url_rewrites[@]}; _i+=2 )); do
             if [[ "$clone_url" == "${_url_rewrites[_i]}" ]]; then
