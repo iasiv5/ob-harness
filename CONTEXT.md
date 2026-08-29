@@ -227,7 +227,7 @@ _Avoid_: dispatch handler（口语化，术语用 subcommand handler）, 把 han
 _Avoid_: skill / 技能（指 `rules/knowhow/` 时——会与 harness skill 混淆）, knowledge / 知识（陈述性，装不下 workflow 过程）, a know-how（不可数，用 "know-how 条目"）
 
 **harness skill**:
-`.claude/skills/` 下 Claude Code harness 原生的 skill，agent 通过 Skill 工具**调用**（非阅读），由 harness 自动发现与加载（如 brainstorming/grilling/domain-modeling）。与 `know-how`（`rules/knowhow/`，agent 读的参考文档）是两个概念：harness skill 是可调用能力，know-how 是参考文档。两者历史上都叫 "skill" 产生歧义，故 `rules/` 侧改用 know-how，`.claude/` 侧保留 skill。
+`.claude/skills/` 下三家 harness（Claude Code/Copilot/DeepSeek Harness）共享的 skill，单一物理来源；DSH 经 `.dsh/skills/` 符号链接发现。agent 通过 Skill 工具**调用**（非阅读），由 harness 自动发现与加载（如 brainstorming/grilling/domain-modeling）。与 `know-how`（`rules/knowhow/`，agent 读的参考文档）是两个概念：harness skill 是可调用能力，know-how 是参考文档。两者历史上都叫 "skill" 产生歧义，故 `rules/` 侧改用 know-how，`.claude/` 侧保留 skill。
 _Avoid_: 把 harness skill 与 know-how 混称 "skill"
 
 **product know-how**:

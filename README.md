@@ -18,7 +18,7 @@
     ┗━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛
 ```
 
-OpenBMC 固件开发工作台。`ob` CLI 覆盖环境初始化、镜像构建、工作区状态管理、recipe 源码开发和 QEMU 仿真；内置 AI Agent 上下文框架，用 Claude Code 或 GitHub Copilot 等任意 Coding Agent 打开仓库即可用自然语言驱动开发任务。
+OpenBMC 固件开发工作台。`ob` CLI 覆盖环境初始化、镜像构建、工作区状态管理、recipe 源码开发和 QEMU 仿真；内置 AI Agent 上下文框架，用 Claude Code、GitHub Copilot 或 DeepSeek Harness 等 Coding Agent 打开仓库即可用自然语言驱动开发任务。
 
 ## 开始
 
@@ -50,7 +50,7 @@ cd ob-harness
 
 ## 入口 1：AI Agent
 
-用 Claude Code 或 GitHub Copilot 打开本仓库，在输入框里直接描述需求即可。
+用 Claude Code、GitHub Copilot 或 DeepSeek Harness 打开本仓库，在输入框里直接描述需求即可。
 
 ### 工作原理
 
@@ -62,7 +62,7 @@ cd ob-harness
 - **记忆积累**：通过 `/ai-heartbeat` 让 AI 持续学习项目变化和团队决策
 - **决策公理**：从团队经历中提炼的决策原则，辅助深度分析
 
-入口配置在 `AGENTS.md` 和 `.github/copilot-instructions.md`，感兴趣可以翻看源码。
+入口配置在 `AGENTS.md` 和 `.github/copilot-instructions.md`；skills 与斜杠命令的单一物理来源在 `.claude/skills/`，三份镜像入口（`.claude/commands/`、`.github/prompts/`、`.dsh/skills/`）互不引用，适配原则见 `rules/knowhow/bestpractice_16-multi_harness_skill_adaptation.md`。
 
 ## 入口 2：ob CLI
 
@@ -149,6 +149,7 @@ Examples:
 - devtool_* 深模块抽取族：devtool_pick（modified recipe selection）/ devtool_dispatch（relay）/ devtool_porcelain（emit）/ devtool_subcmd（subcommand handler），ADR-0010/0012。
 - 新增 `tools/cache_hit_rate.py`（缓存飞轮观测）、`tools/exit_contract.py`（exit 纪律静态断言）、`bestpractice_08-09`、`v06` 概率乘公理。
 - Breaking：`openbmc-source.lock` → `openbmc-source.manifest`、`<machine>.lock` → `<machine>.snapshot`（术语见 `CONTEXT.md`）。
+- 接入 DeepSeek Harness：`.dsh/skills/` 桥接 9 个 skill（符号链接至单一物理来源 `.claude/skills/`）+ 4 个斜杠命令三入口（bestpractice_16）。
 
 ### v1.2 — 2026-06-21
 

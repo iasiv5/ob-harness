@@ -42,6 +42,7 @@
 - [给 QEMU 模拟的 BMC EEPROM 注入 FRU 数据](knowhow/bestpractice_13-inject_fru_data_into_bmc_eeprom.md) — QEMU BMC 板载 EEPROM 空导致 set-hostname/inventory 等失败时；两个致命陷阱：entity-manager type 编码反常（字段用 `0xC0|len` 非 `0x80|len`）+ ob 用 custom binary 复制（重编后必须 cp）；四阶段（构造 blob→runtime dd 验证→固化 `at24c_eeprom_init_rom`→重编+cp+回归）。
 - [给 QEMU 模拟缺失的 GPIO expander](knowhow/bestpractice_14-simulate_gpio_expander_in_qemu.md) — OpenBMC 服务（psu-manager 等）因 named GPIO line 不存在 SIGABRT（gpiod::find_line throw）时；定位用手动跑 binary 捕获 stderr（比 gdb stripped core 高效）；修法=查 dts expander 总线链+QEMU i2c_init 加 expander（pca9555/9554，kernel 从 dts 读 line names 注册 named line）；陷阱：改 config 名字不够、expander 要挂 dts 匹配总线、clone 错源码 repo。
 - [CodeQL 告警修复：先拿污点路径再定点切断](knowhow/bestpractice_15-codeql-alert-taint-path-first.md) — CI 报 CodeQL 数据流类告警（如 clear-text logging）时，先在告警页 "Show paths" 拿完整污点路径再修；致命陷阱：CodeQL 按名字定源不看值（env 名含 PASSWORD 即敏感）、行内豁免注解不可靠、regex/replace 净化是污点保持、盲改（把 secret 传进净化链）反而新增污点路径。
+- [多 harness 的 skill / 斜杠命令适配](knowhow/bestpractice_16-multi_harness_skill_adaptation.md) — 给仓库新增 skill（实体进 `.claude/skills/` + `.dsh/skills/` 符号链接）或斜杠命令（三 harness 入口、互不引用）、排查 DSH 认不到 skill/命令时使用；含 DSH 扫描 rank 表、符号链接跟随、`/name` 即 skill 等机制事实。
 
 ---
 

@@ -47,7 +47,7 @@ Don't ask permission. Just do it.
 三层记忆架构：
 - **L3（全局约束）**：`rules/` 核心规则（`01_SOUL`~`05_KNOWHOW_INDEX`）每次 session 启动读取；`06_AXIOMS_INDEX` 及 `axioms/`、`knowhow/` 按需检索
 - **L1/L2（动态记忆）**：`contexts/memory/OBSERVATIONS.md`，agent 主动检索
-- **手动积累**：通过 `/ai-heartbeat` slash command（[实现](.github/prompts/ai-heartbeat.prompt.md)）手动触发 observer（L1，当天观测）和 reflector（L2，每周反思）。
+- **手动积累**：通过 `/ai-heartbeat` slash command（[执行合同](periodic_jobs/ai_heartbeat/docs/AI_HEARTBEAT_SOP.md)；三 harness 入口见 `.claude/commands/`、`.github/prompts/`、`.dsh/skills/`）手动触发 observer（L1，当天观测）和 reflector（L2，每周反思）。
 
 ## Safety
 
