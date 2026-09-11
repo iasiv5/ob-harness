@@ -15,12 +15,12 @@ mkdir -p "$TMP2/meta-x"
 OPENBMC_DIR="$TMP2"
 printf 'GITLAB_IP=10.0.0.9\n' > "$TMP2/meta-x/git-mirror-url.sh"
 assert_eq "host from GITLAB_IP script" "$(detect_runtime_git_host)" "10.0.0.9"
-unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
 
 # case 2: vendor 脚本含 GIT_MIRROR_HOST
 rm -f "$TMP2/meta-x/git-mirror-url.sh"; printf 'GIT_MIRROR_HOST=mirror.local\n' > "$TMP2/meta-x/git-mirror-url.sh"
 assert_eq "host from GIT_MIRROR_HOST script" "$(detect_runtime_git_host)" "mirror.local"
-unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
 
 # case 3: 无 vendor 脚本 → fallback origin(需真 git 仓;setup 失败显式报因,不静默吞)
 rm -f "$TMP2/meta-x/git-mirror-url.sh"; rmdir "$TMP2/meta-x"
@@ -29,18 +29,47 @@ git -C "$TMP2/openbmc-repo" remote add origin git@gitlab.example.com:team/repo.g
 OPENBMC_DIR="$TMP2/openbmc-repo"
 assert_eq "host from git@ origin" "$(detect_runtime_git_host)" "gitlab.example.com"
 git -C "$TMP2/openbmc-repo" remote set-url origin ssh://git@gitlab3.example.com:2222/team/repo.git 2>/dev/null
-unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
 assert_eq "host from ssh origin (drop user@ + port)" "$(detect_runtime_git_host)" "gitlab3.example.com"
 git -C "$TMP2/openbmc-repo" remote set-url origin https://gitlab2.example.com/team/repo.git 2>/dev/null
-unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
 assert_eq "host from https origin" "$(detect_runtime_git_host)" "gitlab2.example.com"
-unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
+
+# case 3b: origin 带显式端口 → host 仍裸(向后兼容),端口单独进 _RUNTIME_GIT_HOST_PORT
+#   (host:port 拼接是 generate_build_config 注入 GITLAB_IP 的职责,见 init_pipeline.sh)
+git -C "$TMP2/openbmc-repo" remote set-url origin https://gitlab2.example.com:8443/team/repo.git 2>/dev/null
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
+detect_runtime_git_host >/dev/null
+assert_eq "host from https origin (port) still bare" "${_RUNTIME_GIT_HOST:-}" "gitlab2.example.com"
+assert_eq "https port captured" "${_RUNTIME_GIT_HOST_PORT:-}" "8443"
+git -C "$TMP2/openbmc-repo" remote set-url origin ssh://git@gitlab3.example.com:2222/team/repo.git 2>/dev/null
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
+detect_runtime_git_host >/dev/null
+assert_eq "host from ssh origin (port) still bare" "${_RUNTIME_GIT_HOST:-}" "gitlab3.example.com"
+assert_eq "ssh port captured" "${_RUNTIME_GIT_HOST_PORT:-}" "2222"
+# git@ scp 形天然无端口 → port 恒空
+git -C "$TMP2/openbmc-repo" remote set-url origin git@gitlab.example.com:team/repo.git 2>/dev/null
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
+detect_runtime_git_host >/dev/null
+assert_eq "scp form has empty port" "${_RUNTIME_GIT_HOST_PORT:-}" ""
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
+
+# case 3c: vendor 脚本值为 host:port 形态(部分 vendor 脚本约定) → 拆分为裸 host + 端口
+OPENBMC_DIR="$TMP2"
+mkdir -p "$TMP2/meta-x"
+printf 'GITLAB_IP=10.0.0.9:8443\n' > "$TMP2/meta-x/git-mirror-url.sh"
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
+detect_runtime_git_host >/dev/null
+assert_eq "script host:port → bare host" "${_RUNTIME_GIT_HOST:-}" "10.0.0.9"
+assert_eq "script host:port → port" "${_RUNTIME_GIT_HOST_PORT:-}" "8443"
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
 
 # case 4: 都没有 → 空 + return 0
 OPENBMC_DIR="$TMP2/no-such"
 assert_rc 0 "empty host returns 0" detect_runtime_git_host
 assert_eq "empty host echoes nothing" "$(detect_runtime_git_host)" ""
-unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
 
 # case 5: 缓存幂等——首次求值后改 script,第二次仍返回缓存值(钉"不重算")
 #   detect 内全局缓存不穿透 $() subshell,故 case5/6 用 direct call + 读 _RUNTIME_GIT_HOST
@@ -54,7 +83,7 @@ detect_runtime_git_host >/dev/null
 second="${_RUNTIME_GIT_HOST:-}"
 assert_eq "cache returns first value" "$first" "10.0.0.9"
 assert_eq "cache: 2nd call unchanged" "$second" "10.0.0.9"
-unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
 
 # case 6: 哨兵区分"已求值空"vs"未求值"——首次空后补 script,未 unset 仍空(钉哨兵用 ${x+x} 而非 -n)
 rm -f "$TMP2/meta-x/git-mirror-url.sh"
@@ -66,11 +95,11 @@ OPENBMC_DIR="$TMP2"; printf 'GITLAB_IP=10.0.0.9\n' > "$TMP2/meta-x/git-mirror-ur
 detect_runtime_git_host >/dev/null   # 未 unset,用缓存(空)
 still_empty="${_RUNTIME_GIT_HOST:-}"
 assert_eq "cached empty sticks until unset" "$still_empty" ""
-unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
 
 rm -rf "$TMP2"
 OPENBMC_DIR="$_save_openbmc"
-unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST
+unset _RUNTIME_GIT_HOST_RESOLVED _RUNTIME_GIT_HOST _RUNTIME_GIT_HOST_PORT
 
 # parse_hostkey_offending:提取 "Offending TYPE key in <file>:<line>" → "<file> <line>"
 assert_eq "hostkey parse"    "$(parse_hostkey_offending 'Offending ECDSA key in /home/u/.ssh/known_hosts:5')" "/home/u/.ssh/known_hosts 5"

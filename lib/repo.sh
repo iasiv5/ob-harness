@@ -32,6 +32,9 @@ is_valid_repo_url() {
 # 不报错(配置缺失由调用者决定 remedy)。
 # 调用约定:生产调用必须 direct call(detect_runtime_git_host >/dev/null; x=${_RUNTIME_GIT_HOST:-}),
 # 因 $() subshell 不穿透全局缓存;echo 仅供测试/一次性捕获。Returns: echo host 或空串,恒 return 0。
+# 双输出契约(2026-09 起): _RUNTIME_GIT_HOST=裸 host(scp/insteadOf 消费方语义不变);
+# _RUNTIME_GIT_HOST_PORT=显式端口(不带冒号,空串=无端口)。需要 host:port 形态的消费方
+# (generate_build_config 的 GITLAB_IP 注入)自行拼接 "${_RUNTIME_GIT_HOST}${_RUNTIME_GIT_HOST_PORT:+:$_RUNTIME_GIT_HOST_PORT}"。
 detect_runtime_git_host() {
     # 一次性缓存:哨兵变量区分"已求值(值为空)"与"未求值",不用 -n(host 可合法为空)
     if [[ -n "${_RUNTIME_GIT_HOST_RESOLVED+x}" ]]; then
@@ -42,18 +45,25 @@ detect_runtime_git_host() {
     # 本地化 OPENBMC_DIR(nounset 自洽):未设/未初始化时 graceful 返回空,不依赖调用者保证
     local openbmc_dir="${OPENBMC_DIR:-}"
     local host=""
+    local port=""
 
-    # 优先: 主仓 origin(git 官方 API)。init 时真实 fetch 成功的 host,代表性最强。
+    # 优先: 主仓 origin(真实 fetch 成功的 host,代表性最强)。
+    # 用 git config --get 读裸 URL,不用 git remote get-url:后者会应用 insteadOf 重写
+    # (ob 自身为 SSH 兜底配过 url.git@<host>:.insteadOf https://<host>:<port>/),把
+    # https://host:port/... 改写成 git@host:... (scp 形无法携带端口),端口在探测阶段
+    # 就被抹掉——某 vendor machine 构建实证(2026-09)的二次掩盖。
     if [[ -z "$host" && -n "$openbmc_dir" ]]; then
         local _remote_url=""
-        _remote_url=$(git -C "$openbmc_dir" remote get-url origin 2>/dev/null || true)
+        _remote_url=$(git -C "$openbmc_dir" config --get remote.origin.url 2>/dev/null || true)
         if [[ "$_remote_url" == git@* ]]; then
             host=$(printf '%s\n' "$_remote_url" | sed -E 's/^git@([^:]+):.*/\1/')
         elif [[ "$_remote_url" == ssh://* ]]; then
             # ssh://[user@]host[:port]/path → host(去 user@、去 :port,与 https 行为一致)
             host=$(printf '%s\n' "$_remote_url" | sed -E 's#^ssh://([^/@]+@)?([^/:]+).*#\2#')
+            port=$(printf '%s\n' "$_remote_url" | sed -nE 's#^ssh://([^/@]+@)?[^/:]+:([0-9]+).*#\2#p')
         elif [[ "$_remote_url" == http://* || "$_remote_url" == https://* ]]; then
             host=$(printf '%s\n' "$_remote_url" | sed -E 's#^https?://([^/:]+).*#\1#')
+            port=$(printf '%s\n' "$_remote_url" | sed -nE 's#^https?://[^/:]+:([0-9]+).*#\1#p')
         fi
     fi
 
@@ -69,9 +79,23 @@ detect_runtime_git_host() {
     fi
     if [[ -z "$host" && -f "$_rt_script" ]]; then
         host=$(grep -oP '^(GITLAB_IP|GIT_MIRROR_HOST)=["'"'"']?\K[^"'"'"'\s]+' "$_rt_script" 2>/dev/null | head -1 || true)
+        # 脚本值可能是 host:port 形态(某些 vendor 脚本约定直接写 "host:port");
+        # 与 origin 分支同语义: _RUNTIME_GIT_HOST 存裸 host,端口单独进 _RUNTIME_GIT_HOST_PORT。
+        if [[ "$host" == *:* ]]; then
+            port="${host#*:}"
+            host="${host%%:*}"
+        fi
     fi
 
     _RUNTIME_GIT_HOST="$host"
+    # 显式端口(不带冒号,空串=无端口)。消费方: generate_build_config 注入
+    # GITLAB_IP ??= "<host><:port>"——部分 vendor 树的 ${GITLAB_IP} 引用形如
+    # git://${GITLAB_IP}/...,把该变量当完整 authority 用且其私有 GitLab 服务在
+    # 非标准端口;注入裸 host 会让依赖该变量的 SRC_URI:remove / fetch URL 全部失配
+    # (某 vendor machine 2026-09 构建实证)。
+    # scp 形消费方(insteadOf 键、git@host:path clone_url)仍用 _RUNTIME_GIT_HOST 裸 host,
+    # 它们各自已有端口处理或天然不支持端口。
+    _RUNTIME_GIT_HOST_PORT="$port"
     _RUNTIME_GIT_HOST_RESOLVED=1
     echo "$host"
     return 0

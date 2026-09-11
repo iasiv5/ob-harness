@@ -359,18 +359,26 @@ generate_build_config() {
     # local.conf.sample 只给注释占位(#GITLAB_IP = ""),所以 ob 必须自动填。
     # 优先级与 DL_DIR 同语义(ADR-0005 assignment-state): local.conf 有赋值行=set 接管,
     # ob 不覆盖; 无赋值行=unset, ob 用 detect_runtime_git_host() 从主仓 origin 反推 host 写入。
+    # 注入值形态 = host:port(origin/脚本带显式端口时经 _RUNTIME_GIT_HOST_PORT 拼接):
+    # 部分 vendor 树大量使用 ${GITLAB_IP} 引用并把该变量当完整 authority 用
+    # (git://${GITLAB_IP}/...),其私有 GitLab 服务在非标准端口;注入裸 host 会让依赖
+    # 该变量的 SRC_URI:remove / fetch URL 静默失配(2026-09 某 vendor machine 构建实证)。
+    # 社区树无 ${GITLAB_IP} 引用,注入值只是无害弱默认;ob 内部 scp 形
+    # 消费方(insteadOf 键、clone_url)继续用 _RUNTIME_GIT_HOST 裸 host,不受拼接影响。
     # 注入用 ??= (弱默认): 允许 bblayers/local 后续 ??/+= 覆盖, 也避免覆盖机器模板里可能的
     # 真实赋值(local.conf.sample 默认是注释, 但 customer 可能解注释填值)。
     local _user_gitlab_ip_set=0
     local _runtime_git_host=""
+    local _runtime_git_host_port=""
     if read_local_conf_var "$local_conf" "GITLAB_IP" >/dev/null 2>&1; then
         _user_gitlab_ip_set=1
         info "GITLAB_IP set in local.conf — not overriding in .inc"
     else
         detect_runtime_git_host >/dev/null
         _runtime_git_host="${_RUNTIME_GIT_HOST:-}"
+        _runtime_git_host_port="${_RUNTIME_GIT_HOST_PORT:-}"
         if [[ -n "$_runtime_git_host" ]]; then
-            info "GITLAB_IP unset in local.conf — injecting from main-repo origin: $_runtime_git_host"
+            info "GITLAB_IP unset in local.conf — injecting from main-repo origin: ${_runtime_git_host}${_runtime_git_host_port:+:${_runtime_git_host_port}}"
         else
             info "GITLAB_IP unset in local.conf and no detectable GitLab host — recipes using \${GITLAB_IP} may fail to fetch"
         fi
@@ -420,10 +428,12 @@ generate_build_config() {
 
         echo ""
         echo "# GITLAB_IP for private recipes using git://\${GITLAB_IP}/<org>/... in SRC_URI."
+        echo "# Injected as host:port when the main-repo origin carries an explicit port"
+        echo "# (vendor GitLab on a non-standard port); bare host otherwise."
         echo "# Not defined here when local.conf already assigns GITLAB_IP (user takes over)."
         echo "# Uses ??= (weak default): machine template's local.conf may carry a real value."
         if [[ "$_user_gitlab_ip_set" -eq 0 && -n "$_runtime_git_host" ]]; then
-            echo "GITLAB_IP ??= \"$_runtime_git_host\""
+            echo "GITLAB_IP ??= \"${_runtime_git_host}${_runtime_git_host_port:+:${_runtime_git_host_port}}\""
         else
             echo "# GITLAB_IP managed in local.conf or no detectable host — not injected."
         fi
