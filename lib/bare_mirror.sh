@@ -205,6 +205,18 @@ bare_mirror_provision() {
             # (contains codeberg master history incl. current pinned SRCREV).
             "https://codeberg.org/xmlto/xmlto.git"
             "https://pagure.io/xmlto.git"
+
+            # git.kernel.dk / git.pengutronix.de: git:// protocol (port 9418)
+            # unreachable from cloud networks (TCP connect timeout / network
+            # unreachable, stable across retries). Official GitHub mirrors
+            # verified to contain the pinned SRCREVs of the ast2700-a0-default
+            # recipes (checked per-commit before adding): axboe/fio has
+            # b2403d413ee734e8835539319d8bc3429a0777ac, linux-can/libsocketcan
+            # has 077def398ad303043d73339112968e5112d8d7c8.
+            "git://git.kernel.dk/fio.git"
+            "https://github.com/axboe/fio.git"
+            "git://git.pengutronix.de/git/tools/libsocketcan.git"
+            "https://github.com/linux-can/libsocketcan.git"
         )
         for (( _i=0; _i<${#_url_rewrites[@]}; _i+=2 )); do
             if [[ "$clone_url" == "${_url_rewrites[_i]}" ]]; then
