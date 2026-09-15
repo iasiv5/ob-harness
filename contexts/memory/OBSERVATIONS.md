@@ -98,4 +98,4 @@ Date: 2026-08-28
 Date: 2026-09-15
 
 🟡 Medium: [信息分层定调（用户拍板）] 环境硬件接入信息（IP/凭据/端口类敏感项）只落 user 层 `contexts/knowhow/`（gitignored 私人仓），**不得写入随仓库分发的 OBSERVATIONS 或其他 rules 面**；当日一条含敏感项的 observer 记录已按此定调回滚（净零、未入 git 历史），后续同类信息直接走 user 层不再进分发层。同日第二裁定：Yocto 镜像编译日期判定方法论（SOURCE_DATE_EPOCH 占位时间戳 vs os-release BUILD_ID）用户明确**不晋升 product 层**，留观测层即可，勿再重复提议。
-🟢 Low: [/sediment 手动通道走通四步] 判所有权 → 判层 → 写 → 收口全流程执行：新增 user know-how bestpractice_04（BMC EVB 接入速查）+ 07_USER_KNOWHOW_INDEX 入口 + terminal 核实；product 层候选按用户裁定不沉淀。噪音过滤：contexts/knowhow/.git 嵌套私仓对象变更、OBSERVATIONS 自写自滚均非内容信号，未计入。
+🟢 Low: [/sediment 手动通道走通四步] 判所有权 → 判层 → 写 → 收口全流程执行：新增 user know-how bestpractice_05（BMC EVB 接入速查；初写编号 04 与远端私仓 d655644 冲突，rebase 时按 ADR-0018 永久序号原则重编号 05）+ 07_USER_KNOWHOW_INDEX 入口 + terminal 核实；product 层候选按用户裁定不沉淀。噪音过滤：contexts/knowhow/.git 嵌套私仓对象变更、OBSERVATIONS 自写自滚均非内容信号，未计入。
