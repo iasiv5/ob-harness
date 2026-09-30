@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/qemu.sh — QEMU runtime(binary/firmware/ports/SoC/pid/hostkey). 术语见 CONTEXT.md QEMU launch profile / QEMU manifest.
+# lib/qemu.sh — QEMU runtime(binary/firmware/ports/SoC/pid/hostkey). 术语见 GLOSSARY.md QEMU launch profile / QEMU manifest.
 # Exit: direct-exit module（非 leaf-pure, 使用 exit-code 契约值 0/1/2/3）.
 
 

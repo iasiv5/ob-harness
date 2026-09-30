@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/qemu_binary.sh — QEMU binary provisioning module(下载/Jenkins/manifest/firmware)。术语见 CONTEXT.md QEMU manifest / QEMU source。
+# lib/qemu_binary.sh — QEMU binary provisioning module(下载/Jenkins/manifest/firmware)。术语见 GLOSSARY.md QEMU manifest / QEMU source。
 # 从 lib/qemu.sh 迁出(2026-07-04, qemu.sh deepening)。
 # Exit: direct-exit module(ensure_qemu_binary_community/custom exit 1/2/3;download_* 约定不 exit,caller 拥有 flock/manifest/exit)。
 

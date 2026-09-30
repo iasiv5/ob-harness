@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/util.sh — 底层通用工具(log/read_kv_field/require_path; npm registry 决策族 probe/resolve/apply). 术语见 CONTEXT.md function semantic layer.
+# lib/util.sh — 底层通用工具(log/read_kv_field/require_path; npm registry 决策族 probe/resolve/apply). 术语见 GLOSSARY.md function semantic layer.
 # Exit: leaf-no-exit（leaf-pure module; 例外 fn_quit/resolve_npm_registry/require_path 可 direct exit, require_path 使用 caller code）; 调用者负责 exit-code/remedy.
 
 
@@ -20,7 +20,7 @@ notice() { echo -e "${CYAN}[NOTICE]${NC} $*" >&2; }
 verbose() { if [[ "$VERBOSE" -eq 1 ]]; then echo -e "[DEBUG] $*"; fi; }
 
 # Print the 3-line confirmation banner (visual only — no confirmation logic).
-# See CONTEXT.md "confirmation banner". Usage: print_confirm_banner "<verb>" "$object"
+# See GLOSSARY.md "confirmation banner". Usage: print_confirm_banner "<verb>" "$object"
 print_confirm_banner() {
     local verb="${1:-}"
     local object="${2:-}"

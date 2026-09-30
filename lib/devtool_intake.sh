@@ -4,7 +4,7 @@
 #   (machine, subcmd, pattern, recipe) 四元组, 经 nameref outvar 回填; -d 设全局 DRY_RUN。return 0/1。
 #   dev_intake_tty: 仅当子命令缺失且交互终端时进入的 7 项菜单引导 + 位置参数补齐 + 衔接
 #   devtool_pick_modified_recipe。读 stdin, return 0/1/2/3(Task 2 加入)。
-#   消费 devtool_pick_modified_recipe / read / error / warn。术语见 CONTEXT.md ob dev command intake。
+#   消费 devtool_pick_modified_recipe / read / error / warn。术语见 GLOSSARY.md ob dev command intake。
 # Exit: leaf-pure module (ADR-0010/0012); 函数绝不 exit, return 契约值; exit 归 cmd_dev。
 
 # dev_intake_argv <out_machine> <out_subcmd> <out_pattern> <out_recipe> <args...>

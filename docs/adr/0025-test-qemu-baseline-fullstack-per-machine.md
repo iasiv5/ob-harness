@@ -4,7 +4,7 @@
 
 Status: accepted
 
-References: CONTEXT.md `baseline`(本次新增)/ `smoke suite` / `test layer`；[ADR-0017](0017-knowhow-distribution-boundary.md)(`contexts/` 不随上游分发边界——本 ADR 把 baseline 数据接上同一条 product/user 分发边界)；[ADR-0020](0020-ob-smoke-probe-only-smoke-prober.md)(smoke probe-only / 零 per-machine 知识,仅约束 smoke 层;test-qemu 作为新层允许 per-machine,本 ADR 把"允许"推到"全栈 per-machine 为默认")；[ADR-0023](0023-defer-smoke-assertion-runner.md)(防循环推荐 ADR 先例)。
+References: GLOSSARY.md `baseline`(本次新增)/ `smoke suite` / `test layer`；[ADR-0017](0017-knowhow-distribution-boundary.md)(`contexts/` 不随上游分发边界——本 ADR 把 baseline 数据接上同一条 product/user 分发边界)；[ADR-0020](0020-ob-smoke-probe-only-smoke-prober.md)(smoke probe-only / 零 per-machine 知识,仅约束 smoke 层;test-qemu 作为新层允许 per-machine,本 ADR 把"允许"推到"全栈 per-machine 为默认")；[ADR-0023](0023-defer-smoke-assertion-runner.md)(防循环推荐 ADR 先例)。
 
 ## Considered Options
 
@@ -26,7 +26,7 @@ References: CONTEXT.md `baseline`(本次新增)/ `smoke suite` / `test layer`；
 
 - **与 ADR-0020 划界**:ADR-0020"零 per-machine 知识"**仅约束 smoke 层**(浅冒烟,5 条哨兵,聚合 α verdict,无 per-machine profile);test-qemu 层本 ADR 确立全栈 per-machine。两层哲学不同但并存:smoke 守 per-push 绿灯(零 per-machine 保信号干净),test-qemu 做逐条深测(per-machine 承载领域差异)。不冲突。
 
-- **CONTEXT.md 维护**:本次新增 `baseline` 术语条目(开发基线/功能基线,固件领域 ubiquitous language,= 一组 AR,被 test-qemu 验证的对象)。`smoke suite` 条目随 ADR-0028 收编更新(baseline 目录内建 smoke 分片)。
+- **GLOSSARY.md 维护**:本次新增 `baseline` 术语条目(开发基线/功能基线,固件领域 ubiquitous language,= 一组 AR,被 test-qemu 验证的对象)。`smoke suite` 条目随 ADR-0028 收编更新(baseline 目录内建 smoke 分片)。
 
 - **可逆性**:从全栈 per-machine 合并回共享引擎,要归并 N 份已分叉代码,成本随分叉深度上升;故本决策随时间趋难逆,正合 ADR 门槛(hard to reverse + surprising + real trade-off 三条全中)。
 

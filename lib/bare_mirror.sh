@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/bare_mirror.sh - bare mirror provisioning + per-run report state. See CONTEXT.md.
+# lib/bare_mirror.sh - bare mirror provisioning + per-run report state. See GLOSSARY.md.
 # Exit: leaf-pure module (functions never exit; file/process/network side effects are allowed).
 
 
@@ -108,7 +108,7 @@ bare_mirror_provision() {
         error "Failed to open bare mirror plan."
         return 1
     fi
-    # open FD 成功后立即 unlink(plan 不是持久化状态文件,见 CONTEXT.md);unlink 失败 = fatal。
+    # open FD 成功后立即 unlink(plan 不是持久化状态文件,见 GLOSSARY.md);unlink 失败 = fatal。
     if ! rm -f "$plan_file"; then
         exec {plan_fd}<&- || true
         error "Failed to clean up temporary bare mirror plan."

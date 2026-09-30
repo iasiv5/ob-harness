@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/repo.sh — 仓库与 machine 解析(require_openbmc_repo/write_source_manifest). 术语见 CONTEXT.md source manifest.
+# lib/repo.sh — 仓库与 machine 解析(require_openbmc_repo/write_source_manifest). 术语见 GLOSSARY.md source manifest.
 # Exit: direct-exit module（非 leaf-pure, 使用 exit-code 契约值 0/1/2/3）.
 
 
@@ -20,7 +20,7 @@ is_valid_repo_url() {
     [[ "$repo_url" =~ ^https?:// ]] || [[ "$repo_url" =~ ^ssh:// ]] || [[ "$repo_url" =~ ^git:// ]] || [[ "$repo_url" =~ ^git@ ]]
 }
 
-# detect_runtime_git_host — 提取 runtime Git mirror host(术语见 CONTEXT.md)。
+# detect_runtime_git_host — 提取 runtime Git mirror host(术语见 GLOSSARY.md)。
 # 优先级: 主仓 origin(git remote get-url) > vendor 脚本(meta-*/git-mirror-url.sh,
 # legacy github-gitlab-url.sh)的 GIT_MIRROR_HOST/GITLAB_IP。origin 优先的理由:
 # vendor 脚本里的 IP 常是上游模板死值(如内网 RFC1918 地址),与本机实际可达 GitLab 不符;

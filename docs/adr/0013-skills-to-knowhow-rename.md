@@ -1,6 +1,6 @@
 # Rename `rules/skills/` → `rules/knowhow/`: disambiguate from `.claude/skills/` harness skills and name the artifact accurately
 
-本仓库同时存在两套 "skill"：`rules/skills/`（agent **读**的 Markdown 文档：workflow 过程 + bestpractice 原则/经验）与 `.claude/skills/`（Claude Code harness 原生 skill，agent 通过 Skill 工具**调用**、harness 自动发现）。同一术语指两种机制——`rules/skills/` 的东西从不被当作 skill 调用——是 CONTEXT.md 始终未收录 "skill" 词条的根因。同时 "skill" 把两种不同形状（workflow 过程 vs bestpractice 原则）混为一谈，且 meta 文档（`bestpractice_01`）把单条定义为带验收标准的"能力"，与 "skill"/"knowledge" 都不完全贴合。本 ADR 记录：**`rules/skills/` 改名为 `rules/knowhow/`，伞名用 know-how（实操经验），`.claude/skills/` 保留 "skill"**。决策经 `/grill-with-docs`（grilling + domain-modeling）7 个决策点锁定。
+本仓库同时存在两套 "skill"：`rules/skills/`（agent **读**的 Markdown 文档：workflow 过程 + bestpractice 原则/经验）与 `.claude/skills/`（Claude Code harness 原生 skill，agent 通过 Skill 工具**调用**、harness 自动发现）。同一术语指两种机制——`rules/skills/` 的东西从不被当作 skill 调用——是 GLOSSARY.md 始终未收录 "skill" 词条的根因。同时 "skill" 把两种不同形状（workflow 过程 vs bestpractice 原则）混为一谈，且 meta 文档（`bestpractice_01`）把单条定义为带验收标准的"能力"，与 "skill"/"knowledge" 都不完全贴合。本 ADR 记录：**`rules/skills/` 改名为 `rules/knowhow/`，伞名用 know-how（实操经验），`.claude/skills/` 保留 "skill"**。决策经 `/grill-with-docs`（grilling + domain-modeling）7 个决策点锁定。
 
 Status: accepted
 
@@ -19,8 +19,8 @@ Status: accepted
 ## Consequences
 
 - **物理层**：`rules/skills/` → `rules/knowhow/`（12 文件 `git mv`）；`rules/05_SKILLS_INDEX.md` → `rules/05_KNOWHOW_INDEX.md`；`bestpractice_01-skill_writing.md` → `bestpractice_01-knowhow_writing.md`。前缀 `workflow_`/`bestpractice_` **不变**（两种形状由前缀承载，不改）。
-- **散文层**：所有活文件里指代 ob-harness artifact 的 "skill/Skill/技能" → "know-how/实操经验"；`.claude/skills/` 相关引用**保留 "skill"**（另一概念，见 CONTEXT.md `harness skill`）。
+- **散文层**：所有活文件里指代 ob-harness artifact 的 "skill/Skill/技能" → "know-how/实操经验"；`.claude/skills/` 相关引用**保留 "skill"**（另一概念，见 GLOSSARY.md `harness skill`）。
 - **范围**：~10 个活文件、~95 处编辑；冻结历史文档（`docs/specs/**`、`docs/plans/**`，含旧的 `2026-06-05-skills-naming-*` 两篇）按惯例不动；harness skill 假阳性（`pick-one-arch-task` 引 `.claude/skills/improve-codebase-architecture`、`rules/03_WORKSPACE.md` L21/23/24、`KNOWLEDGE_BASE.md` L38）保留；axiom 里的泛指 "skill"（keqian-method skill、pi-mono Skills）保留；`ob`/`lib/`/`tools/` 代码层 0 命中。
-- **术语层**：CONTEXT.md 新增 `know-how` 与 `harness skill` 两条，显式区分二者，终结 "skill" 词义不稳定。
+- **术语层**：GLOSSARY.md 新增 `know-how` 与 `harness skill` 两条，显式区分二者，终结 "skill" 词义不稳定。
 - **副带修复**：`axioms/t09` 一条指向 `workflow_knowledge_flywheel.md` 的断链（该文件从未存在）顺手删除。
 - 可逆性：改名是 working-tree 文档编辑，可回滚；但未来读者会奇怪为何不叫 "skill"，故落 ADR。

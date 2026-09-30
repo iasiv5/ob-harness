@@ -5,7 +5,7 @@
 #   + _devtool_parse_srctree(单条 status→srctree) + _devtool_parse_status_all(全量 status→entries)。
 #   被 devtool_modify/devtool_reset/devtool_search/devtool_status 消费(全局命名空间)。
 #   ob loader(ob:73-76 for f in lib/*.sh)source 全部 lib; bash 函数运行时按名解析,
-#   不依赖 source 顺序(字母序无关——曾误判为约束,已澄清)。术语见 CONTEXT.md function semantic layer / ob dev porcelain stdout。
+#   不依赖 source 顺序(字母序无关——曾误判为约束,已澄清)。术语见 GLOSSARY.md function semantic layer / ob dev porcelain stdout。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev/各 *_run)负责 exit-code/remedy/诊断。
 
 # _devtool_env_exec <machine> <build_dir> <stage_file> <stdout_file> <stderr_file> -- <cmd...>

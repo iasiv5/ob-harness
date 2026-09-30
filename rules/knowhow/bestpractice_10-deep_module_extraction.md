@@ -11,7 +11,7 @@
 
 让"收敛散落逻辑到深 module"从一次性手艺变成可工业化复制的动作，且抽取后的纯度（leaf-pure module 不 exit）由静态工具门禁守住，而非靠人记。
 
-判定该动手的信号：CONTEXT.md / ADR 已确立 canonical term，但代码层滞后（仍读写旧名、状态判断穿透存储 implementation、决策散在多个 helper 各自做运行时分支）。此时新增深 module 收敛迫使上下层一致，比到处打补丁清晰。
+判定该动手的信号：GLOSSARY.md / ADR 已确立 canonical term，但代码层滞后（仍读写旧名、状态判断穿透存储 implementation、决策散在多个 helper 各自做运行时分支）。此时新增深 module 收敛迫使上下层一致，比到处打补丁清晰。
 
 ## 验收标准
 
@@ -30,7 +30,7 @@
 
 - **静态门禁**：`tools/exit_contract.py`（Y 规则按 basename 配 leaf-pure 例外集）、`tools/extract_funcs.py`（lib 函数间不得有顶层语句，多文件 boundary 感知）、`tools/ob_check.sh`（改完 ob/lib 一站式自检，必跑）。
 - **覆盖观测**：`tools/coverage_radar.py` + `trace_collect.sh`（xtrace 函数级命中，复用 extract_funcs，盲区透明化）+ `tools/coverage_matrix.md`（五档函数自动化归属清单）。
-- **术语权威**：`CONTEXT.md`（canonical term 登记）、`docs/adr/`（架构决策背书）。
+- **术语权威**：`GLOSSARY.md`（canonical term 登记）、`docs/adr/`（架构决策背书）。
 - **测试手法**：PATH-injection 优先（`tests/lib/stub.sh` 的 `mkfake_bin`/`stub_out`/`stub_script`），避开同 shell 函数 override 造成的 radar 虚高；调用次数/零调用断言见 [bestpractice_09](bestpractice_09-nonfunctional_regression_locks.md)。
 - **边界**：本 know-how 只讲 ob/lib 的 bash 深模块抽取 + 配套门禁；通用 module/seam/adapter 词汇和依赖分类（in-process / local-substitutable / ports&adapters / true-external）见 codebase-design DEEPENING，两者互补不重复。
 

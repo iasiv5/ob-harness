@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/machine_state.sh — machine lifecycle state(snapshot/init marker/build artifact 读写). 术语见 CONTEXT.md machine lifecycle state.
+# lib/machine_state.sh — machine lifecycle state(snapshot/init marker/build artifact 读写). 术语见 GLOSSARY.md machine lifecycle state.
 # Exit: leaf-no-exit（leaf-pure module）; 调用者负责 exit-code/remedy.
 
 

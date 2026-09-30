@@ -3,7 +3,7 @@
 #   dev_relay_result: 调完 devtool_*_run 后的标准动作 — cat+rm stderr_file + stage/phase/rc 诊断 → 返回 0/1。
 #   被 cmd_dev(modify/status/reset/finish/build)消费。per-subcmd verbatim message 表(逐字对齐 cmd_dev 现状,
 #   字节 faithful); refresh/list 不套本 relay(结构特殊)。token (phase=<phase>)/(stage=<stage>)/(rc=<rc>) 保留。
-#   ob loader source 全部 lib; bash 运行时按名解析。术语见 CONTEXT.md function semantic layer / ob dev porcelain stdout。
+#   ob loader source 全部 lib; bash 运行时按名解析。术语见 GLOSSARY.md function semantic layer / ob dev porcelain stdout。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断(ADR-0010)。
 
 # dev_relay_result <subcmd> <stderr_file> <stage> <phase> <rc>

@@ -3,7 +3,7 @@
 #   devtool_pick_modified_recipe: ob dev 的 reset/finish/build TTY 子命令共享的"先选一个 modified
 #   recipe 再动手"前置。取 modified recipe 列表(devtool_status_run) → status 阶段失败复用 dev_relay_result
 #   收口为 status-failed → 空 empty → 非空渲染序号 + read_list_choice 选号 → ok:<recipe>/cancel/read-fail。
-#   消费 devtool_status_run / dev_relay_result / read_list_choice。术语见 CONTEXT.md modified recipe selection。
+#   消费 devtool_status_run / dev_relay_result / read_list_choice。术语见 GLOSSARY.md modified recipe selection。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程/交互副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 
 # devtool_pick_modified_recipe <machine> <build_dir> <verb> <status_outvar>

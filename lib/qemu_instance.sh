@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/qemu_instance.sh — QEMU instance 只读视图 + stale 清理 + stop. 术语见 CONTEXT.md QEMU instance / QEMU PID file.
+# lib/qemu_instance.sh — QEMU instance 只读视图 + stale 清理 + stop. 术语见 GLOSSARY.md QEMU instance / QEMU PID file.
 # Exit: leaf-pure module（函数绝不 exit, 只 return; 与 machine_state.sh 同构）.
 
 

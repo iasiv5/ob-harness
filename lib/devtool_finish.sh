@@ -7,7 +7,7 @@
 #   Python helper ↔ Bash 用 tempfile NUL framing + __OB_NUL_END__ sentinel 协议; snapshot 用 JSON。
 #   finish 物理层镜像 reset(devtool finish 内部 _reset(remove_work=False) 已 source-preserving 归档
 #   srctreebase → attic/sources; ob 不做 safety copy, disposition 复用 reset 五态。见 plan v6 规格 A)。
-#   术语见 CONTEXT.md ob dev finish / patch landing / ob dev porcelain stdout / ob dev cleanup收尾语义。
+#   术语见 GLOSSARY.md ob dev finish / patch landing / ob dev porcelain stdout / ob dev cleanup收尾语义。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # lib/devtool_modify.sh — devtool modify 执行(devtool_modify_run;消费 lib/devtool_workspace.sh 的
-#   _devtool_env_exec / _devtool_parse_srctree)。术语见 CONTEXT.md。
+#   _devtool_env_exec / _devtool_parse_srctree)。术语见 GLOSSARY.md。
 # Exit: leaf-pure module(函数绝不 exit); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 
 # devtool_modify_run <machine> <build_dir> <recipe> <srctree_outvar> <stage_outvar> <stderr_file_outvar>

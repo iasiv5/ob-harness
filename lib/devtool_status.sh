@@ -2,7 +2,7 @@
 # lib/devtool_status.sh — devtool status 子命令底层组装器(leaf-pure module)。
 #   devtool_status_run: 经 _devtool_env_exec 跑 devtool status → _devtool_parse_status_all 全量解析 → outvar。
 #   消费 lib/devtool_workspace.sh 的 _devtool_env_exec / _devtool_parse_status_all(全局命名空间)。
-#   ob loader source 全部 lib; bash 运行时按名解析,不依赖 source 顺序。术语见 CONTEXT.md ob dev porcelain stdout。
+#   ob loader source 全部 lib; bash 运行时按名解析,不依赖 source 顺序。术语见 GLOSSARY.md ob dev porcelain stdout。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 
 # devtool_status_run <machine> <build_dir> <entries_outvar> <stage_outvar> <stderr_file_outvar>

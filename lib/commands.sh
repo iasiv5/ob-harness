@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# lib/commands.sh — cmd_* 命令编排(status/build/init/dev/menu). 术语见 CONTEXT.md function semantic layer / exit-code 契约.
+# lib/commands.sh — cmd_* 命令编排(status/build/init/dev/menu). 术语见 GLOSSARY.md function semantic layer / exit-code 契约.
 # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
 
 
 # ob status 呈现层(原内联在 cmd_status 前的 4 个 section 渲染函数)已抽至 lib/status_render.sh(status_render_*);
-# cmd_status 负责 gather(machine_state_*/qemu_instance_*/git/manifest)→ render。术语见 CONTEXT.md status presentation module。
+# cmd_status 负责 gather(machine_state_*/qemu_instance_*/git/manifest)→ render。术语见 GLOSSARY.md status presentation module。
 
 # ob status 呈现层注释见上方。cmd_* 的 pick/confirm rc→exit 映射已迁各调用点 inline case + cancel warn(ADR-0019)。
 cmd_status() {

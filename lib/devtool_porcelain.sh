@@ -4,7 +4,7 @@
 #   被 cmd_dev(reset/status/finish)消费: 调用者已把 JSON/JSONL 写入 tempfile(argv 传路径, 值不插值源码串),
 #   emit 只管"校验 + 原子发布(cat stdout) + 删"。校验/编码失败 → 删 + return 1(调用者 exit 1, stdout 空)。
 #   ob loader(ob:73-76 for f in lib/*.sh)source 全部 lib; bash 函数运行时按名解析, 不依赖 source 顺序。
-#   术语见 CONTEXT.md ob dev porcelain stdout / function semantic layer。
+#   术语见 GLOSSARY.md ob dev porcelain stdout / function semantic layer。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 
 

@@ -1,10 +1,10 @@
 # `command machine resolution` seam：把 cmd_* 的 machine 解析编排收口成 leaf-pure module（own exit/remedy + return 契约）
 
-`cmd_build` / `cmd_dev` / `cmd_deploy_to_qemu`（+ out-of-scope 的 `cmd_start_qemu`）各自内联一份「given 快路径 verify / empty 路径 guard+pick（dev/deploy 另带 post-pick verify）+ exit-3 remedy + rc 映射」machine 解析 ritual（三命令并非完全同形：build 的 empty 路径无 post-pick verify，dev/deploy 有；代码自标「同 cmd_build/cmd_dev」4 处；verify-init 前置逐字重复 4 处；exit_on_user_cancel 半迁移——dev 已迁、build/start/deploy 未迁）。经 `/pick-one-arch-task` + `/grill-with-docs` 七项决策锁定：抽 leaf-pure module `lib/machine_resolve.sh`（入口 `resolve_command_machine`），按 **路 A**——seam own remedy、return `exit-code 契约` 0/1/2/3、`cmd_*` 字面 case 收口 exit——收口此 ritual。本 ADR 记录这条 load-bearing 决策及其 scope 边界。术语见 CONTEXT.md `command machine resolution`。
+`cmd_build` / `cmd_dev` / `cmd_deploy_to_qemu`（+ out-of-scope 的 `cmd_start_qemu`）各自内联一份「given 快路径 verify / empty 路径 guard+pick（dev/deploy 另带 post-pick verify）+ exit-3 remedy + rc 映射」machine 解析 ritual（三命令并非完全同形：build 的 empty 路径无 post-pick verify，dev/deploy 有；代码自标「同 cmd_build/cmd_dev」4 处；verify-init 前置逐字重复 4 处；exit_on_user_cancel 半迁移——dev 已迁、build/start/deploy 未迁）。经 `/pick-one-arch-task` + `/grill-with-docs` 七项决策锁定：抽 leaf-pure module `lib/machine_resolve.sh`（入口 `resolve_command_machine`），按 **路 A**——seam own remedy、return `exit-code 契约` 0/1/2/3、`cmd_*` 字面 case 收口 exit——收口此 ritual。本 ADR 记录这条 load-bearing 决策及其 scope 边界。术语见 GLOSSARY.md `command machine resolution`。
 
 Status: accepted
 
-Amends: CONTEXT.md `machine selection guard` 术语的 _Avoid_（消歧「machine resolution」曾误指 guard vs 现指本 seam）。新增 CONTEXT.md `command machine resolution` 术语。
+Amends: GLOSSARY.md `machine selection guard` 术语的 _Avoid_（消歧「machine resolution」曾误指 guard vs 现指本 seam）。新增 GLOSSARY.md `command machine resolution` 术语。
 References: [ADR-0010](0010-ob-dev-dispatch-leaf-pure-exit.md) / [ADR-0012](0012-ob-dev-subcmd-handler-leaf-pure-exit.md)（leaf-pure return 契约 + L1 字面 case 收口 pattern 先例）、[ADR-0016](0016-defer-init-intake-guard-reuse.md)（`cmd_init` 永久 out + guard 消费方）。
 
 ## Considered Options
@@ -23,5 +23,5 @@ References: [ADR-0010](0010-ob-dev-dispatch-leaf-pure-exit.md) / [ADR-0012](0012
 - **return 机制**：沿用 `$MACHINE` 全局（pick_machine 本就 set 它；不造 nameref outvar 假对称，同 `ob init command intake` 决策）。后置条件：`resolve_command_machine` return 0 ⟹ `$MACHINE` 已 initialized。
 - **seam/caller 边界**：seam 拥 fastpath fork + empty/nontty/verify remedy + pick + rc→contract；caller 拥 confirm + repo 显示 + DRY_RUN + 展示块。pick 输出流（stdout/stderr——dev 须 stderr 护 `ob dev porcelain stdout` 契约）与 nontty remedy 文案（CLI 形态各异）作参数传入。
 - **surface 回归锁**：新增 protocol gate 锁 production Bash 不再内联 guard-case+pick+verify ritual（bestpractice_10 形态 A 的 interface-shrink 断言），防旧路径回潮。
-- **可逆性**：seam 抽取有测试网（既有 golden + 新 unit/protocol）兜底；术语边界迁移由本 ADR + CONTEXT 改动记录，回退即重开本 ADR。
+- **可逆性**：seam 抽取有测试网（既有 golden + 新 unit/protocol）兜底；术语边界迁移由本 ADR + GLOSSARY 改动记录，回退即重开本 ADR。
 - **future-candidate 重开触发（start_qemu 接 seam）**：出现第二个 image-ready 命令（真·两 adapter），或 start_qemu 的 resolution 进入高频改动区——届时加 `empty_remedy_fn` hook 重开评估。重开前须先消解：image-ready empty 子分类用 hook 不污染 leaf-pure seam、image-file 前置落点。

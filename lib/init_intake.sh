@@ -4,7 +4,7 @@
 #   (empty 前置 / arg 校验快路径 / 非 TTY 拦截 / pick_machine + confirm) 封装为一个入口。
 #   return 0/1/2/3; $MACHINE 沿用全局(fastpath 给定值 / pick 路径 pick_machine 设值)。
 #   消费 list_available_machines / print_previously_initialized / pick_machine / confirm_action / error / warn / info。
-#   术语见 CONTEXT.md ob init command intake; guard 第 3 消费暂缓见 ADR-0016。
+#   术语见 GLOSSARY.md ob init command intake; guard 第 3 消费暂缓见 ADR-0016。
 # Exit: leaf-pure module(横切惯例, 同 devtool_intake.sh); 函数绝不 exit, return 契约值; exit 归 cmd_init。
 
 # init_intake

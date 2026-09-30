@@ -3,7 +3,7 @@
 #   ob status 仪表盘呈现层:把 cmd_status 已采集的事实格式化为 stdout(表格/diagnostics 段/tips)。
 #   纯参数注入——绝不读全局($OPENBMC_DIR/$SOURCE_MANIFEST_FILE)、绝不拉网络(git/timeout)、
 #   绝不调数据接口(machine_state_*/qemu_instance_*/read_manifest_field);数据全由 cmd_status 以参数喂入。
-#   呈现逻辑(emoji 映射/列宽/分段/timestamp 格式化)归本 module。术语见 CONTEXT.md status presentation module。
+#   呈现逻辑(emoji 映射/列宽/分段/timestamp 格式化)归本 module。术语见 GLOSSARY.md status presentation module。
 #   caller 传 renderer 的数组名不得与本函数内 _sr_* local nameref 同名(否则 bash circular name reference)。
 # Exit: leaf-pure module(函数绝不 exit; 只 print stdout); exit-code/remedy/采集归 cmd_status(L1)。
 

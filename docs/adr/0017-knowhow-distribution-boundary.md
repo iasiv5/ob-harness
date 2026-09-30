@@ -10,7 +10,7 @@ Status: accepted
 
 1. **产品定位悬空。** AGENTS.md 把 ob-harness 定位为"home"（"把它当作 home"），而 `bestpractice_12` 假设它是"产品"。两者都没回答"产品分发给谁、分发什么"——这导致一条经验该不该随上游，长期靠直觉而非规则判定。
 
-2. **CONTEXT 零知识体系术语。** CONTEXT.md glossary 当前 47 条术语全为 ob 代码层（命令、子命令、退出码契约），没有任何描述"知识体系分发"的术语。product/user know-how、分发属性等概念在 glossary 里缺席，无法被一致引用。
+2. **CONTEXT 零知识体系术语。** GLOSSARY.md glossary 当前 47 条术语全为 ob 代码层（命令、子命令、退出码契约），没有任何描述"知识体系分发"的术语。product/user know-how、分发属性等概念在 glossary 里缺席，无法被一致引用。
 
 3. **rules 全 tracked、零 user 排除。** 现状 `rules/` 65 文件全 tracked（随上游分发），`.gitignore` 对 user 内容零排除——即当前机制下没有"user 只留本地"的通道，任何写入 rules 的内容都会被推上游。
 
@@ -52,7 +52,7 @@ Status: accepted
 
 - **user 载体落地（Task 4）**：`contexts/knowhow/` 建立，`.gitignore` 排除其内容、保留 `.gitkeep`。user know-how 有了不回上游的物理落点。
 - **reflector 边界显式化（Task 6）**：`periodic_jobs/ai_heartbeat/docs/KNOWLEDGE_BASE.md` §4.2 显式声明 reflector 的 GC / 晋升目标只限 `rules/`（product）+ `OBSERVATIONS.md`，**显式禁止**未来扩展到 `contexts/knowhow/`（user）——防止 reflector 扫描范围扩展时越界、把 user 内容推上游。§2.2 扫描路径表加 `contexts/knowhow/`：observer 可扫描其变更提示用户手动沉淀，但不作为 reflector 的 GC / 晋升输入。
-- **术语入 glossary（Task 3）**：CONTEXT.md 加 product know-how / user know-how / ship with product / 自动化天花板 / contexts/knowhow（user 载体）等术语，带 `_Avoid_` 标注术语冲突（user know-how 避开 `OEM`——仓库里 OEM = OpenBMC `meta-oem` layer；ship with product 避开"分发"——仓库里"分发" = command dispatch 如 `dev_dispatch_subcmd`）。
+- **术语入 glossary（Task 3）**：GLOSSARY.md 加 product know-how / user know-how / ship with product / 自动化天花板 / contexts/knowhow（user 载体）等术语，带 `_Avoid_` 标注术语冲突（user know-how 避开 `OEM`——仓库里 OEM = OpenBMC `meta-oem` layer；ship with product 避开"分发"——仓库里"分发" = command dispatch 如 `dev_dispatch_subcmd`）。
 - **axioms 去个人化（Task 5）**：`06_AXIOMS_INDEX` / `01_SOUL` / `AGENTS.md` 三处"个人 / 团队经历"统一改"工程实践提炼"，配合 D4 全分发。
 - **手动通道编排（Task 1）**：`workflow_04` 把 D5 两层天花板落地到手动沉淀流程（第 0 步判所有权必须人），`/sediment` 双版本是其显式触发入口。
 - **可逆性**：本 ADR 触发的全是 working-tree 文档编辑，可回滚；但 product/user 分发边界一旦生效，"什么随上游、什么留本地"成为持续约束（gitignore 规则、reflector 边界声明都是持续义务），故落 ADR 冻结。

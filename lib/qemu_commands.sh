@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu/cmd_test_qemu). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu / ob test-qemu / QEMU instance.
+# lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu/cmd_test_qemu). 术语见 GLOSSARY.md function semantic layer / exit-code 契约 / ob deploy-to-qemu / ob test-qemu / QEMU instance.
 # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
 # 形态对照: L1 exit-seam 命令族(顶层命令直接 exit, 无 dispatcher 收口), 区别于 lib/devtool_subcmd.sh 的 L3 leaf-pure handler(return exit-code, 由 cmd_dev 收口 exit)。
 
@@ -158,7 +158,7 @@ cmd_start_qemu() {
     echo ""
 
     # ── Safety confirmation（仅交互 TTY）──
-    # 非 TTY(CI/agent) 跳过确认直接起, 对齐 CONTEXT confirmation banner「正常起 QEMU
+    # 非 TTY(CI/agent) 跳过确认直接起, 对齐 GLOSSARY confirmation banner「正常起 QEMU
     # 一律跳过、无需 --force」—— 起新 QEMU 非路径风险; banner 只留给 kill 既有实例
     # (上方 conflict 块, 非 TTY 需 --force)。使 `start-qemu → test-qemu → stop-qemu` 在 CI 非交互跑通。
     if [[ -t 0 ]]; then
@@ -490,7 +490,7 @@ cmd_deploy_to_qemu() {
 }
 
 # ════════════════════════════════════════════════════════════════════════════
-# ob test-qemu — baseline AR probe runner (probe-only)。术语见 CONTEXT.md baseline / ob test-qemu / exit-code 契约.
+# ob test-qemu — baseline AR probe runner (probe-only)。术语见 GLOSSARY.md baseline / ob test-qemu / exit-code 契约.
 # probe-only (不 boot/teardown, 无 EXIT trap), 读 PID 文件真实 Redfish 端口。
 #   逐条深测 per-machine baseline 的 QEMU 可仿真 AR 子集, 产 pass/fail/skip/xfail/xpass;
 #   内建 smoke suite(ADR-0028 收编, 5 AR 可达性门)守 per-push 绿灯, 其余 suite 守 nightly/PR-to-main。

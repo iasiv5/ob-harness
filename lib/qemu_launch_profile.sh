@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/qemu_launch_profile.sh — QEMU 启动画像决策 module(ADR-0007)。术语见 CONTEXT.md QEMU launch profile / QB variable.
+# lib/qemu_launch_profile.sh — QEMU 启动画像决策 module(ADR-0007)。术语见 GLOSSARY.md QEMU launch profile / QB variable.
 # 从 lib/qemu.sh 迁出(2026-07-04, qemu.sh deepening)。
 # Exit: direct-exit module(resolve_qemu_launch_profile exit 1/3 on 证据冲突/缺失;纯 helper 约定不 exit)。
 

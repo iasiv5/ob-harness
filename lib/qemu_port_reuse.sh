@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/qemu_port_reuse.sh — restart 端口复用注入 resolver。术语见 CONTEXT.md 端口解析链.
+# lib/qemu_port_reuse.sh — restart 端口复用注入 resolver。术语见 GLOSSARY.md 端口解析链.
 # Exit: leaf-no-exit（leaf-pure module）; 恒 return 0, exit 由 L1 cmd_* 收口。
 # 消费旧实例 4 端口(argv), 按 cli_first（X-α, -z guard）注入到 QEMU_*_PORT（CLI flag 层）;
 # HTTP 额外跳过 'none' sentinel（qemu.sh:160 空值回写 none）。

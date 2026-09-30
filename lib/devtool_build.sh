@@ -2,7 +2,7 @@
 # lib/devtool_build.sh — ob dev build 执行(leaf-pure module)。
 #   devtool_build_run: status-first(recipe 未 modified → not_modified 信号, 不 build; status 失败 → 回传 stage+rc, 不继续)
 #   → devtool build。镜像 devtool_modify_run 结构。消费 lib/devtool_workspace.sh 的 _devtool_env_exec / _devtool_parse_status_all。
-#   术语见 CONTEXT.md ob dev build。
+#   术语见 GLOSSARY.md ob dev build。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 
 # devtool_build_run <machine> <build_dir> <recipe> <stage_outvar> <stderr_file_outvar> <not_modified_outvar>

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/build_env.sh — current-shell build environment 进入原语(cd+source setup, 副作用刻意留在当前 shell, 与 bitbake_env 子进程隔离对偶). 术语见 CONTEXT.md current-shell build environment.
+# lib/build_env.sh — current-shell build environment 进入原语(cd+source setup, 副作用刻意留在当前 shell, 与 bitbake_env 子进程隔离对偶). 术语见 GLOSSARY.md current-shell build environment.
 # Exit: leaf-no-exit（leaf-pure module）; 调用者负责 exit-code/remedy/诊断.
 
 build_env_enter() {

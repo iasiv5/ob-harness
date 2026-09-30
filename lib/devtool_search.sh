@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/devtool_search.sh — recipe 元数据检索/JSONL 缓存/stale 检测/refresh/clear. 术语见 CONTEXT.md.
+# lib/devtool_search.sh — recipe 元数据检索/JSONL 缓存/stale 检测/refresh/clear. 术语见 GLOSSARY.md.
 # Exit: leaf-no-exit（leaf-pure module）; 调用者负责 exit-code/remedy/诊断.
 
 # 🟡3: schema 版本(meta schema_version 不匹配/缺 → stale,自动淘汰旧 cache);函数形式(extract_funcs 三段不允许顶层赋值)

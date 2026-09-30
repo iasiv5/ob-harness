@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/image_build.sh — obmc-phosphor-image 整体构建执行编排 module。术语见 CONTEXT.md obmc-phosphor-image build module.
+# lib/image_build.sh — obmc-phosphor-image 整体构建执行编排 module。术语见 GLOSSARY.md obmc-phosphor-image build module.
 # Exit: leaf-no-exit（leaf-pure module）; return bitbake rc(0/非0), exit 由 L1 cmd_* 收口。
 # 消费 build_env_enter(build_env.sh) + resolve/apply_npm_registry(util.sh) + bitbake。
 # ob build / ob deploy-to-qemu 共享; 不含 machine 选择/确认/展示/exit 收口(那些是 cmd_* L1); 不处理 DRY-RUN(调用点入口前短路)。

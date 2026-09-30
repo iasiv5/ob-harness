@@ -36,7 +36,7 @@ Status: accepted（2026-08-20，/grill-with-docs 十问定案）
 References: [ADR-0025](0025-test-qemu-baseline-fullstack-per-machine.md)（本 ADR 修订其
 "probe 引擎不共享"结论，保留数据 per-machine 与落点二分）；[ADR-0026](0026-test-qemu-baseline-lineage-routing.md)（谱系硬路由不变，标的收窄为数据目录）；
 [ADR-0017](0017-knowhow-distribution-boundary.md)（`contexts/` 不随上游分发——runner 是
-代码必须随上游分发，这是单副本只能落主仓的根因）；CONTEXT.md `baseline` / `ob test-qemu`。
+代码必须随上游分发，这是单副本只能落主仓的根因）；GLOSSARY.md `baseline` / `ob test-qemu`。
 
 ## Considered Options
 

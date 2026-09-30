@@ -8,7 +8,7 @@ Status: accepted
 
 1. **ob 顶层 QEMU 生命周期层（与 `start-qemu` / `stop-qemu` 同族）** —— 接受。deploy 碰运行态（stop + start QEMU，释放 / 占用端口，写 / 删 `.pid`）+ image 级（`ob build` 整个 image），这两条都是 ob 顶层 QEMU 命令族的职责。编排对象（`build_env_enter` + `bitbake` + `qemu_instance_*` + `qemu_prepare_launch` / `qemu_execute_launch`）也全是 ob 顶层 / 通用底层 module，无 `ob dev`（devtool workspace）依赖。命名 `ob deploy-to-qemu <machine>`（`-to-qemu` 后缀编码 v1 target 是 QEMU），融入 QEMU 命令族。
 
-2. **`ob dev deploy`（recipe 级开发层）** —— 拒绝。`ob dev` 的领域边界是 recipe 级开发（devtool modify / build / reset / finish，单 recipe，不碰运行态）——见 [CONTEXT.md](../../CONTEXT.md) `ob dev porcelain stdout` / `ob dev build`。deploy 碰运行态（重启 QEMU）+ image 级（编整个 image，不是单 recipe），两条都破 `ob dev` 边界。且 deploy 的语义是"让 target 跑上新代码做验证"，抽象层级高于 recipe 开发。曾以 `ob dev deploy` stub 占位（误判 deploy 属 dev），grilling 纠正后退役。
+2. **`ob dev deploy`（recipe 级开发层）** —— 拒绝。`ob dev` 的领域边界是 recipe 级开发（devtool modify / build / reset / finish，单 recipe，不碰运行态）——见 [GLOSSARY.md](../../GLOSSARY.md) `ob dev porcelain stdout` / `ob dev build`。deploy 碰运行态（重启 QEMU）+ image 级（编整个 image，不是单 recipe），两条都破 `ob dev` 边界。且 deploy 的语义是"让 target 跑上新代码做验证"，抽象层级高于 recipe 开发。曾以 `ob dev deploy` stub 占位（误判 deploy 属 dev），grilling 纠正后退役。
 
 3. **独立顶层命令族 `ob deploy`（不带 `-to-qemu`）** —— 拒绝（v1）。v1 target 固定 QEMU，`-to-qemu` 后缀显式编码 target，为未来真机部署（`-to-bmc` 或 target 配置模型）留命名空间。无后缀的 `ob deploy` 暗示多 target 抽象，v1 不需要。
 

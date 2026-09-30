@@ -1,12 +1,12 @@
 # smoke 可达性门：probe-only 形态（不拥有 QEMU 生命周期、strict verdict α；现收编为 `ob test-qemu --suite smoke`）
 
-`ob verify` 初版（feat/ob-verify）以 `cmd_verify` 自带 QEMU bring-up（`qemu_prepare_launch`+`qemu_execute_launch`）+ EXIT-trap teardown + image-ready machine 解析 + 既有实例冲突处理，把 smoke 逻辑和 `cmd_start_qemu` 的 bring-up 机器绑死（~50 行内联副本，是 `command machine resolution` seam [ADR-0019] 排除在外的 image-ready 协议的第二次出现）。经 `/grill-with-docs` 四项决策锁定（定位 / 边界 / 就绪门 / verdict 语义）：把 verify 重构改名 smoke 顶层命令，定为 **probe-only**——不 boot、不 teardown，只对**已在跑**的 `QEMU instance` 做 OOB 接口 smoke 探测；verdict 取 **α（纯报真相，strict 全过）**，回归判定（baseline diff）归 caller。本 ADR 记这条 load-bearing 决策。术语见 CONTEXT.md `smoke suite`。
+`ob verify` 初版（feat/ob-verify）以 `cmd_verify` 自带 QEMU bring-up（`qemu_prepare_launch`+`qemu_execute_launch`）+ EXIT-trap teardown + image-ready machine 解析 + 既有实例冲突处理，把 smoke 逻辑和 `cmd_start_qemu` 的 bring-up 机器绑死（~50 行内联副本，是 `command machine resolution` seam [ADR-0019] 排除在外的 image-ready 协议的第二次出现）。经 `/grill-with-docs` 四项决策锁定（定位 / 边界 / 就绪门 / verdict 语义）：把 verify 重构改名 smoke 顶层命令，定为 **probe-only**——不 boot、不 teardown，只对**已在跑**的 `QEMU instance` 做 OOB 接口 smoke 探测；verdict 取 **α（纯报真相，strict 全过）**，回归判定（baseline diff）归 caller。本 ADR 记这条 load-bearing 决策。术语见 GLOSSARY.md `smoke suite`。
 
 > **活文档修订（2026-08-21，[ADR-0028](0028-smoke-merged-into-test-qemu-suite.md)）**：smoke 已从独立顶层命令收编为每 machine 必备的 `ob test-qemu <machine> --suite smoke`（纯数据分片 + runner probe-type 分派）。本文的 probe-only / α verdict / temporal gate 归 caller 三条决策内核**原样沿袭**（现由 test-qemu runner 承载：死实例 exit 3、五态 α truth、`tools/smoke_regression.sh` 仍为 caller 侧闸门，capture 改采 `--report` JSON）；「零 per-machine」限定为 temporal gate 侧不变量——suite 数据本身 per-machine 落在各自 baseline 目录。下文 `smoke <machine>` 指旧独立命令形态。
 
 Status: accepted
 
-Amends: 新增 CONTEXT.md smoke 术语（现为 `smoke suite`）；`ob verify` 改名 smoke 顶层命令（"verify" 过载退役；该命令后由 ADR-0028 收编为 suite）。
+Amends: 新增 GLOSSARY.md smoke 术语（现为 `smoke suite`）；`ob verify` 改名 smoke 顶层命令（"verify" 过载退役；该命令后由 ADR-0028 收编为 suite）。
 References: [ADR-0019](0019-command-machine-resolution-seam.md)（image-ready 族 seam——probe-only 使 smoke **不**成为第二个 image-ready adapter，不触发 ADR-0019 的 start_qemu 接 seam 重开条件）、[ADR-0003](0003-ob-first-front-door.md)（ob 优先——smoke 复用 start-qemu/stop-qemu 管生命周期，不自造）、[ADR-0011](0011-ob-deploy-to-qemu-toplevel-ownership.md)（smoke 与 deploy-to-qemu 同族顶层命令、正交组合 E2E）。
 
 ## Considered Options

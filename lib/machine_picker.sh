@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# lib/machine_picker.sh — machine selection 交互选择 module。术语见 CONTEXT.md machine selection.
+# lib/machine_picker.sh — machine selection 交互选择 module。术语见 GLOSSARY.md machine selection.
 # Exit: leaf-no-exit（leaf-pure module）; return 0(设 $MACHINE)/2(cancel)/1(read 失败), 绝不 exit.
 
 

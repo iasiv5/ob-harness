@@ -5,7 +5,7 @@
 #   → execute（调 devtool_*_run / devtool_search_*）→ relay（dev_relay_result）/
 #   emit（dev_emit_*）按各子命令真实形状 → return exit-code 契约值。
 #   共享入口契约 (machine, build_dir, recipe, pattern, dry_run) → return 0/1/2/3；
-#   run→relay→emit 段不强求统一模板（形状分 4 类，见 CONTEXT.md subcommand handler）。
+#   run→relay→emit 段不强求统一模板（形状分 4 类，见 GLOSSARY.md subcommand handler）。
 #   消费 devtool_*_run / devtool_search_* / dev_relay_result / dev_emit_* / notice / warn / error。
 # Exit: leaf-pure module (ADR-0012); 函数绝不 exit，return 0/1/2/3；exit 归 cmd_dev。
 
