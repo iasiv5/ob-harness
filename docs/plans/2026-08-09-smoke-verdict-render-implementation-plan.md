@@ -12,7 +12,7 @@
 
 ## 全局约束
 
-- **co-location 不变量（S1）**：`cmd_smoke` 必须仍定义在 `lib/qemu_commands.sh`（被 `tests/protocol/smoke_surface.sh (4)` 与 `tests/protocol/smoke_substep_isolation.sh (1)(2)(3a)` 锁定）。本次只加 helper + 改 callsite，不挪文件、不新建 lib 文件、不改 `qemu_commands.sh` header / `CONTEXT.md` `ob smoke` 同族定位 / `rules/03_WORKSPACE.md` 路由。
+- **co-location 不变量（S1）**：`cmd_smoke` 必须仍定义在 `lib/qemu_commands.sh`（被 `tests/protocol/smoke_surface.sh (4)` 与 `tests/protocol/smoke_substep_isolation.sh (1)(2)(3a)` 锁定）。本次只加 helper + 改 callsite，不挪文件、不新建 lib 文件、不改 `qemu_commands.sh` header / `GLOSSARY.md` `ob smoke` 同族定位 / `rules/03_WORKSPACE.md` 路由。
 - **exit 收口（S3）**：`_smoke_render_verdict` 绝不 `exit`，只 `return 0/1`；`exit 1` / `return 0` 留 `cmd_smoke`（exit-seam 独占）。
 - **行为保持（双层回归锁）**：(a) Task 2 Step 1 在 `smoke_exit_contract.sh` 新增 callsite verdict 输出锁（`Smoke summary: 5/5` / `4/5`、`Failed assertions (1)`、RAW 块计数），refactor 前后均须绿——证 `cmd_smoke` 接线（total/passed/machine 透传）不变；(b) 既有 protocol 锁：`smoke_exit_contract.sh`（exit 0/1 + 恰好 5 ✓ + α-banner fail 出现/pass 不出现）、`smoke_surface.sh (5)` cmd_smoke body-grep（不引用 `qemu_prepare_launch`/`qemu_execute_launch`、无 `trap`、调 `qemu_instance_is_alive`/`qemu_instance_load`/`PIDFILE_SSH_PORT`）、`smoke_substep_isolation.sh` trio。refactor 后全部必须仍绿。
 - **命名**：`_smoke_render_verdict`（`_` 前缀私有，对齐 `_smoke_probe_*`）；测试文件 `tests/unit/smoke_verdict.sh`。
@@ -29,7 +29,7 @@
 - **Test** `tests/unit/smoke_verdict.sh`（新建）：纯函数单测，3 case + α-banner stderr-only 断言。
 - **Modify** `tools/coverage_matrix.md`：新增 `## smoke` section。
 - **Create** `docs/adr/0023-defer-smoke-assertion-runner.md`：defer-runner 决策记录。
-- **Modify** `CONTEXT.md`（1 行交叉引用，mandatory）：`ob smoke` 条目末尾指向 ADR-0023，镜像 ADR-0016 之于 `ob init command intake` 的引用方式——ADR 的目的就是防未来循环推荐，入口引用不可让执行者跳过。
+- **Modify** `GLOSSARY.md`（1 行交叉引用，mandatory）：`ob smoke` 条目末尾指向 ADR-0023，镜像 ADR-0016 之于 `ob init command intake` 的引用方式——ADR 的目的就是防未来循环推荐，入口引用不可让执行者跳过。
 - 稳定边界：`lib/smoke_assertions.sh`（不改）、`cmd_smoke` 的前置 exit-3 路径与 probe→judge 5 段编排（不改）。
 
 ## 任务清单
@@ -235,7 +235,7 @@ _raw4=$(grep -c "RAW response (for localization)" <<<"$out" || true); assert_eq 
 ### Task 4: 写 defer-runner ADR-0023（+ CONTEXT 交叉引用）
 
 - 目标：记录「smoke 断言 runner/spec 抽取暂缓」决策，防未来 explorer 看到 5 段重复编排循环推荐。
-- 涉及文件：Create `docs/adr/0023-defer-smoke-assertion-runner.md`；Modify `CONTEXT.md`（`ob smoke` 条目末尾加一句指向 ADR-0023）。
+- 涉及文件：Create `docs/adr/0023-defer-smoke-assertion-runner.md`；Modify `GLOSSARY.md`（`ob smoke` 条目末尾加一句指向 ADR-0023）。
 - 验证范围：ADR 文件存在且格式对齐 ADR-0016；CONTEXT 引用可点。
 
 - [ ] **Step 1：写 ADR** `docs/adr/0023-defer-smoke-assertion-runner.md`：
@@ -270,9 +270,9 @@ Status: accepted
 - Run: `test -f docs/adr/0023-defer-smoke-assertion-runner.md && grep -q '^Status: accepted' docs/adr/0023-defer-smoke-assertion-runner.md && grep -q '^## Considered Options' docs/adr/0023-defer-smoke-assertion-runner.md && echo ADR_OK`
 - Expected: 末行 `ADR_OK`（文件存在 + 含 Status / Considered Options 段，对齐 ADR-0016 骨架）。
 
-- [ ] **Step 2：CONTEXT 交叉引用**——在 `CONTEXT.md` `**ob smoke**:` 条目末尾追加一句（镜像 ADR-0016 之于 `ob init command intake` 的引用方式）：
+- [ ] **Step 2：CONTEXT 交叉引用**——在 `GLOSSARY.md` `**ob smoke**:` 条目末尾追加一句（镜像 ADR-0016 之于 `ob init command intake` 的引用方式）：
 - Change: 追加 `runner/spec 抽取暂缓（非同构 5 段，等第二个 adapter），见 [ADR-0023](docs/adr/0023-defer-smoke-assertion-runner.md)。`
-- Run: `grep -n "ADR-0023" CONTEXT.md`
+- Run: `grep -n "ADR-0023" GLOSSARY.md`
 - Expected: 命中 1 行（`ob smoke` 条目内）。
 
 ## 执行纪律

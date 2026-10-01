@@ -17,7 +17,7 @@
 ## 全局约束
 
 - 命名规则：目录/文件 snake_case；`<domain>_<noun>.sh`（对照 `lib/machine_resolve.sh`）；函数走 `resolve_*` 族（对照 `resolve_command_machine` / `resolve_qemu_launch_profile`）。
-- leaf-pure 契约：module 函数绝不直接 `exit`；副作用（set `QEMU_*_PORT` 全局）允许（"pure" 仅指 no-direct-exit，见 CONTEXT.md `function semantic layer`）。
+- leaf-pure 契约：module 函数绝不直接 `exit`；副作用（set `QEMU_*_PORT` 全局）允许（"pure" 仅指 no-direct-exit，见 GLOSSARY.md `function semantic layer`）。
 - exit-code 契约不变：start/deploy 仍是 exit seam（L1 `cmd_*` 收口 exit）；新 module 恒 return 0。
 - 文案规则：注入相关注释引用 ADR-0022（统一）/ ADR-0021（历史机制）。
 - 无版本/依赖/平台约束。
@@ -40,7 +40,7 @@
 - Modify: `tools/coverage_matrix.md` — start-qemu 段加 `resolve_qemu_port_reuse` 行。
 - 边界保持稳定：`lib/qemu.sh`（prepare 基础链 / interactive / check 全不动）、`ob`（lib/*.sh glob 自动 source，无需改 source 列表）。
 - ADR-0021 正文不再改：行号漂移（367-370→375-378）+ 注入 ritual 迁移已由其 Status 回指标注为 pre-0022 历史。
-- CONTEXT.md `端口解析链` 术语订正（链序 old>env / HTTP opt-in / 机制细节归 ADR）已随 ADR-0022 起草阶段（grill）完成（见 CONTEXT.md:95 现状），本计划不含该改动——审阅者对照 ADR-0022 Consequences 的「CONTEXT.md」项不算缺项。
+- GLOSSARY.md `端口解析链` 术语订正（链序 old>env / HTTP opt-in / 机制细节归 ADR）已随 ADR-0022 起草阶段（grill）完成（见 GLOSSARY.md:95 现状），本计划不含该改动——审阅者对照 ADR-0022 Consequences 的「GLOSSARY.md」项不算缺项。
 
 ## 任务清单
 
@@ -130,7 +130,7 @@ assert_summary
 
 ```bash
 #!/usr/bin/env bash
-# lib/qemu_port_reuse.sh — restart 端口复用注入 resolver。术语见 CONTEXT.md 端口解析链.
+# lib/qemu_port_reuse.sh — restart 端口复用注入 resolver。术语见 GLOSSARY.md 端口解析链.
 # Exit: leaf-no-exit（leaf-pure module）; 恒 return 0, exit 由 L1 cmd_* 收口。
 # 消费旧实例 4 端口(argv), 按 cli_first（X-α, -z guard）注入到 QEMU_*_PORT（CLI flag 层）;
 # HTTP 额外跳过 'none' sentinel（qemu.sh:160 空值回写 none）。

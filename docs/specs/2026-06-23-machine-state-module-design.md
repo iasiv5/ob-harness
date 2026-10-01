@@ -5,7 +5,7 @@ Date: 2026-06-23
 
 ## 背景与目标
 
-`CONTEXT.md` 和 ADR-0001 已经把 `machine snapshot` 定为当前 canonical term，并明确旧 `<machine>.lock` 已废弃、不再兼容。代码层还滞后：`init_pipeline.sh` 仍写 `<machine>.lock`，`commands.sh` 仍读取 `.lock` / `.init-done` / deploy image 路径来判断状态。本设计的一个目标是让代码追上当前领域模型和 ADR。
+`GLOSSARY.md` 和 ADR-0001 已经把 `machine snapshot` 定为当前 canonical term，并明确旧 `<machine>.lock` 已废弃、不再兼容。代码层还滞后：`init_pipeline.sh` 仍写 `<machine>.lock`，`commands.sh` 仍读取 `.lock` / `.init-done` / deploy image 路径来判断状态。本设计的一个目标是让代码追上当前领域模型和 ADR。
 
 当前 `ob-harness` 已有 `partial` 显示语义：有旧 `.lock`、无 `init-done marker` 时，`ob status` 显示 `partial`。本设计不是新增 partial，而是把 partial 的数据源从旧 `.lock` 迁移到新 `.snapshot`，并保持 `init-done marker` 是唯一完成信号。
 
@@ -426,7 +426,7 @@ tools/ob_check.sh
 
 需要同步：
 
-- `CONTEXT.md`：`machine snapshot` 已作为 canonical term；`function semantic layer` 需更新为六文件边界，并说明 `machine_state=Machine lifecycle state`。其中 `exit_contract` Y 规则描述也要同步为按 basename 配置的 leaf-pure modules（`util.sh` / `machine_state.sh`），不再写成只断言 `util.sh`。
+- `GLOSSARY.md`：`machine snapshot` 已作为 canonical term；`function semantic layer` 需更新为六文件边界，并说明 `machine_state=Machine lifecycle state`。其中 `exit_contract` Y 规则描述也要同步为按 basename 配置的 leaf-pure modules（`util.sh` / `machine_state.sh`），不再写成只断言 `util.sh`。
 - `docs/adr/0001-init-done-marker.md`：已修正为当前 `machine snapshot` 设计。
 - 代码注释：`init_pipeline.sh` 中 Step 6 从 lockfile 改为 snapshot。
 - 测试说明：不再使用 lockfile 作为 machine snapshot 的名称。
@@ -470,7 +470,7 @@ tools/ob_check.sh
 
 - `build=failed` 的目录判定路径钉死为顶层 `$OPENBMC_DIR/build/<machine>`，保持当前 `ob status` 用户可见行为。
 - 状态语义表不再使用 `derived`，build record 始终是 `never` / `failed` / `succeeded` 之一。
-- 文档更新项补充 `CONTEXT.md` 中 `exit_contract` Y 规则描述也要同步为 leaf-pure modules 集合。
+- 文档更新项补充 `GLOSSARY.md` 中 `exit_contract` Y 规则描述也要同步为 leaf-pure modules 集合。
 
 进一步评审转入实施计划注意事项：
 

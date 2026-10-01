@@ -2,7 +2,7 @@
 
 > 状态：🔴 待审批 v2.1（已吸收一审 7 条 + 二审 2 条反馈，待最终批准进 writing-plans）
 > 日期：2026-06-22
-> 关联：`CONTEXT.md`（function semantic layer / test layer）、ADR-0003（ob-first）、`contexts/memory/OBSERVATIONS.md`（06-16 exit 纪律重构）
+> 关联：`GLOSSARY.md`（function semantic layer / test layer）、ADR-0003（ob-first）、`contexts/memory/OBSERVATIONS.md`（06-16 exit 纪律重构）
 
 ---
 
@@ -322,7 +322,7 @@ cp -a "$ROOT/lib" "$TMPROOT/lib"   # ← 新增:成套复制,否则 source 链�
 
 1. **§4 二次切分**：`lib/qemu.sh` 1200 行是否切为 `qemu_binary.sh` + `qemu_launch.sh`？留作本设计落地、手里有"分区文件能跑"证据后的独立决策。
 2. **`clone_openbmc` 幂等检查**：`[ob:2343-2347]` 重复分支保留（防御）还是清理？本轮保留。
-3. **`CONTEXT.md` 同步**（实施时 side effect）：`function semantic layer` 条目需从"概念性、非强制结构边界"更新为"已物化为 `lib/*.sh` 文件边界"；`exit-code 契约` 不变。审批后、实施时一并更新。
+3. **`GLOSSARY.md` 同步**（实施时 side effect）：`function semantic layer` 条目需从"概念性、非强制结构边界"更新为"已物化为 `lib/*.sh` 文件边界"；`exit-code 契约` 不变。审批后、实施时一并更新。
 4. **`reorder.py` 处置（已定，🟢2）**：归档到 `tools/archive/`（保留 §1-§7 物理重构的历史工具）。归档后从 `ob_check.sh`、`tests/`、`rules/03_WORKSPACE.md` 移除对它的**现役门禁引用**（文档作历史提及可保留）。
 
 ---
@@ -331,4 +331,4 @@ cp -a "$ROOT/lib" "$TMPROOT/lib"   # ← 新增:成套复制,否则 source 链�
 
 - **不冲突 ADR-0003（ob-first）**：该 ADR 约束的是**调用层**，与 ob 内部是否单文件无关。拆分后 `ob` 仍是唯一 CLI 前门，`ob --help` / exit-code 契约 / remedy line / init-done marker 全不变。
 - **不冲突 ADR-0001/0002/0004/0005**：均与 init-done marker / QB 变量 / PREMIRRORS / local.conf 判定相关，不涉及 ob 文件结构。
-- **`function semantic layer` 物化**：CONTEXT.md 该条目本就标注"不是代码强制遵守的结构边界"——本设计把它物化为 `lib/*.sh` 文件边界，是该术语的自然演进。
+- **`function semantic layer` 物化**：GLOSSARY.md 该条目本就标注"不是代码强制遵守的结构边界"——本设计把它物化为 `lib/*.sh` 文件边界，是该术语的自然演进。

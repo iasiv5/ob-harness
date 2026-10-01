@@ -19,13 +19,13 @@
 - **测试分层**:unit 层(零依赖、毫秒级、不碰网络)。apply 单测直接设全局 `NPM_REGISTRY_RESOLVED` 喂 apply，不调 `resolve_npm_registry`/`probe_npm_registry` 的网络 probe(两者当前零单测，属另一任务)。
 - **改 ob/lib 后必跑** `tools/ob_check.sh` 配套自检。
 - **文案**:`verbose` 受 `$VERBOSE` 控制(util.sh:16 `verbose()`,走 stdout);`apply_npm_registry` 不决定 exit-code/remedy，不打印 remedy line。
-- **不立** CONTEXT.md npm 术语(apply 是实现函数，非领域概念，保 glossary 纯度);**不立** ADR(三条 gate 不全中:可逆、不 surprising、deletion test 已给明确判定)。
+- **不立** GLOSSARY.md npm 术语(apply 是实现函数，非领域概念，保 glossary 纯度);**不立** ADR(三条 gate 不全中:可逆、不 surprising、deletion test 已给明确判定)。
 - 无版本/依赖/平台约束(纯 bash，linux/bash 环境)。
 
 ## 输入工件
 
 - **设计来源**:本会话 `/pick-one-arch-task` → `/grill-with-docs` 的 grilling 共识(6 决策点锁定):scope=最小(只提取 passthrough 装配) / 落点=util.sh / 命名=apply_npm_registry / 封装=内含 skip 判断 + 带 verbose ×2 / 测试=skip·空 existing·非空 existing 三态 / 文档=只更 coverage_matrix + util.sh 注释。**评审后修订**:测试补第 4 态(空 registry,见 F2)→ 四态;态 3 注释措辞收敛(见 F1)。无独立 design doc，grilling 产出即设计依据。
-- **术语参考**:`CONTEXT.md` function semantic layer / exit-code 契约 / test layer。
+- **术语参考**:`GLOSSARY.md` function semantic layer / exit-code 契约 / test layer。
 - **ADR**:不冲突 ADR-0011(deploy-to-qemu toplevel ownership)——deploy 调共享底层 `apply_npm_registry` 而非 `cmd_build`，仍符合"自带编排调底层 module"。
 
 ## 文件结构与职责
@@ -143,8 +143,8 @@ apply_npm_registry() {
 
 - Change 1: 在 util.sh:385 `}` 与其后 `# Read first ...` 注释之间新增上述函数。
 - Change 2: 更新 util.sh:2 顶部 module 注释，点明 npm registry 决策族(收拢术语漂移):
-  - 旧: `# lib/util.sh — 底层通用工具(log/read_kv_field/require_path). 术语见 CONTEXT.md function semantic layer.`
-  - 新: `# lib/util.sh — 底层通用工具(log/read_kv_field/require_path; npm registry 决策族 probe/resolve/apply). 术语见 CONTEXT.md function semantic layer.`
+  - 旧: `# lib/util.sh — 底层通用工具(log/read_kv_field/require_path). 术语见 GLOSSARY.md function semantic layer.`
+  - 新: `# lib/util.sh — 底层通用工具(log/read_kv_field/require_path; npm registry 决策族 probe/resolve/apply). 术语见 GLOSSARY.md function semantic layer.`
 
 - [ ] Step 4: 运行并确认通过
 - Run: `bash tests/unit/npm_registry.sh`

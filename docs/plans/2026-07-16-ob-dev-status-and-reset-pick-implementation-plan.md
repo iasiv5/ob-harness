@@ -28,7 +28,7 @@
 ## 全局约束
 
 - **leaf-pure module 边界**：`lib/devtool_modify.sh`、`lib/machine_picker.sh` 函数绝不 `exit`，只 return rc；`commands.sh` 只调 public 组装器（`devtool_status_run`），不直接碰 `_devtool_env_exec`。`exit_contract.py` 已把这两个 basename 列为 leaf-pure（`LEAF_EXIT_EXCEPTIONS_BY_BASENAME` 值为 `set()`）；新增函数不引入 exit → baseline 不变。
-- **porcelain stdout 契约**（`CONTEXT.md` `ob dev porcelain stdout`）：`ob dev` stdout 只输出机器解析数据；`logo`/`info`/`warn`/诊断走 stderr；`cmd_dev` 不调写 stdout 的 `log`/`info`/`warn`。status 的 JSONL 与空列表 warn 都受此约束。
+- **porcelain stdout 契约**（`GLOSSARY.md` `ob dev porcelain stdout`）：`ob dev` stdout 只输出机器解析数据；`logo`/`info`/`warn`/诊断走 stderr；`cmd_dev` 不调写 stdout 的 `log`/`info`/`warn`。status 的 JSONL 与空列表 warn 都受此约束。
 - **exit-code 契约**：exit 1 = 真失败；exit 2 = 用户取消；exit 3 = 前置缺失（按提示用 ob 补再重试）。status/reset 的退出码严格遵循。
 - **outvar 名遮蔽陷阱**：组装器用固定 receiver 前缀（`_status_*`）+ helper 的 outvar 用 `_resolved_*`/`_located_*` 等，不与 helper 内 local 同名；每步 `rc=0` 重置（见 `devtool_reset_run` 现有范式）。
 - **prompt 文案契约**（`ob_check.sh` 1d）：`lib/machine_picker.sh` 必须保留字面串 `Select a machine for` 与 `0 to cancel`。`read_list_choice` 是新增函数、含 `0 to cancel`，不删既有串 → 守卫通过。
@@ -47,7 +47,7 @@
 - **Modify** `lib/machine_picker.sh`：加 `read_list_choice`（参数化 noun/verb 的索引选择 helper）。`read_machine_choice`/`pick_machine` 不动。
 - **Modify** `lib/commands.sh`：`cmd_dev` 内 case 注册 `status`；交互菜单加第 5 项 + TTY 引导 case 加 `5)`；reset 的 TTY 交互段（924-934）改为列表 pick + 空列表 exit 3；新增 `status)` 分支。非 TTY 的 reset/status 路径走下方 case，不受 TTY 段影响。
 - **Modify** `ob`：`usage()` 的 dev 行子命令枚举加 `status`（189 行）+ 加 status example（242 行后）。
-- **Modify** `CONTEXT.md`：`ob dev porcelain stdout` 词条枚举补 status；新增 `modified recipe` 词条。
+- **Modify** `GLOSSARY.md`：`ob dev porcelain stdout` 词条枚举补 status；新增 `modified recipe` 词条。
 - **Modify** `tests/unit/devtool_modify.sh`：加 `_devtool_parse_status_all` + `devtool_status_run` 单测。
 - **Modify** `tests/unit/pick_machine.sh`：加 `read_list_choice` 单测。
 - **Modify** `tests/orchestration/cmd_dev.sh`：加 `devtool_status_run` mock + status 非 TTY 场景 + reset 非 TTY 回归。
@@ -600,25 +600,25 @@ assert_false "main dev status 不把 dev 字面传给 cmd_dev" grep -q "GOT:dev"
 - [ ] Step 5: 可选 checkpoint commit
 - Run: `git add ob tests/protocol/usage_dispatch_sync.sh && git commit -m "feat(dev): register 'ob dev status' in usage + dispatch sync test"`
 
-### Task 7: CONTEXT.md — porcelain 枚举 + modified recipe 词条
+### Task 7: GLOSSARY.md — porcelain 枚举 + modified recipe 词条
 
 - 目标：`ob dev porcelain stdout` 词条的 stdout 枚举补 status；新增 `modified recipe` 词条（status/reset 共享概念的权威定义）。
-- 涉及文件：Modify `CONTEXT.md`。
+- 涉及文件：Modify `GLOSSARY.md`。
 - 验证范围：`grep` 确认两处更新落盘，且不破坏既有词条。
 - 接口契约
   - Consumes：status 设计（Task 4）。
   - Produces：glossary 含 `modified recipe` 词条 + porcelain 枚举含 status。
 
 - [ ] Step 1: 写失败检查
-- Run: `grep -c 'status.*每行.*recipe.*srctree\|modified recipe' CONTEXT.md`
+- Run: `grep -c 'status.*每行.*recipe.*srctree\|modified recipe' GLOSSARY.md`
 - Expected: `0`（两处均未落盘）。
 
 - [ ] Step 2: 运行并确认当前失败
-- Run: `grep -c 'modified recipe' CONTEXT.md`
+- Run: `grep -c 'modified recipe' GLOSSARY.md`
 - Expected: `0`。
 
 - [ ] Step 3: 写最小实现
-- 改 `CONTEXT.md`：
+- 改 `GLOSSARY.md`：
   1. `ob dev porcelain stdout` 词条（134 行附近）stdout 枚举补 status——在 `` `reset` 单行 JSON `` 后加：`` / `status` 每行 `{"recipe","srctree"}` JSONL（modified recipe 清单） ``。
   2. 在 `srctree`（125-126 行）与 `recipe metadata cache`（130 行）之间新增词条：
 ```markdown
@@ -629,11 +629,11 @@ _Avoid_: tracked recipe, 已 modify 的 recipe
 - Change：porcelain 枚举补 status；新增 `modified recipe` 词条。
 
 - [ ] Step 4: 运行并确认通过
-- Run: `grep -c 'modified recipe' CONTEXT.md && grep -q 'status` 每行' CONTEXT.md && echo OK`
+- Run: `grep -c 'modified recipe' GLOSSARY.md && grep -q 'status` 每行' GLOSSARY.md && echo OK`
 - Expected: 第一行 `≥1`，第二行打印 `OK`（两处均落盘）。
 
 - [ ] Step 5: 可选 checkpoint commit
-- Run: `git add CONTEXT.md && git commit -m "docs(context): add 'modified recipe' term + status to porcelain stdout"`
+- Run: `git add GLOSSARY.md && git commit -m "docs(context): add 'modified recipe' term + status to porcelain stdout"`
 
 ## 执行纪律
 

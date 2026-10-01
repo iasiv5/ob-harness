@@ -2,7 +2,7 @@
 
 ## 目标
 
-把 `cmd_build`（[lib/commands.sh:137-180](../../lib/commands.sh)）与 `cmd_dev`（[lib/commands.sh:411-433](../../lib/commands.sh)）各自内联的「无 `--machine` → 枚举 initialized machine 集合 → 空 guard `exit 3` → 非 TTY guard `exit 3`」前置 guard 编排，抽成 `lib/machine_selection_guard.sh` 的 leaf-pure L3 module（术语 `machine selection guard`，见 `CONTEXT.md`）。module 检测 `pick_machine` 的两条前提（集合非空 + 交互终端），以 outvar status 回传 `empty`/`nontty`/`ok`，恒返回 0；exit/remedy/展示/选号归调用方。`cmd_build`/`cmd_dev` 的 guard 段切换为 module 调用，`pick_machine` 与 repo 展示位置不动。
+把 `cmd_build`（[lib/commands.sh:137-180](../../lib/commands.sh)）与 `cmd_dev`（[lib/commands.sh:411-433](../../lib/commands.sh)）各自内联的「无 `--machine` → 枚举 initialized machine 集合 → 空 guard `exit 3` → 非 TTY guard `exit 3`」前置 guard 编排，抽成 `lib/machine_selection_guard.sh` 的 leaf-pure L3 module（术语 `machine selection guard`，见 `GLOSSARY.md`）。module 检测 `pick_machine` 的两条前提（集合非空 + 交互终端），以 outvar status 回传 `empty`/`nontty`/`ok`，恒返回 0；exit/remedy/展示/选号归调用方。`cmd_build`/`cmd_dev` 的 guard 段切换为 module 调用，`pick_machine` 与 repo 展示位置不动。
 
 ## 架构快照
 
@@ -21,13 +21,13 @@
 - **双枚举是已知取舍**：module 枚举 `list_fn` 一次（判空+nontty），调用方 `pick_machine` 内部又枚举一次（[machine_picker.sh:45-47](../../lib/machine_picker.sh)）。`list_fn`（`machine_state_initialized_machines` 读 configs）轻量、纯查询，两次输出一致；不为消除双枚举扩大范围改 `pick_machine`。（已评估：`machine_state_initialized_machines` 在 `OPENBMC_DIR/build` 存在时会 glob build artifacts 补全集合，2 次 glob 累积 I/O 仍亚秒级，不构成反对理由。）
 - **文案逐字照搬**：`empty`/`nontty` 的 remedy 文案从 `cmd_build`/`cmd_dev` 原段原样留调用方 case，不改写。
 - **lib 文件结构**：过 `extract_funcs` 三段（header 注释 + 函数定义 + footer 纯函数定义），参照 `lib/devtool_pick.sh`。
-- **不写新 ADR**：三条件不满足（可逆 / 不 surprising——延续横切 leaf-pure 既例，非新决策 / 真分叉被 `machine_picker.sh` 等先例覆盖）。术语 `machine selection guard` 落 `CONTEXT.md`，本计划归档即可。
-- **术语修正（writing-plans 阶段已做）**：grilling 时落的 `CONTEXT.md` `machine resolution` 词条（边界 A）已改为 `machine selection guard`（边界 A'，module 只检测前提不做完整解析）。
+- **不写新 ADR**：三条件不满足（可逆 / 不 surprising——延续横切 leaf-pure 既例，非新决策 / 真分叉被 `machine_picker.sh` 等先例覆盖）。术语 `machine selection guard` 落 `GLOSSARY.md`，本计划归档即可。
+- **术语修正（writing-plans 阶段已做）**：grilling 时落的 `GLOSSARY.md` `machine resolution` 词条（边界 A）已改为 `machine selection guard`（边界 A'，module 只检测前提不做完整解析）。
 
 ## 输入工件
 
 - grill 共识 + A' 修正（writing-plans 发现 `cmd_build` repo 夹层 → 边界 A→A'）。
-- 术语：`CONTEXT.md` `machine selection guard` 词条（已落）。
+- 术语：`GLOSSARY.md` `machine selection guard` 词条（已落）。
 - exit 归属范式：[ADR-0010](../../docs/adr/0010-ob-dev-dispatch-leaf-pure-exit.md)、[ADR-0012](../../docs/adr/0012-ob-dev-subcmd-handler-leaf-pure-exit.md)（范式参照：leaf-pure + return 契约值 + cmd_* 字面 case 收口；范畴限 dev helper，不覆盖本 module——本 module 法理锚横切 leaf-pure 既例，见全局约束·exit 归属）。
 - 范式参照：`lib/devtool_pick.sh`（leaf-pure + outvar + 头注释引 ADR）、`tests/unit/devtool_pick.sh`（unit 范式：`ob_loader.sh`+`assert.sh`+here-string/`</dev/null` 喂 stdin+outvar 当前 shell+`2>"$_err"` 捕 stderr）、`tests/protocol/devtool_intake_surface.sh`（surface gate 范式：`forbidden=()`+`grep -v '^[[:space:]]*#'`+`assert_false`）、`tools/ob_check.sh`（回归门禁）。
 
@@ -65,7 +65,7 @@
 - Change:
   - **⚠️ 顺序约束（防 exit_contract Y 假绿）**：先做第 1 点（`exit_contract.py` 登记），再创建 `lib/machine_selection_guard.sh`（第 2 点），再写 unit（第 3 点），三处同 commit。Y 规则只查 `LEAF_EXIT_EXCEPTIONS_BY_BASENAME` 字典里登记的 basename——module 已创建但未登记的中间态，里面误写 `exit` 不会被 Y 报。禁止在该中间态跑 `ob_check` 当门禁。
   1. Modify `tools/exit_contract.py`：在 `LEAF_EXIT_EXCEPTIONS_BY_BASENAME`（`devtool_pick.sh` 行附近）加一行 `'machine_selection_guard.sh': set(),`。
-  2. Create `lib/machine_selection_guard.sh`，文件头注释（参照 `devtool_pick.sh`：职责 = `machine selection` 前提检测、leaf-pure、消费 `list_fn`、术语见 `CONTEXT.md` `machine selection guard`）。Exit 行锚横切 leaf-pure 既例，措辞 `Exit: leaf-pure module（横切惯例，同 machine_picker.sh/image_build.sh）；函数绝不 exit，恒 return 0；exit 归 cmd_build/cmd_dev（exit_contract Y 规则守）`。写入 `machine_selection_guard`：
+  2. Create `lib/machine_selection_guard.sh`，文件头注释（参照 `devtool_pick.sh`：职责 = `machine selection` 前提检测、leaf-pure、消费 `list_fn`、术语见 `GLOSSARY.md` `machine selection guard`）。Exit 行锚横切 leaf-pure 既例，措辞 `Exit: leaf-pure module（横切惯例，同 machine_picker.sh/image_build.sh）；函数绝不 exit，恒 return 0；exit 归 cmd_build/cmd_dev（exit_contract Y 规则守）`。写入 `machine_selection_guard`：
   ```bash
   # machine_selection_guard <list_fn> <status_outvar>
   # 检测 pick_machine 的两条前提: list_fn 产出的 machine 集合非空 + 当前为交互终端。
@@ -73,7 +73,7 @@
   #   empty   集合空(无 initialized machine)
   #   nontty  集合非空但非交互终端
   #   ok      集合非空 + 交互终端 → 调用方可 pick_machine
-  # leaf-pure: 绝不 exit, 不打印 remedy/展示, 不选号(pick 留调用方)。术语见 CONTEXT.md machine selection guard。
+  # leaf-pure: 绝不 exit, 不打印 remedy/展示, 不选号(pick 留调用方)。术语见 GLOSSARY.md machine selection guard。
   # 前提(调用者保证): status_outvar 名不与本函数 local 同名(本函数无 nameref, 用 printf -v, 无此风险; 沿用 devtool_pick 范式)。
   machine_selection_guard() {
       local list_fn="$1" status_outvar="$2"
@@ -299,7 +299,7 @@
 - 静态守卫复查（leaf-pure 权威由 exit_contract Y 规则守）：
   - Run: `python3 tools/exit_contract.py`
   - Expected: rc=0，输出含 `X: PASS` / `Y: PASS` / `Z: PASS`（Y 规则覆盖 `machine_selection_guard.sh`，守 guard 函数绝不 exit）。
-- 修改摘要：`lib/machine_selection_guard.sh`（新）、`tests/unit/machine_selection_guard.sh`（新）、`tests/protocol/machine_selection_guard_surface.sh`（新）、`lib/commands.sh`（`cmd_dev` + `cmd_build` guard 段 → `machine_selection_guard` 调用 + case）、`tools/exit_contract.py`（+1 basename）、`tools/coverage_matrix.md`（+1 行）、`rules/03_WORKSPACE.md`（+1 路由条目）、`CONTEXT.md`（`machine resolution` → `machine selection guard`，已落）、`tests/.shellcheck-baseline`（regen）。
+- 修改摘要：`lib/machine_selection_guard.sh`（新）、`tests/unit/machine_selection_guard.sh`（新）、`tests/protocol/machine_selection_guard_surface.sh`（新）、`lib/commands.sh`（`cmd_dev` + `cmd_build` guard 段 → `machine_selection_guard` 调用 + case）、`tools/exit_contract.py`（+1 basename）、`tools/coverage_matrix.md`（+1 行）、`rules/03_WORKSPACE.md`（+1 路由条目）、`GLOSSARY.md`（`machine resolution` → `machine selection guard`，已落）、`tests/.shellcheck-baseline`（regen）。
 
 ## 审阅 Checkpoint
 

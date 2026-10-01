@@ -22,7 +22,7 @@
 ## 输入工件
 
 - 设计文档:`docs/adr/0021-qemu-restart-port-reuse.md`
-- 术语:`CONTEXT.md` `重启 (restart)` / `端口解析链` / `--force`(已落盘)
+- 术语:`GLOSSARY.md` `重启 (restart)` / `端口解析链` / `--force`(已落盘)
 - 既有先例:`lib/qemu_commands.sh::cmd_deploy_to_qemu` lines 367-370(无条件赋值 `QEMU_*_PORT`)
 - F1 顺序锁先例:`tests/orchestration/start_qemu_force_restart.sh`(stage running QEMU + dynamic ss 模式)
 - 端口复用注入测试先例:`tests/orchestration/deploy_to_qemu.sh`(stage_running_qemu helper + "新 .pid ssh_port == 旧 .pid ssh_port" 断言)

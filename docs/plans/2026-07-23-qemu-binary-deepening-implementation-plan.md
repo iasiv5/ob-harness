@@ -27,13 +27,13 @@
 - **测试分层**：纯决策走 unit 层（零依赖、毫秒级、here-string）；acquire/commit 走 orchestration 层（PATH/函数 stub + 真实 fs tmp）。不碰网络（download_qemu_binary_core 用函数 override stub）。
 - **outvar 纪律**：resolve 函数 caller 传下划线前缀变量名（`_bres` / `_pres`），不与函数内 local（`input`/`arch`/`out`/`cand`）同名——避动态作用域遮蔽（memory）。
 - **改 ob/lib 后必跑** `tools/ob_check.sh` 配套自检。
-- **不立** CONTEXT.md 术语（抽出的是实现机制——事务切面/路径解析/URL 提取，非领域概念；QEMU binary provisioning 领域术语已齐）；**不立** ADR（acquire/commit 切面 + 局部 leaf-pure 是 bestpractice_10 形态E + 07-07 detect_runtime_git_host 的延续，无 surprising 新架构决策；锁范围缩小在 commit message 记）。
+- **不立** GLOSSARY.md 术语（抽出的是实现机制——事务切面/路径解析/URL 提取，非领域概念；QEMU binary provisioning 领域术语已齐）；**不立** ADR（acquire/commit 切面 + 局部 leaf-pure 是 bestpractice_10 形态E + 07-07 detect_runtime_git_host 的延续，无 surprising 新架构决策；锁范围缩小在 commit message 记）。
 - 无版本/依赖/平台约束（纯 bash，linux/bash 环境）。
 
 ## 输入工件
 
 - **设计来源**：本会话 `/pick-one-arch-task` → `/grill-with-docs` 的 grilling 共识（6 决策点锁定）。无独立 design doc，grilling 产出即设计依据。
-- **术语参考**：`CONTEXT.md` function semantic layer（L1/L2/L3 函数角色 + leaf-pure 三态）/ exit-code 契约 / test layer。
+- **术语参考**：`GLOSSARY.md` function semantic layer（L1/L2/L3 函数角色 + leaf-pure 三态）/ exit-code 契约 / test layer。
 - **方法论参考**：`rules/skills/bestpractice_10-deep_module_extraction.md` 形态 E（god-function 拆：薄 wrapper + 深 prepare/execute）+ pin→deepen 顺序 + F1 跨 seam 副作用次序不变量。
 - **先例**：`lib/devtool_pick.sh`（outvar 编码 `ok:<value>` 恒返回码模式）、07-07 `detect_runtime_git_host`（direct-exit basename 内自愿 leaf-pure + surface gate）。
 

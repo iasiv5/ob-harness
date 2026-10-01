@@ -47,7 +47,7 @@
 ## 输入工件
 
 - 设计文档：`docs/specs/2026-07-20-ob-deploy-to-qemu-design.md`（零未决，含完整编排伪代码 + 7 测试场景）。
-- 伴生已落：`docs/adr/0011-ob-deploy-to-qemu-toplevel-ownership.md`、`CONTEXT.md`（`ob deploy-to-qemu` 术语）、`rules/skills/workflow_02-obmc_dev_modify.md`（验证链 modify→build→deploy-to-qemu→finish）。计划引用，不重述。
+- 伴生已落：`docs/adr/0011-ob-deploy-to-qemu-toplevel-ownership.md`、`GLOSSARY.md`（`ob deploy-to-qemu` 术语）、`rules/skills/workflow_02-obmc_dev_modify.md`（验证链 modify→build→deploy-to-qemu→finish）。计划引用，不重述。
 
 ## 文件结构与职责
 
@@ -63,7 +63,7 @@
 
 **不改**（约束 1）：`cmd_build`/`cmd_start_qemu`/`cmd_stop_qemu`/`lib/qemu.sh`/`lib/qemu_instance.sh`/`lib/build_env.sh`/`tools/exit_contract.py`（deploy-to-qemu 在 `commands.sh` exit seam，非 leaf-pure basename）。
 
-**已落（本轮 grill，T1–T5 不再变更；评审 G1 落位核对）**：`CONTEXT.md`（`ob deploy-to-qemu` 术语，`grep -c deploy-to-qemu CONTEXT.md` 命中）、`rules/skills/workflow_02-obmc_dev_modify.md`（第 8 步验证链 modify→build→deploy-to-qemu→finish 已含）、`docs/adr/0011-ob-deploy-to-qemu-toplevel-ownership.md`（Status: accepted）。
+**已落（本轮 grill，T1–T5 不再变更；评审 G1 落位核对）**：`GLOSSARY.md`（`ob deploy-to-qemu` 术语，`grep -c deploy-to-qemu GLOSSARY.md` 命中）、`rules/skills/workflow_02-obmc_dev_modify.md`（第 8 步验证链 modify→build→deploy-to-qemu→finish 已含）、`docs/adr/0011-ob-deploy-to-qemu-toplevel-ownership.md`（Status: accepted）。
 
 **接口依赖：** T2 Consumes `cmd_deploy_to_qemu`（T1 Produces 骨架）；T3 Consumes orchestration 测试（T2 Produces 失败基线）+ 底层 module（既有）；T4 Consumes 完整 `ob deploy-to-qemu`（T3）。
 

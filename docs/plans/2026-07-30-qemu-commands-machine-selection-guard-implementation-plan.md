@@ -20,13 +20,13 @@
 - **stop 不碰（D1）**、**init 不顺带（D4，两条 control-flow 障碍已记 ADR-0016）**。
 - **行为不变是硬约束**：改造前后 [start_qemu_remedy.sh](../tests/protocol/start_qemu_remedy.sh)（start empty+子分类）+ 新增 deploy empty pin 必须同态 PASS。
 - **ob 改 lib 后跑 ob_check**（AGENTS.md Working Mode）：改动 `lib/qemu_commands.sh` 后 `tools/ob_check.sh` 是配套自检。
-- 命名：函数 `cmd_start_qemu` / `cmd_deploy_to_qemu` / `machine_selection_guard` 均沿用；术语见 [CONTEXT.md `machine selection guard`](../../CONTEXT.md)。
+- 命名：函数 `cmd_start_qemu` / `cmd_deploy_to_qemu` / `machine_selection_guard` 均沿用；术语见 [GLOSSARY.md `machine selection guard`](../../GLOSSARY.md)。
 
 ## 输入工件
 
 - 设计共识：`/pick-one-arch-task` + `/grill-with-docs` 锁定的 D1-D5（本会话）。
 - [ADR-0016](../adr/0016-defer-init-intake-guard-reuse.md)：init 暂缓 + 两条 control-flow 障碍（grilling 阶段已补）。
-- [CONTEXT.md `machine selection guard`](../../CONTEXT.md)：消费方当前记 build/dev 两处（本次扩到四处）。
+- [GLOSSARY.md `machine selection guard`](../../GLOSSARY.md)：消费方当前记 build/dev 两处（本次扩到四处）。
 - 同构参照：[cmd_build:138-161](../../lib/commands.sh#L138) / [cmd_dev:382-396](../../lib/commands.sh#L382) 的 guard + case 收口。
 - 行为 pin 范式：[start_qemu_remedy.sh](../tests/protocol/start_qemu_remedy.sh) 的 `detect_harness_root` mock + setup_fn + subshell。
 
@@ -35,7 +35,7 @@
 - Create: `tests/protocol/deploy_to_qemu_machine_selection.sh` — deploy empty 行为 pin（无 MACHINE + 无 initialized → exit 3 + remedy），改造前后同态 PASS。
 - Create: `tests/protocol/qemu_commands_guard_surface.sh` — 结构回归锁：`cmd_start_qemu` / `cmd_deploy_to_qemu` 段必须调 `machine_selection_guard`，且不再手写 `${#machines[@]}` empty 检测（防回潮）。
 - Modify: `lib/qemu_commands.sh` — `cmd_start_qemu`(:11-45) + `cmd_deploy_to_qemu`(:277-295) 的 resolve-machine 序言改走 guard + case 收口。
-- Modify: `CONTEXT.md` — `machine selection guard` 条目消费方 build/dev → build/dev/start/deploy + start 子分类留 cmd 注记。
+- Modify: `GLOSSARY.md` — `machine selection guard` 条目消费方 build/dev → build/dev/start/deploy + start 子分类留 cmd 注记。
 - Modify: `docs/adr/0016-defer-init-intake-guard-reuse.md` — Consequences 消费方状态 2→4 + 条件 4 已满足标注（init 两条障碍已在前一步补入，不动）。
 - Modify: `tools/coverage_matrix.md` — 横切 guard 行消费方更新 + start-qemu/deploy-to-qemu 段补 machine-selection 走 guard 备注。
 
@@ -268,7 +268,7 @@
 
 - 目标：把 guard 消费方扩到四处登记进领域模型与覆盖矩阵，跑全套配套自检收口。
 - Files
-  - Modify: `CONTEXT.md`（`machine selection guard` 条目）
+  - Modify: `GLOSSARY.md`（`machine selection guard` 条目）
   - Modify: `docs/adr/0016-defer-init-intake-guard-reuse.md`（Consequences 消费方状态）
   - Modify: `tools/coverage_matrix.md`（横切 guard 行 + start-qemu/deploy-to-qemu 段）
 - 接口契约
@@ -277,14 +277,14 @@
 - 验证范围：CONTEXT/ADR/coverage_matrix 已登记 + ob_check + exit_contract + run_all（含 --full）全过。
 
 - [ ] Step 1: 写当前状态检查（尚未登记四处消费）
-  - Run: `grep -c 'cmd_start_qemu' CONTEXT.md; grep -c 'cmd_build / cmd_dev / cmd_start_qemu / cmd_deploy_to_qemu' CONTEXT.md`
+  - Run: `grep -c 'cmd_start_qemu' GLOSSARY.md; grep -c 'cmd_build / cmd_dev / cmd_start_qemu / cmd_deploy_to_qemu' GLOSSARY.md`
   - Expected: 第一条 ≥1（条目存在）；第二条 `0`（消费方四方表述尚未落）。
 - [ ] Step 2: 写登记
-  - Modify `CONTEXT.md` 的 `**machine selection guard**` 条目：把"cmd_build/cmd_dev 共享"（及同类两处表述）改为"cmd_build / cmd_dev / cmd_start_qemu / cmd_deploy_to_qemu 共享"；补一句注：`cmd_start_qemu` 的 empty 分支带 any_initdone 子分类（image-ready vs initialized 的 remedy 区分），留 cmd 层（guard 是横切检测原语，不承载 image-ready 领域逻辑，D2）。
+  - Modify `GLOSSARY.md` 的 `**machine selection guard**` 条目：把"cmd_build/cmd_dev 共享"（及同类两处表述）改为"cmd_build / cmd_dev / cmd_start_qemu / cmd_deploy_to_qemu 共享"；补一句注：`cmd_start_qemu` 的 empty 分支带 any_initdone 子分类（image-ready vs initialized 的 remedy 区分），留 cmd 层（guard 是横切检测原语，不承载 image-ready 领域逻辑，D2）。
   - Modify `docs/adr/0016-defer-init-intake-guard-reuse.md` 的 Consequences：把"`machine_selection_guard` 消费方维持 cmd_build / cmd_dev 两处"改为"消费方自本次起为 build / dev / start / deploy 四处（重评估条件 4 已满足）"；init 仍暂缓（两条 control-flow 障碍已在前文，不动）。
   - Modify `tools/coverage_matrix.md`：横切表 `machine selection guard` 行的"备注"把"cmd_build/cmd_dev 共享"更新为"cmd_build/cmd_dev/cmd_start_qemu/cmd_deploy_to_qemu 共享"；`## start-qemu` 与 `## deploy-to-qemu` 段各补一行登记 machine-selection 走 guard（涉及函数 `cmd_start_qemu`/`cmd_deploy_to_qemu` + `machine_selection_guard`，覆盖 test `protocol/start_qemu_remedy.sh` + `protocol/deploy_to_qemu_machine_selection.sh` + `protocol/qemu_commands_guard_surface.sh`）。
 - [ ] Step 3: 运行并确认通过
-  - Run: `grep -q 'cmd_start_qemu / cmd_deploy_to_qemu 共享' CONTEXT.md && grep -q 'start / deploy 四处' docs/adr/0016-defer-init-intake-guard-reuse.md && grep -q 'qemu_commands_guard_surface' tools/coverage_matrix.md && python3 tools/exit_contract.py >/dev/null && tools/ob_check.sh >/dev/null 2>&1 && tests/run_all.sh >/dev/null 2>&1 && echo "FINAL-PASS"`
+  - Run: `grep -q 'cmd_start_qemu / cmd_deploy_to_qemu 共享' GLOSSARY.md && grep -q 'start / deploy 四处' docs/adr/0016-defer-init-intake-guard-reuse.md && grep -q 'qemu_commands_guard_surface' tools/coverage_matrix.md && python3 tools/exit_contract.py >/dev/null && tools/ob_check.sh >/dev/null 2>&1 && tests/run_all.sh >/dev/null 2>&1 && echo "FINAL-PASS"`
   - Expected: `FINAL-PASS`（登记就位 + exit_contract + ob_check 配套自检 + run_all 快速三层全过）。
 
 ## 执行纪律

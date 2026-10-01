@@ -24,12 +24,12 @@
 ## 输入工件
 
 - 架构候选分析：`/tmp/architecture-review-20260722-212823.html`（deletion test、热点证据、before/after）。
-- grilling 共识（Q1-Q5，本会话 inline 决策，未落独立 design spec——Q5 决定不立 ADR、不动 CONTEXT.md）：
+- grilling 共识（Q1-Q5，本会话 inline 决策，未落独立 design spec——Q5 决定不立 ADR、不动 GLOSSARY.md）：
   - Q1 scope = 纯物理切出
   - Q2 归属 = 新建 `lib/qemu_commands.sh`（不并入 `qemu.sh`，L1⇎L3 层级正交）
   - Q3 helper = `exit_on_user_cancel` 留 commands.sh + 跨文件调用
   - Q4 测试 = 现有测试作回归锁，不补 unit
-  - Q5 沉淀 = 文件头注释（含形态对照）+ WORKSPACE 登记；不动 CONTEXT.md、不立 ADR
+  - Q5 沉淀 = 文件头注释（含形态对照）+ WORKSPACE 登记；不动 GLOSSARY.md、不立 ADR
 
 ## 文件结构与职责
 
@@ -60,7 +60,7 @@
 
     ```bash
     #!/usr/bin/env bash
-    # lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu). 术语见 CONTEXT.md function semantic layer / exit-code 契约 / ob deploy-to-qemu.
+    # lib/qemu_commands.sh — QEMU 命令簇 L1 编排(cmd_start_qemu/cmd_stop_qemu/cmd_deploy_to_qemu). 术语见 GLOSSARY.md function semantic layer / exit-code 契约 / ob deploy-to-qemu.
     # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
     # 形态对照: L1 exit-seam 命令族(顶层命令直接 exit, 无 dispatcher 收口), 区别于 lib/devtool_subcmd.sh 的 L3 leaf-pure handler(return exit-code, 由 cmd_dev 收口 exit)。
     # 依赖: exit_on_user_cancel 定义于 lib/commands.sh, 跨文件调用; ob 用 for f in lib/*.sh 全量 source 后可见。
@@ -98,9 +98,9 @@
   - Change:
     1. 删除 `cmd_start_qemu() {` 到 `cmd_deploy_to_qemu` 闭合 `}` 的整段（原 422-825），保留删除处前后各一个空行作分隔（上接 cmd_build 的 `}`，下接 `cmd_init`）。
     2. 文件头第 2 行由：
-       `# lib/commands.sh — cmd_* 命令编排(status/init/build/start-qemu/stop-qemu/menu). 术语见 CONTEXT.md function semantic layer / exit-code 契约.`
+       `# lib/commands.sh — cmd_* 命令编排(status/init/build/start-qemu/stop-qemu/menu). 术语见 GLOSSARY.md function semantic layer / exit-code 契约.`
        改为：
-       `# lib/commands.sh — cmd_* 命令编排(status/build/init/dev/menu). 术语见 CONTEXT.md function semantic layer / exit-code 契约.`
+       `# lib/commands.sh — cmd_* 命令编排(status/build/init/dev/menu). 术语见 GLOSSARY.md function semantic layer / exit-code 契约.`
        措辞依据（一次性整理，非逐字保留原序）：
        - 新顺序 `status/build/init/dev/menu` 按**切出后函数在文件中的物理定义顺序**（`cmd_status`:210 → `cmd_build`:259 → `cmd_init`:827 → `cmd_dev`:968 → `cmd_menu`:1115），顺手修正原注释 `init/build` 的乱序（原 `status/init/build` 与物理顺序「build 在 init 前」不一致，属历史遗漏）。
        - `start-qemu/stop-qemu` 随 QEMU 簇切走，移除。

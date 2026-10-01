@@ -29,7 +29,7 @@ machine=<name>\tinit=<none|partial|done>\tsnapshot=<yes|no>\trepos=<n|?>\tbuild=
 ## 输入工件
 
 - 设计文档：[docs/specs/2026-06-23-machine-state-module-design.md](../specs/2026-06-23-machine-state-module-design.md)
-- 当前领域词表：[CONTEXT.md](../../CONTEXT.md)
+- 当前领域词表：[GLOSSARY.md](../../GLOSSARY.md)
 - 已接受 ADR：[docs/adr/0001-init-done-marker.md](../adr/0001-init-done-marker.md)、[docs/adr/0003-ob-first-front-door.md](../adr/0003-ob-first-front-door.md)
 
 ## 文件结构与职责
@@ -48,7 +48,7 @@ Modify:
 - `lib/init_pipeline.sh`：Step 6 从 lockfile 生成迁移为 snapshot 写入；report 文案改 snapshot。
 - `lib/commands.sh`：`cmd_init`、`cmd_status`、`cmd_build`、`cmd_start_qemu` 迁移到 `machine_state` interface。
 - `lib/repo.sh`：`print_previously_initialized` 迁移到 `machine_state` records。
-- `CONTEXT.md`：`function semantic layer` 更新为六文件边界，并更新 `exit_contract` Y 规则描述。
+- `GLOSSARY.md`：`function semantic layer` 更新为六文件边界，并更新 `exit_contract` Y 规则描述。
 - `tools/coverage_matrix.md`：`lockfile 生成` 行更新为 `machine snapshot 生成`。
 - `tests/orchestration/generate_config.sh`：断言 `.snapshot` 输出与 dry-run 行为。
 - `tests/protocol/build_noninteractive.sh`：确认缺 marker remedy 不变。
@@ -324,7 +324,7 @@ Files:
 
 Files:
 
-- Modify: `CONTEXT.md`
+- Modify: `GLOSSARY.md`
 - Modify: `tools/coverage_matrix.md`
 - Search/Verify: `lib/`, `tests/`, `docs/adr/`
 
@@ -332,14 +332,14 @@ Files:
 
 #### Step 1: 写当前残留检查
 
-- Run: `rg -n "lockfile|<machine>\.lock|\.lock|machine_state|exit_contract.*util\.sh|lib/\{util,repo,qemu,init_pipeline,commands\}" CONTEXT.md tools/coverage_matrix.md lib tests docs/adr -g '!workspace/**'`
+- Run: `rg -n "lockfile|<machine>\.lock|\.lock|machine_state|exit_contract.*util\.sh|lib/\{util,repo,qemu,init_pipeline,commands\}" GLOSSARY.md tools/coverage_matrix.md lib tests docs/adr -g '!workspace/**'`
 - Expected: 当前存在旧 lockfile / `.lock` / 五文件边界 / util-only exit_contract 描述等残留。
 
 #### Step 2: 更新文档
 
-- Change: `CONTEXT.md` 的 `function semantic layer` 更新为 `lib/{util,repo,machine_state,qemu,init_pipeline,commands}.sh` 六文件边界；`exit_contract` Y 规则描述更新为 leaf-pure basename modules（`util.sh` / `machine_state.sh`）。`tools/coverage_matrix.md` 中 lockfile 相关项改为 machine snapshot。
-- Run: `rg -n 'lockfile|<machine>\.lock|lib/\{util,repo,qemu,init_pipeline,commands\}|basename\(.*util\.sh.*\)' CONTEXT.md tools/coverage_matrix.md docs/adr || true`
-- Expected: 不再有会误导当前设计的旧 lockfile / 五文件边界 / util-only Y 规则表述；`CONTEXT.md` 的 `_Avoid_: lockfile...` 允许保留。
+- Change: `GLOSSARY.md` 的 `function semantic layer` 更新为 `lib/{util,repo,machine_state,qemu,init_pipeline,commands}.sh` 六文件边界；`exit_contract` Y 规则描述更新为 leaf-pure basename modules（`util.sh` / `machine_state.sh`）。`tools/coverage_matrix.md` 中 lockfile 相关项改为 machine snapshot。
+- Run: `rg -n 'lockfile|<machine>\.lock|lib/\{util,repo,qemu,init_pipeline,commands\}|basename\(.*util\.sh.*\)' GLOSSARY.md tools/coverage_matrix.md docs/adr || true`
+- Expected: 不再有会误导当前设计的旧 lockfile / 五文件边界 / util-only Y 规则表述；`GLOSSARY.md` 的 `_Avoid_: lockfile...` 允许保留。
 
 #### Step 3: 检查代码测试残留
 
@@ -373,8 +373,8 @@ Files:
 
 #### Step 4: 最终残留扫描
 
-- Run: `rg -n "<machine>\.lock|generate_lockfile|Lockfile|lockfile" lib tests CONTEXT.md docs/adr tools/coverage_matrix.md -g '!workspace/**'`
-- Expected: 只剩允许的 `openbmc-source.lock`、QEMU update lock、legacy cleanup/hard-cut 测试、`CONTEXT.md` 禁用词说明；无 active Machine state `.lock` 读写。
+- Run: `rg -n "<machine>\.lock|generate_lockfile|Lockfile|lockfile" lib tests GLOSSARY.md docs/adr tools/coverage_matrix.md -g '!workspace/**'`
+- Expected: 只剩允许的 `openbmc-source.lock`、QEMU update lock、legacy cleanup/hard-cut 测试、`GLOSSARY.md` 禁用词说明；无 active Machine state `.lock` 读写。
 
 ## 执行纪律
 
@@ -394,7 +394,7 @@ Run:
 ```bash
 tools/ob_check.sh
 tests/run_all.sh --full
-rg -n "<machine>\.lock|generate_lockfile|Lockfile|lockfile" lib tests CONTEXT.md docs/adr tools/coverage_matrix.md -g '!workspace/**'
+rg -n "<machine>\.lock|generate_lockfile|Lockfile|lockfile" lib tests GLOSSARY.md docs/adr tools/coverage_matrix.md -g '!workspace/**'
 ```
 
 Expected:

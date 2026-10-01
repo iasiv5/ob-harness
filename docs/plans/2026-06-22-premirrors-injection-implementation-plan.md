@@ -16,7 +16,7 @@
 ## 输入工件
 
 - 设计决策：[docs/adr/0004-gnu-mirror-via-premirrors.md](../adr/0004-gnu-mirror-via-premirrors.md)、[docs/adr/0005-local-conf-var-detection-exit-code.md](../adr/0005-local-conf-var-detection-exit-code.md)
-- 术语：[CONTEXT.md](../../CONTEXT.md) `ob-managed variable`
+- 术语：[GLOSSARY.md](../../GLOSSARY.md) `ob-managed variable`
 - 关键代码坐标：`ob:152-193`（read_local_conf_var，不改）、`ob:2714` 起的 `generate_build_config`（改）、`ob:2747-2787`（DL_DIR/SSTATE_DIR 检测+条件写）、`ob:2789` 起的 BB_HASHSERVE 块（PREMIRRORS 插在其前）
 
 ## 文件结构与职责
@@ -226,7 +226,7 @@ exit $rc
 
 - [ ] Step 4: 确认改动范围干净（无意外文件/行被改）。
 - Run: `git status --short && git diff --stat`
-- Expected: 本次代码改动仅 `ob` 与 `tests/protocol/premirrors_injection.sh` 两项（`docs/adr/0004`、`docs/adr/0005`、`CONTEXT.md` 已先行落地，若在同一分支则一并确认其内容正是本计划对应的 PREMIRRORS 决策 + ob-managed variable 术语）。注意：功能正确性已由 protocol 测试（Task 1-3，调真实 `generate_build_config` 于 `DRY_RUN=0` 并断言 inc）覆盖，无需再实跑 `ob init`（那会拉源码，过重；且 `ob init -d` 是 dry-run、`generate_build_config` 在 `DRY_RUN=1` 直接 return 不生成 inc，看不到 PREMIRRORS）。
+- Expected: 本次代码改动仅 `ob` 与 `tests/protocol/premirrors_injection.sh` 两项（`docs/adr/0004`、`docs/adr/0005`、`GLOSSARY.md` 已先行落地，若在同一分支则一并确认其内容正是本计划对应的 PREMIRRORS 决策 + ob-managed variable 术语）。注意：功能正确性已由 protocol 测试（Task 1-3，调真实 `generate_build_config` 于 `DRY_RUN=0` 并断言 inc）覆盖，无需再实跑 `ob init`（那会拉源码，过重；且 `ob init -d` 是 dry-run、`generate_build_config` 在 `DRY_RUN=1` 直接 return 不生成 inc，看不到 PREMIRRORS）。
 
 ## 执行纪律
 
@@ -241,7 +241,7 @@ exit $rc
 
 - Run: `bash tests/protocol/premirrors_injection.sh && bash tools/ob_check.sh`
 - Expected: protocol 测试 `PASS=N FAIL=0`、退出码 0；`ob_check.sh` 全绿（含新 protocol 测试纳入 run_all）。
-- 修改摘要应包含：`ob` 的 `generate_build_config` 改了 DL_DIR/SSTATE_DIR/PREMIRRORS 三处判定（统一 exit code）+ 新增 PREMIRRORS 注入段与 info log；新增 `tests/protocol/premirrors_injection.sh`；ADR-0004/0005 与 CONTEXT.md 术语已先行落地（本计划不改它们）。
+- 修改摘要应包含：`ob` 的 `generate_build_config` 改了 DL_DIR/SSTATE_DIR/PREMIRRORS 三处判定（统一 exit code）+ 新增 PREMIRRORS 注入段与 info log；新增 `tests/protocol/premirrors_injection.sh`；ADR-0004/0005 与 GLOSSARY.md 术语已先行落地（本计划不改它们）。
 
 ## 审阅 Checkpoint
 

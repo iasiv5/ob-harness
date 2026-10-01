@@ -23,7 +23,7 @@
 - `ob` 不内嵌 LLM；默认 source-preserving reset，无 `--remove-work`（收到 exit 1）。
 - `lib/devtool_reset.sh` leaf-pure（不 exit），登记 `exit_contract.py`；exit/remedy 只在 `cmd_dev`。
 - porcelain：`cmd_dev` 不调 `log`/`info`/`warn`，诊断 `error`/`>&2`；stdout 只 JSON 单行；JSON 经 tempfile 原子发布（失败 stdout 空）。
-- exit-code 遵循 [exit-code 契约](../../CONTEXT.md) + [ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md)（失败即止不降级，status 失败不降级空）。
+- exit-code 遵循 [exit-code 契约](../../GLOSSARY.md) + [ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md)（失败即止不降级，status 失败不降级空）。
 - 不改 `modify`/`list`/`refresh` 既有行为；不改 `_devtool_env_exec`/`_devtool_parse_srctree`。
 - **无并发 writer 前提**：reset/integration 不与其他 ob/devtool workspace writer 并发；二次 status + 文件检查只检测异常，不提供 snapshot isolation。
 - **实施约束（评审终审 5 条）**：① workspace_path_raw=configparser.get 未 canonicalize；② 缺配置默认 `os.path.join(build_dir,"workspace")`；③ P 逐字 `srctreebase_raw.startswith(os.path.join(workspace_path_raw,"sources"))`；④ JSON 编码失败 cmd_dev exit 1；⑤ 验证 ob_check + 单独 `--integration`。
@@ -48,13 +48,13 @@
 
 - 设计文档 `docs/specs/2026-07-15-ob-dev-reset-design.md`（v6 已审核通过）。
 - 实施计划评审 round-1~6（5🔴+5🟡+🟢 / 6🔴+4🟡 / 4🔴+3🟡 / 5🔴+4🟡 / 4🔴+4🟡 / 3🔴+3🟡），本计划 v7 全吸收。
-- [CONTEXT.md](../../CONTEXT.md) ob dev 术语、[ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md)。
+- [GLOSSARY.md](../../GLOSSARY.md) ob dev 术语、[ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md)。
 - 先例：`lib/devtool_modify.sh`、`tests/integration/ob_dev.sh`、`tests/protocol/dev_interactive.exp`（expect）、`REAL_PYTHON` mock 模式。
 
 ## 文件结构与职责
 
 **Create:** `lib/devtool_reset.sh`（`devtool_reset_run` + 3 helper）、`tests/unit/devtool_reset.sh`（增量 T1/T2/T3）。
-**Modify:** `tools/exit_contract.py`、`lib/commands.sh`、`ob`、`tests/protocol/usage_dispatch_sync.sh`、`tests/protocol/dev_interactive.exp`、`tests/orchestration/cmd_dev.sh`、`tests/integration/ob_dev.sh`、`tests/unit/ob_dev_integration_safety.sh`、`CONTEXT.md`、`rules/03_WORKSPACE.md`、`rules/skills/workflow_02-obmc_dev_modify.md`。
+**Modify:** `tools/exit_contract.py`、`lib/commands.sh`、`ob`、`tests/protocol/usage_dispatch_sync.sh`、`tests/protocol/dev_interactive.exp`、`tests/orchestration/cmd_dev.sh`、`tests/integration/ob_dev.sh`、`tests/unit/ob_dev_integration_safety.sh`、`GLOSSARY.md`、`rules/03_WORKSPACE.md`、`rules/skills/workflow_02-obmc_dev_modify.md`。
 
 **接口契约主干:** `_devtool_reset_resolve_workspace`（T1，receiver `_resolved_*`）/`_devtool_reset_locate_bbappend`+`_devtool_reset_classify`（T2，`_located_*`/`_classified_*`）→ `devtool_reset_run`（T3，`_reset_*`）→ `cmd_dev` reset（T4）。
 
@@ -266,35 +266,35 @@
 
 ---
 
-### Task 7: harness 同步（CONTEXT.md + WORKSPACE.md + workflow_02 + 五独立断言 + 否定语义）
+### Task 7: harness 同步（GLOSSARY.md + WORKSPACE.md + workflow_02 + 五独立断言 + 否定语义）
 
 - 目标：agent 知道 reset 存在、JSON 六字段契约、srctree 生命周期；登记路由；**五独立断言 + 否定语义**（🟡2）。
-- Files: Modify `CONTEXT.md`、`rules/03_WORKSPACE.md`、`rules/skills/workflow_02-obmc_dev_modify.md`。
+- Files: Modify `GLOSSARY.md`、`rules/03_WORKSPACE.md`、`rules/skills/workflow_02-obmc_dev_modify.md`。
 - 验证范围：`tools/ob_check.sh` + **精确文档断言**（五独立 grep + destination/destination_parent + workflow 否定语义）。
 - 接口契约: Consumes reset 命令形态 + JSON 契约；Produces harness 登记。
 
 - [ ] Step 1: 写失败检查
-  - Run: `grep -rl "destination_parent\|devtool_reset.sh" rules/ CONTEXT.md 2>/dev/null | wc -l`
+  - Run: `grep -rl "destination_parent\|devtool_reset.sh" rules/ GLOSSARY.md 2>/dev/null | wc -l`
   - Expected: `0`（或仅 specs/plans）。
 - [ ] Step 2: 确认缺失
-  - Run: `rc=0; grep -rl "destination_parent" CONTEXT.md || rc=$?; (( rc != 0 )) || { echo UNEXPECTED_HIT >&2; exit 1; }`
+  - Run: `rc=0; grep -rl "destination_parent" GLOSSARY.md || rc=$?; (( rc != 0 )) || { echo UNEXPECTED_HIT >&2; exit 1; }`
   - Expected: 断言通过（无命中=非零）。
 - [ ] Step 3: 写最小实现
-  - `CONTEXT.md` `ob dev porcelain stdout` 补 reset JSON（精确六字段 `{"recipe","srctree","srctreebase","disposition","destination_parent","destination"}`，五 disposition moved/retained/removed/absent/noop，destination_parent 仅 moved 其余 null，destination 恒 null）。
+  - `GLOSSARY.md` `ob dev porcelain stdout` 补 reset JSON（精确六字段 `{"recipe","srctree","srctreebase","disposition","destination_parent","destination"}`，五 disposition moved/retained/removed/absent/noop，destination_parent 仅 moved 其余 null，destination 恒 null）。
   - `rules/03_WORKSPACE.md`：lib 加 devtool_reset.sh；ob dev 子命令加 reset。
   - `workflow_02-obmc_dev_modify.md`：第 7 步→正式 reset 收尾（`ob dev --machine <m> reset <recipe>` 解除 externalsrc；stdout JSON 读 disposition；moved→归档 `attic/sources/<recipe>.*`，**agent 不得自动清理 attic，需删除时用户手动**；retained→外部保留；无并发 writer；build/deploy/finish 待 ob）。
-- Change: CONTEXT.md + WORKSPACE.md + workflow_02。
+- Change: GLOSSARY.md + WORKSPACE.md + workflow_02。
 - [ ] Step 4: 运行确认（🟡2 五独立断言 + destination + 否定语义）
   - Run: `tools/ob_check.sh`
   - Expected: ALL GREEN。
   - 文档断言（**五独立 grep -q + destination + workflow 否定**，🟡2）：
-    - CONTEXT 五 disposition 各自独立：`for d in moved retained removed absent noop; do grep -q "\"$d\"" CONTEXT.md || { echo "missing $d" >&2; exit 1; }; done`。
-    - CONTEXT destination 字段：`grep -q '"destination"' CONTEXT.md`。
+    - CONTEXT 五 disposition 各自独立：`for d in moved retained removed absent noop; do grep -q "\"$d\"" GLOSSARY.md || { echo "missing $d" >&2; exit 1; }; done`。
+    - CONTEXT destination 字段：`grep -q '"destination"' GLOSSARY.md`。
     - WORKSPACE：`grep -q 'devtool_reset.sh' rules/03_WORKSPACE.md && grep -q 'reset' rules/03_WORKSPACE.md`。
     - workflow reset 收尾 + **否定语义**：`grep -q 'reset' rules/skills/workflow_02-obmc_dev_modify.md && grep -qiE '不得自动清理|不自动清理 attic|需删除.*手动' rules/skills/workflow_02-obmc_dev_modify.md && grep -qiE '无并发|不.*并发' rules/skills/workflow_02-obmc_dev_modify.md`（reset + 禁自动清 attic 否定 + 无并发）。
   - Expected: 全部断言命中。
 - [ ] Step 5: checkpoint（可选）
-  - Run: `git add CONTEXT.md rules/ && git commit -m "docs(dev): harness sync for reset"`
+  - Run: `git add GLOSSARY.md rules/ && git commit -m "docs(dev): harness sync for reset"`
   - Expected: commit 成功或跳过。
 
 ---

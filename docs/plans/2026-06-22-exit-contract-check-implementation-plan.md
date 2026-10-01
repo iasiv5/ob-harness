@@ -24,8 +24,8 @@
 ## 输入工件
 
 - 设计来源：本会话 grilling 共识 + 两轮评审（F1–F10、R2-1–R2-5）。
-- 领域基线：`CONTEXT.md` 的 `exit-code 契约`、`remedy line`、`function semantic layer`。
-- 已完成副作用（**不在本计划范围**）：`CONTEXT.md` 两处勘误——`function semantic layer`（概念词汇、非结构边界）、`remedy line`（智能 agent 的下一步描述、不锁死 ob、非空且向前看）。
+- 领域基线：`GLOSSARY.md` 的 `exit-code 契约`、`remedy line`、`function semantic layer`。
+- 已完成副作用（**不在本计划范围**）：`GLOSSARY.md` 两处勘误——`function semantic layer`（概念词汇、非结构边界）、`remedy line`（智能 agent 的下一步描述、不锁死 ob、非空且向前看）。
 
 ## 文件结构与职责
 
@@ -290,7 +290,7 @@
   - Change: 拿 Step 1 的 WARN 清单，逐站人工判定：
     - **确认已是向前看 remedy**（如 `Run 'ob …'`、`Ensure 'ob build' …`、`Define QB_MACHINE …`、`Set OB_QEMU_BINARY_URL, or add a line …`、`Or use --all …`、`Specify a machine …` 等）→ 不动。注意有些站点的真 remedy 在**上面一两行**而非扫描器抓到的最近行（如 `ensure_qemu_binary_community` 的 `Set OB_QEMU_BINARY_URL, or add a line …` 在路径续行 `error "  $QEMU_URL_CONFIG_FILE"` 之上）——人工读全上下文，别被扫描器的「最近行」误导。
     - **echo 型 remedy 块**（如 `check_ports_available` 的 `Set a different port: ob start-qemu …` echo 块）→ 已是合法向前看 remedy，扫描器经伴随 error 判绿、判绿正确，**不动**。
-    - **真诊断-only**（只有 `Invalid/Neither/Required tool not found/…` 这类回溯诊断、无任何向前看 remedy）→ 在 exit 前补一条向前看 remedy 行（`error "…"`），遵循 CONTEXT.md `remedy line`（智能 agent 的下一步描述；非空、向前看）。候选优先级（人工定，**非预测**）：要求装工具→`Install '<tool>' on this host, then retry.`；要求 machine→`Run 'ob init <machine>' first.`；要求前置产物→`Run 'ob build' first.`。
+    - **真诊断-only**（只有 `Invalid/Neither/Required tool not found/…` 这类回溯诊断、无任何向前看 remedy）→ 在 exit 前补一条向前看 remedy 行（`error "…"`），遵循 GLOSSARY.md `remedy line`（智能 agent 的下一步描述；非空、向前看）。候选优先级（人工定，**非预测**）：要求装工具→`Install '<tool>' on this host, then retry.`；要求 machine→`Run 'ob init <machine>' first.`；要求前置产物→`Run 'ob build' first.`。
     - 每改一点重跑扫描器，WARN 清单收窄。
     - 仅加/改 remedy 输出行，**不改 exit 码、控制流、其他业务逻辑**。
     - **§2 表头注释对齐（顺手项）**：把 ob 的 §2 表头 `# === §2 通用工具 (Utility / L3) — L3 函数绝不 exit ===` 改成 `# === §2 通用工具 (Utility / L3) — L3 函数绝不 exit（例外：fn_quit / resolve_npm_registry / require_path）===`，与对偶式 Y 强制的例外集一致；同步改 `tools/reorder.py` 的 `titles[2]` 字符串为同款，避免日后重排时把旧表头写回。

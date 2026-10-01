@@ -19,14 +19,14 @@
 - `apply_machine_name` 的 legacy fallback 行为（空 `QB_MACHINE` → `<prefix>-bmc`；nodash → exit 3 + remedy）保持不变。
 - 非 bytedance 的 b865g8 变体（`b865g8` / `b865g8-a2` / `b865g8-iec`）若未在 recipe 显式设 `QB_MACHINE`，将使用 include 链继承的通用机型（如 `ast2700a1-evb`）而非 `<prefix>-bmc`——这是已认可的副作用，不在本计划修复范围。
 - 不新增 ADR；设计推理落 `apply_machine_name` 代码注释 + commit message。
-- `CONTEXT.md` 的 `QEMU launch profile` 术语条目已在 grill 阶段更新（描述当前正确行为，无 ADR 链接），本计划不再改动它。
+- `GLOSSARY.md` 的 `QEMU launch profile` 术语条目已在 grill 阶段更新（描述当前正确行为，无 ADR 链接），本计划不再改动它。
 - 验证命令直接执行、由退出码判读，不得用 `; echo "exit=$?"` 之类让 echo 吞掉真实退出码。
 - "无残留" grep 只扫生产代码 `lib/ ob`——`tests/protocol/qemu_launch_profile_structure.sh` 的结构锁文本预期保留两个旧函数名（用于封口），不计为残留。
 
 ## 输入工件
 
 - grill 共识（`/grill-with-docs` 达成）：删除 override 而非"仅兜底"或"整名探测"；穷举机型取值路径后，删除与"仅兜底"运行时仅在"`QB_MACHINE` 给了 binary 不认的值"一种情况下不同，删除更符合 fail-loud 与事实源单一化。
-- `CONTEXT.md` `QEMU launch profile` / `QB variable` 术语条目（已更新）。
+- `GLOSSARY.md` `QEMU launch profile` / `QB variable` 术语条目（已更新）。
 - 历史背景：override 由 commit `0cae680` 引入，ADR-0007 全文未记录该决策（属实现细节）。
 
 ## 文件结构与职责

@@ -14,7 +14,7 @@
 
 - 设计决策：grilling session Q1-Q7 全部确认
 - ADR：`docs/adr/0001-init-done-marker.md`
-- CONTEXT.md 已更新：新增 `init-done marker` 术语
+- GLOSSARY.md 已更新：新增 `init-done marker` 术语
 
 ## 文件结构与职责
 

@@ -13,7 +13,7 @@
 
 「runtime Git mirror host 提取」当前在 bash 两处各写一遍，逻辑等价（vendor 脚本 `meta-*/git-mirror-url.sh` 的 `GITLAB_IP|GIT_MIRROR_HOST` 优先，fallback 主仓 origin），但实现细节不一致（origin 提取：repo.sh 用 `git remote get-url`，init_pipeline 用 `.git/config` 文件解析）。抽成一个 leaf-pure 原语 `detect_runtime_git_host` 放进 `lib/repo.sh`（与 `normalize_repo_url`/`is_valid_repo_url` 同族），两个调用方各改为一行调用。原语带一次性全局缓存——`clone_sub_repos` 遍历 ~570 个 dep repo，每个含 `${GITLAB_IP}` 的 clone_url 都会触发解析，不缓存会重算 N 次。
 
-领域术语 `runtime Git mirror host` 已补进 `CONTEXT.md`（纯 glossary）。
+领域术语 `runtime Git mirror host` 已补进 `GLOSSARY.md`（纯 glossary）。
 
 ## 全局约束
 
@@ -28,7 +28,7 @@
 ## 输入工件
 
 - 设计决策来自 `/grill-with-docs` 会话（本仓库，2026-07-06）：范围/形状/归属/契约/落地五项已敲定。
-- 领域术语：`CONTEXT.md` → `runtime Git mirror host`、`source manifest`。
+- 领域术语：`GLOSSARY.md` → `runtime Git mirror host`、`source manifest`。
 - 无独立设计文档；本计划即设计落点。
 
 ## 文件结构与职责
@@ -67,7 +67,7 @@
 - Change: 在 `lib/repo.sh` 的 `is_valid_repo_url()` 之后插入下面的函数。
 
 ```bash
-# detect_runtime_git_host — 提取 runtime Git mirror host(术语见 CONTEXT.md)。
+# detect_runtime_git_host — 提取 runtime Git mirror host(术语见 GLOSSARY.md)。
 # vendor 脚本(meta-*/git-mirror-url.sh, legacy github-gitlab-url.sh)的 GIT_MIRROR_HOST/GITLAB_IP 优先;
 # fallback 主仓 origin(git remote get-url)。带一次性全局缓存——clone_sub_repos 遍历 ~570 个 dep repo,
 # 每个 ${GITLAB_IP} clone_url 都会触发解析,不缓存会重算 N 次。leaf-pure:绝不 exit;

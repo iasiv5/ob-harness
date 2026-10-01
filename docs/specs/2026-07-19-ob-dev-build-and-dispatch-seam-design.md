@@ -172,7 +172,7 @@ build 是单次 devtool 调用，**无 reset/finish 的多步 phase**（metadata
 
 ### porcelain stdout 契约（build 新形态）
 
-**build stdout 空**。结果由 exit code 承载（0/1），bitbake 编译 log 走 stderr，agent 定位 `[ERROR]` 行。镜像 `refresh`（空 stdout 已文档化形态），非 reset/finish 的 JSON 形态。详见 [CONTEXT.md](../../CONTEXT.md) `ob dev porcelain stdout` / `ob dev build`。
+**build stdout 空**。结果由 exit code 承载（0/1），bitbake 编译 log 走 stderr，agent 定位 `[ERROR]` 行。镜像 `refresh`（空 stdout 已文档化形态），非 reset/finish 的 JSON 形态。详见 [GLOSSARY.md](../../GLOSSARY.md) `ob dev porcelain stdout` / `ob dev build`。
 
 ### porcelain 不变量（phase-token）
 
@@ -180,7 +180,7 @@ build 是单次 devtool 调用，**无 reset/finish 的多步 phase**（metadata
 
 ### JSON 字节 faithful（Commit A）
 
-新 encoder 的 dict 字段序 + None 强转规则必须与现有 inline python 一致（python `json.dumps` 保插入序）。reset 7 字段序、finish 12 字段序、status JSONL key 集合 `{recipe,srctree}` 逐字保留。CONTEXT.md `ob dev porcelain stdout` 记录的字段集是契约基准。
+新 encoder 的 dict 字段序 + None 强转规则必须与现有 inline python 一致（python `json.dumps` 保插入序）。reset 7 字段序、finish 12 字段序、status JSONL key 集合 `{recipe,srctree}` 逐字保留。GLOSSARY.md `ob dev porcelain stdout` 记录的字段集是契约基准。
 
 ### ADR 关系
 
@@ -229,7 +229,7 @@ build 是单次 devtool 调用，**无 reset/finish 的多步 phase**（metadata
 - `tests/unit/devtool_porcelain.sh`、`tests/orchestration/cmd_dev.sh`、`tests/protocol/usage_dispatch_sync.sh`、`tests/protocol/dev_interactive.exp`（扩/改）
 - `rules/03_WORKSPACE.md`（顺手：lib 目录索引补 `devtool_dispatch.sh` / `devtool_build.sh` 条目）
 - `rules/skills/workflow_02-obmc_dev_modify.md`（补 build 条目：modify→build→finish 内循环 + build porcelain 空 stdout 契约）
-- `CONTEXT.md`（新 `ob dev build` 术语 + 更新 `ob dev porcelain stdout` 补 build 形态）
+- `GLOSSARY.md`（新 `ob dev build` 术语 + 更新 `ob dev porcelain stdout` 补 build 形态）
 - `docs/adr/0010-ob-dev-dispatch-leaf-pure-exit.md`（新）
 
 ## 实施约束（writing-plans 必须遵循）

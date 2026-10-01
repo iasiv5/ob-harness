@@ -2,7 +2,7 @@
 
 ## 目标
 
-把 `ob` 脚本里 4 处手写的"边框 + 3 行重复 `warn`"确认块抽成一个纯视觉函数 `print_confirm_banner "<verb>" "$object"` 复用；并给 2 个破坏性确认缺口（`stop-qemu` 的 `Stop this instance?`、`start-qemu` 内的 `Kill and restart?`）补上同款 banner。banner 只负责视觉强调，**不改动任何确认逻辑**——Y/N 循环、3 秒倒计时、批量循环、`--force` 分支各点自管。术语定义见 `CONTEXT.md` 的 **confirmation banner** 条目。
+把 `ob` 脚本里 4 处手写的"边框 + 3 行重复 `warn`"确认块抽成一个纯视觉函数 `print_confirm_banner "<verb>" "$object"` 复用；并给 2 个破坏性确认缺口（`stop-qemu` 的 `Stop this instance?`、`start-qemu` 内的 `Kill and restart?`）补上同款 banner。banner 只负责视觉强调，**不改动任何确认逻辑**——Y/N 循环、3 秒倒计时、批量循环、`--force` 分支各点自管。术语定义见 `GLOSSARY.md` 的 **confirmation banner** 条目。
 
 非目标：
 - 不动 stale SSH host key 确认点（`ob:3495`，太 minor）。
@@ -20,7 +20,7 @@
 ## 输入工件
 
 - 设计来源：本会话 `/grill-with-docs` 访谈收敛的决策（无独立 design 文档）。
-- 术语：`CONTEXT.md` → **confirmation banner**（已在访谈中落盘）。
+- 术语：`GLOSSARY.md` → **confirmation banner**（已在访谈中落盘）。
 - 改动前基线（已实测）：
   - `grep -c "You are about to" ob` == **12**（4 处 × 3 行）
   - `grep -c "print_confirm_banner" ob` == **0**
@@ -61,7 +61,7 @@
   ```bash
 
   # Print the 3-line confirmation banner (visual only — no confirmation logic).
-  # See CONTEXT.md "confirmation banner". Usage: print_confirm_banner "<verb>" "$object"
+  # See GLOSSARY.md "confirmation banner". Usage: print_confirm_banner "<verb>" "$object"
   print_confirm_banner() {
       local verb="${1:-}"
       local object="${2:-}"

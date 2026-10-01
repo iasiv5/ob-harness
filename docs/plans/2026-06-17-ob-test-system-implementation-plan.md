@@ -16,7 +16,7 @@
 
 - 设计文档：`docs/specs/2026-06-17-ob-test-coverage-design.md`（冻结版，三轮评审）
 - 被测对象：`ob`（4104 行，92 函数，`tools/extract_funcs.py` 可枚举）
-- 术语：见 [CONTEXT.md](../../CONTEXT.md) 的 test layer 词条
+- 术语：见 [GLOSSARY.md](../../GLOSSARY.md) 的 test layer 词条
 
 ## 文件结构与职责
 

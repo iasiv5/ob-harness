@@ -34,7 +34,7 @@
 ## 文件结构与职责
 
 - Create: `lib/util.sh`、`lib/repo.sh`、`lib/qemu.sh`、`lib/init_pipeline.sh`、`lib/commands.sh`
-- Modify: `ob`（入口化）、`tools/exit_contract.py`、`tools/extract_funcs.py`、`tools/ob_check.sh`、`tests/integration/init_dryrun_sanity.sh`、`tests/unit/exit_contract.sh`、`tests/protocol/ob_check_smoke.sh`、`rules/03_WORKSPACE.md`、`CONTEXT.md`
+- Modify: `ob`（入口化）、`tools/exit_contract.py`、`tools/extract_funcs.py`、`tools/ob_check.sh`、`tests/integration/init_dryrun_sanity.sh`、`tests/unit/exit_contract.sh`、`tests/protocol/ob_check_smoke.sh`、`rules/03_WORKSPACE.md`、`GLOSSARY.md`
 - Archive: `tools/reorder.py` → `tools/archive/reorder.py`
 
 环境前提：Linux + bash。所有验证命令沿用仓库惯例（`tools/ob_check.sh`、`tests/run_all.sh`）。**预期"无匹配"的 grep 一律用 `! grep -q` 形式**，避免 `set -e` 把退出码 1（无匹配）当失败。
@@ -295,10 +295,10 @@
 
 ### 阶段 3 · 收尾
 
-### Task 11: 收尾确认 + CONTEXT.md 物化语义
+### Task 11: 收尾确认 + GLOSSARY.md 物化语义
 
-- 目标：确认 `ob` 只剩 §1 + §7；更新 `CONTEXT.md` 的 `function semantic layer` 条目（物化为文件边界）。
-- Files: Modify `CONTEXT.md`
+- 目标：确认 `ob` 只剩 §1 + §7；更新 `GLOSSARY.md` 的 `function semantic layer` 条目（物化为文件边界）。
+- Files: Modify `GLOSSARY.md`
 - 验证范围：`ob` 无 §2–§6 残留；最终全套验证绿。
 
 - [ ] Step 1: 写当前状态检查
@@ -308,10 +308,10 @@
   - Run: `bash tools/ob_check.sh`
   - Expected: 全绿
 - [ ] Step 3: 写最小实现
-  - `CONTEXT.md` 的 `function semantic layer` 条目：从"概念性、非强制结构边界"更新为"已物化为 `lib/*.sh` 文件边界（util/repo/qemu/init_pipeline/commands），`exit_contract` Y 规则按 basename(`util.sh`) 断言"。
-  - Change: CONTEXT.md 术语物化。
+  - `GLOSSARY.md` 的 `function semantic layer` 条目：从"概念性、非强制结构边界"更新为"已物化为 `lib/*.sh` 文件边界（util/repo/qemu/init_pipeline/commands），`exit_contract` Y 规则按 basename(`util.sh`) 断言"。
+  - Change: GLOSSARY.md 术语物化。
 - [ ] Step 4: 运行并确认通过
-  - Run: `grep -A2 'function semantic layer' CONTEXT.md`
+  - Run: `grep -A2 'function semantic layer' GLOSSARY.md`
   - Expected: 含"物化为 lib/\*.sh 文件边界"
   - Run: `bash tests/run_all.sh --full --integration`
   - Expected: 全绿
@@ -335,7 +335,7 @@
 - Run: `! grep -qE '# === §[2-6]' ob` → Expected: 通过（ob 只剩 §1+§7）
 - Run: `ls lib/*.sh` → Expected: `util.sh repo.sh qemu.sh init_pipeline.sh commands.sh` 五文件齐
 - Run: `./ob --help >/dev/null && echo "ob CLI ok"` → Expected: `ob CLI ok`（行为不变）
-- 修改摘要：ob 行数从 4251 降至 ~250；lib/*.sh 五文件承载 §2–§6；reorder.py 归档；exit_contract/extract_funcs/ob_check 多文件化；§3→§5 解耦；CONTEXT.md 物化语义。
+- 修改摘要：ob 行数从 4251 降至 ~250；lib/*.sh 五文件承载 §2–§6；reorder.py 归档；exit_contract/extract_funcs/ob_check 多文件化；§3→§5 解耦；GLOSSARY.md 物化语义。
 
 ## 审阅 Checkpoint
 

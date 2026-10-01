@@ -45,7 +45,7 @@ Deploy 证据规则固定如下：
 
 ## 输入工件
 
-- `CONTEXT.md` 中的 `QEMU launch profile`、`QB variable`、`QEMU manifest`、`exit-code 契约`、`remedy line`
+- `GLOSSARY.md` 中的 `QEMU launch profile`、`QB variable`、`QEMU manifest`、`exit-code 契约`、`remedy line`
 - `docs/adr/0002-qb-variables-via-bitbake-e.md`
 - `docs/adr/0003-ob-first-front-door.md`
 - `docs/adr/0007-qemu-launch-profile-start-qemu-decision-seam.md`
@@ -365,20 +365,20 @@ Deploy 证据规则固定如下：
 
 - 目标：完成 ob/lib 改动后的仓库门禁，并确认 docs/glossary/ADR 与实现命名一致。
 - Files
-  - Inspect: `CONTEXT.md`
+  - Inspect: `GLOSSARY.md`
   - Inspect: `docs/adr/0007-qemu-launch-profile-start-qemu-decision-seam.md`
   - Inspect: `lib/qemu.sh`, `lib/commands.sh`, `tests/**`
 - 验证范围：`tools/ob_check.sh`
 
 #### Step 1: 写当前状态检查或失败检查
 
-- Run: `rg 'QEMU launch profile|resolve_qemu_launch_profile|QEMU_LAUNCH_' CONTEXT.md docs/adr/0007-qemu-launch-profile-start-qemu-decision-seam.md lib/qemu.sh lib/commands.sh tests`
+- Run: `rg 'QEMU launch profile|resolve_qemu_launch_profile|QEMU_LAUNCH_' GLOSSARY.md docs/adr/0007-qemu-launch-profile-start-qemu-decision-seam.md lib/qemu.sh lib/commands.sh tests`
 - Expected: 能看到 glossary、ADR、实现和测试都使用同一命名；如果没有实现命名，说明前序任务未完成。
 
 #### Step 2: 运行并确认当前状态
 
 - Run: `rg 'QEMU metadata|QEMU 启动配置' lib/qemu.sh lib/commands.sh tests docs/adr/0007-qemu-launch-profile-start-qemu-decision-seam.md`
-- Expected: 无不应出现的新命名；`QEMU metadata` 只允许在 `CONTEXT.md` Avoid 或旧报告中出现，不应进入实现和新测试。
+- Expected: 无不应出现的新命名；`QEMU metadata` 只允许在 `GLOSSARY.md` Avoid 或旧报告中出现，不应进入实现和新测试。
 
 #### Step 3: 写最小实现
 

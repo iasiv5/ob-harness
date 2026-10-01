@@ -2,7 +2,7 @@
 
 ## 目标
 
-在 `ob` 脚本中新增 `start-qemu` 和 `stop-qemu` 两个子命令，实现 OpenBMC 构建产物通过 QEMU 仿真真实 BMC 硬件自动启动和安全管理。设计决策已锁定，记录在对话上下文的 14 条决策清单、`CONTEXT.md` 术语表和 `docs/adr/0002-qb-variables-via-bitbake-e.md` 中。
+在 `ob` 脚本中新增 `start-qemu` 和 `stop-qemu` 两个子命令，实现 OpenBMC 构建产物通过 QEMU 仿真真实 BMC 硬件自动启动和安全管理。设计决策已锁定，记录在对话上下文的 14 条决策清单、`GLOSSARY.md` 术语表和 `docs/adr/0002-qb-variables-via-bitbake-e.md` 中。
 
 ## 架构快照
 
@@ -17,13 +17,13 @@
 ## 输入工件
 
 - 14 条锁定决策（对话上下文）
-- `CONTEXT.md` 术语表（已更新）
+- `GLOSSARY.md` 术语表（已更新）
 - `docs/adr/0002-qb-variables-via-bitbake-e.md`（已创建）
 
 ## 文件结构与职责
 
 - Modify: `ob` — 新增 `cmd_start_qemu`、`cmd_stop_qemu`、辅助函数，修改 `usage()`、`parse_args()`、`cmd_menu()`、`cmd_status()`、`main()`
-- Modify: `CONTEXT.md` — 已完成
+- Modify: `GLOSSARY.md` — 已完成
 - Modify: `docs/adr/0002-qb-variables-via-bitbake-e.md` — 已完成
 - Create（运行时）: `workspace/qemu-bin/community/.manifest`
 - Create（运行时）: `workspace/qemu-bin/custom/.manifest`

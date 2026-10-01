@@ -4,7 +4,7 @@
 
 - `cmd_test_qemu`（`lib/qemu_commands.sh`）的前置检查按**缺失时用户修复成本**重排：baseline 谱系+目录检查与凭据检查前移到 QEMU liveness 之前，让结构性缺失（baseline 目录不存在）先于重投入前置（编译 image + 启动 QEMU）暴露。
 - `--dry-run` 豁免 QEMU 相关前置（liveness + port）与凭据检查：dry-run 只验 baseline 资产（AR 列表 + applicability），runner（`tests/baseline/<machine>/runner/run.sh`）的 `DRY_RUN=0` 分支已原生支持无 host/port/凭据，cmd 层解除不必要的严格化。
-- 同步 usage 文案（`ob` 主文件 + `test_qemu_usage`）、protocol 测试、CONTEXT.md `ob test-qemu` 词条。
+- 同步 usage 文案（`ob` 主文件 + `test_qemu_usage`）、protocol 测试、GLOSSARY.md `ob test-qemu` 词条。
 
 ## 架构快照
 
@@ -30,17 +30,17 @@ rc 映射                                  （不动，现状 1090-1100 区域�
 
 - **不建 ADR**（grilling 共识 5）：排序原则写在 `cmd_test_qemu` 前置段块注释，一段话；ADR-0025/0026 不动。
 - **排序原则注释**：前置段注释把"对齐 cmd_smoke"叙事改为"按缺失时用户修复成本排序（结构性/零成本本地检查在前，QEMU 运行态在后）；liveness 段本身与 cmd_smoke 同构"。
-- **remedy line 单步接力契约不变**（CONTEXT.md `remedy line` 词条）：所有 exit 3 复用现有 remedy 文案，不串接多步；不收集式报缺。
+- **remedy line 单步接力契约不变**（GLOSSARY.md `remedy line` 词条）：所有 exit 3 复用现有 remedy 文案，不串接多步；不收集式报缺。
 - **dry-run 成功语义 = exit 0**，对齐 run.sh usage 的 `-d, --dry-run ... exit 0`；不新增 exit 字面量，exit-contract X 规则无新值。
 - **凭据不落 argv 规则不变**（现状评审 🟡2）：凭据仍经 env 注入 runner；dry-run 跳过凭据段时不 export。
-- **CONTEXT.md 只补 dry-run 前置集语义**；"按修复成本排序"是实现细节，不进 glossary。
+- **GLOSSARY.md 只补 dry-run 前置集语义**；"按修复成本排序"是实现细节，不进 glossary。
 - **不动清单**：`cmd_smoke` 代码；machine 为空且无实例时的提示（qemu_commands.sh 现状 945 区域）；`ob:140-145` dispatch 注释；runner（run.sh 及 planner/probe/report）本体；integration 测试。
 - usage heredoc 文案中不新增 "exit code"（带空格）短语，沿用现有 "exits 3" 形态（exit_contract EXIT_RE 不解析 heredoc，纯防御性沿用惯例）。
 
 ## 输入工件
 
 - 设计来源：grill-with-docs 两轮共识（本对话，9 项决策全拍板）
-- 相关既有文档：`CONTEXT.md` 词条 `ob test-qemu` / `remedy line` / `QEMU lifecycle lock`；`docs/adr/0025`、`docs/adr/0026`、`docs/adr/0024`
+- 相关既有文档：`GLOSSARY.md` 词条 `ob test-qemu` / `remedy line` / `QEMU lifecycle lock`；`docs/adr/0025`、`docs/adr/0026`、`docs/adr/0024`
 - 代码锚点：`lib/qemu_commands.sh` 的 `cmd_test_qemu` / `test_qemu_usage` / `test_qemu_resolve_lineage` / `test_qemu_resolve_baseline_dir`（helper 注释现状 834 行区域含已失真的"需先过 liveness"句，随重排更新）
 
 ## 文件结构与职责
@@ -48,7 +48,7 @@ rc 映射                                  （不动，现状 1090-1100 区域�
 - Modify: `lib/qemu_commands.sh` — `cmd_test_qemu` 前置重排 + dry-run 条件化；`test_qemu_usage` 三处文案；`test_qemu_resolve_baseline_dir` 注释更新
 - Modify: `ob` — `test-qemu` 概述行（现状 215）+ Options 段 `<machine>` 行（现状 267）+ Boundary 段（现状 275-278）
 - Test: `tests/protocol/test_qemu_surface.sh` — 头部注释 (2)(4) 更新、用例 (2) 改名、新增用例 (6) baseline-first hermetic 直测、新增用例 (7) dry-run 无 QEMU/无凭据直测
-- Modify: `CONTEXT.md` — `ob test-qemu` 词条（现状 199 行）补 dry-run 前置集语义
+- Modify: `GLOSSARY.md` — `ob test-qemu` 词条（现状 199 行）补 dry-run 前置集语义
 
 无新建文件。四处文件按上述职责独立变化；`lib/qemu_commands.sh` 是行为变更唯一落点，其余三处是配套同步。
 
@@ -188,7 +188,7 @@ rc 映射                                  （不动，现状 1090-1100 区域�
 - 验证范围: `./ob test-qemu --help` 与 `./ob`（命令列表）输出含 dry-run 例外措辞；surface 用例 (1)(5) 不回归。
 - 接口契约:
   - Consumes: Task 3 产出的 dry-run 行为契约（无 QEMU exit 0 列 AR）。
-  - Produces: 面向用户的 dry-run 语义说明（Task 5 的 CONTEXT.md 词条措辞与之保持一致）。
+  - Produces: 面向用户的 dry-run 语义说明（Task 5 的 GLOSSARY.md 词条措辞与之保持一致）。
 
 - [ ] Step 1: 当前状态检查
   - Run: `cd /bmc/iasi/ob-harness && ./ob test-qemu --help | grep -n "dry-run\|RUNNING\|running"; grep -n "on its running QEMU instance" ob | head -2`
@@ -209,27 +209,27 @@ rc 映射                                  （不动，现状 1090-1100 区域�
   - Run: `git add ob lib/qemu_commands.sh && git commit -m "docs(test-qemu): usage copy reflects dry-run precondition exemption"`
   - Expected: commit 成功。
 
-### Task 5: CONTEXT.md ob test-qemu 词条补 dry-run 前置集语义
+### Task 5: GLOSSARY.md ob test-qemu 词条补 dry-run 前置集语义
 
 - 目标：词条（现状 199 行）的"前置是目标 machine 的 QEMU instance 正在跑"句限定为 probe 模式，补 dry-run 前置集分叉。
 - Files:
-  - Modify: `CONTEXT.md`（词条 `**ob test-qemu**`，现状 199 行）
+  - Modify: `GLOSSARY.md`（词条 `**ob test-qemu**`，现状 199 行）
 - 验证范围: grep 词条含新语义句；不新增排序原则相关表述（glossary 边界）。
 - 接口契约:
   - Consumes: Task 3 行为契约、Task 4 用户面措辞（`--dry-run` 语义表述保持一致）。
   - Produces: 无（文档终点任务）。
 
 - [ ] Step 1: 当前状态检查
-  - Run: `cd /bmc/iasi/ob-harness && grep -Fc "前置集按模式分叉" CONTEXT.md; grep -Fc "无需在跑实例" CONTEXT.md`
+  - Run: `cd /bmc/iasi/ob-harness && grep -Fc "前置集按模式分叉" GLOSSARY.md; grep -Fc "无需在跑实例" GLOSSARY.md`
   - Expected: 两计数均为 0（缺失状态）。
 - [ ] Step 2: 确认当前缺失（同上，两计数 0 即证据）
 - [ ] Step 3: 词条更新
   - Change: 199 行 "**probe-only**：不 boot / 不 teardown（无 EXIT trap），前置是目标 machine 的 `QEMU instance` 正在跑——" 改为 "**probe-only**：不 boot / 不 teardown（无 EXIT trap）。前置集按模式分叉：probe 模式前置是目标 machine 的 `QEMU instance` 正在跑（" 后接原文；并在同句号后插入一句："`--dry-run` 是 baseline 资产检查（列 AR + applicability，不 probe），前置集仅 {machine、PyYAML、baseline 谱系+目录}，无需在跑实例、无需凭据（runner `DRY_RUN` 分支同构豁免）。" 保持词条内其余内容（谱系路由、verdict、exit-code 契约段）不动。
 - [ ] Step 4: 运行并确认通过
-  - Run: `cd /bmc/iasi/ob-harness && grep -Fq "前置集按模式分叉" CONTEXT.md && grep -Fq "无需在跑实例" CONTEXT.md && echo ENTRY-OK`
+  - Run: `cd /bmc/iasi/ob-harness && grep -Fq "前置集按模式分叉" GLOSSARY.md && grep -Fq "无需在跑实例" GLOSSARY.md && echo ENTRY-OK`
   - Expected: 输出 `ENTRY-OK`——两个短语各自独立 `grep -Fq` 断言（评审 🟡3：两短语写在同一句，`grep -c` 按行计数必返回 1，用出现计数会假失败）。
 - [ ] Step 5: checkpoint commit
-  - Run: `git add CONTEXT.md && git commit -m "docs(context): ob test-qemu entry — mode-scoped precondition sets (dry-run needs no instance)"`
+  - Run: `git add GLOSSARY.md && git commit -m "docs(context): ob test-qemu entry — mode-scoped precondition sets (dry-run needs no instance)"`
   - Expected: commit 成功。
 
 ### Task 6: 全量自检收尾

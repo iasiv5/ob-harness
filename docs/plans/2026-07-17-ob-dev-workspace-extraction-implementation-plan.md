@@ -19,7 +19,7 @@
 
 - **零行为变化(核心不变量)**:函数体逐字搬移,不改逻辑、不改签名、不改 outvar 协议、不改 mock。每个 task 的验证要能证明调用点行为不变。
 - **leaf-pure module**:新 lib 函数绝不 `exit`;`tools/exit_contract.py` `LEAF_EXIT_EXCEPTIONS_BY_BASENAME` 登记新 basename(例外集 `set()`)。
-- **porcelain stdout 契约**:`ob dev` stdout 只输出数据(`CONTEXT.md` `ob dev porcelain stdout`);本次不碰 porcelain 发布逻辑,搬走的函数仍受约束。
+- **porcelain stdout 契约**:`ob dev` stdout 只输出数据(`GLOSSARY.md` `ob dev porcelain stdout`);本次不碰 porcelain 发布逻辑,搬走的函数仍受约束。
 - **改 `ob`/`lib/*.sh` 后必跑 `tools/ob_check.sh`**(AGENTS.md 约定)。
 - **outvar 名遮蔽陷阱**:组装器用固定 receiver 前缀(`_status_*`/`_resolved_*`);本次逐字搬移不改 outvar 逻辑,不引入新遮蔽。
 - **验证命令退出码归位**:所有 Run 命令必须让真实失败反映为非零退出码——多条验证用累积 `fail` + 末尾 `exit "$fail"`,禁止用末尾 `echo` 吞掉中间 rc;grep 门禁用 `test`/`! grep` 收尾;**grep 计数赋值(`grep -c`/`grep -oE|wc -l`)一律加 `|| true` 吞无匹配**,避免 strict shell(`set -euo pipefail`)下 grep 返回 1 在 `_n=$(...)` 赋值处提前退出、来不及打印计数与比较。
@@ -43,7 +43,7 @@
 - **Modify** `rules/03_WORKSPACE.md` — `lib/` 路由段加两新文件。
 - **Modify** `tests/unit/devtool_modify.sh` — 删搬走的断言,保留 `devtool_modify_run` 断言。
 
-稳定边界(不改):所有消费者调用点、`CONTEXT.md`、冻结 design(`docs/specs/2026-07-13-*`/`2026-07-15-*`)、`ob` 主脚本 loader、`tests/run_all.sh`。
+稳定边界(不改):所有消费者调用点、`GLOSSARY.md`、冻结 design(`docs/specs/2026-07-13-*`/`2026-07-15-*`)、`ob` 主脚本 loader、`tests/run_all.sh`。
 
 ## 任务清单
 
@@ -89,7 +89,7 @@ exit "$fail"
 #   + _devtool_parse_srctree(单条 status→srctree) + _devtool_parse_status_all(全量 status→entries)。
 #   被 devtool_modify/devtool_reset/devtool_search/devtool_status 消费(全局命名空间)。
 #   ob loader(ob:73-76 for f in lib/*.sh)source 全部 lib; bash 函数运行时按名解析,
-#   不依赖 source 顺序(字母序无关——曾误判为约束,已澄清)。术语见 CONTEXT.md function semantic layer / ob dev porcelain stdout。
+#   不依赖 source 顺序(字母序无关——曾误判为约束,已澄清)。术语见 GLOSSARY.md function semantic layer / ob dev porcelain stdout。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev/各 *_run)负责 exit-code/remedy/诊断。
 
 # _devtool_env_exec <machine> <build_dir> <stage_file> <stdout_file> <stderr_file> -- <cmd...>
@@ -147,7 +147,7 @@ _devtool_parse_status_all() {
 #!/usr/bin/env bash
 # lib/devtool_modify.sh — devtool modify 执行(devtool_modify_run;消费 lib/devtool_workspace.sh 的
 #   _devtool_env_exec / _devtool_parse_srctree)。devtool_status_run 暂留本文件,待后续整理。
-# 术语见 CONTEXT.md。Exit: leaf-pure module(函数绝不 exit); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
+# 术语见 GLOSSARY.md。Exit: leaf-pure module(函数绝不 exit); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 ```
 - Change: 新建 workspace.sh(三原语 + SC1091);modify.sh 删三函数 + 文件头更新(原 SC1091 disable 随 env_exec 搬走)。
 
@@ -350,7 +350,7 @@ exit "$fail"
 # lib/devtool_status.sh — devtool status 子命令底层组装器(leaf-pure module)。
 #   devtool_status_run: 经 _devtool_env_exec 跑 devtool status → _devtool_parse_status_all 全量解析 → outvar。
 #   消费 lib/devtool_workspace.sh 的 _devtool_env_exec / _devtool_parse_status_all(全局命名空间)。
-#   ob loader source 全部 lib; bash 运行时按名解析,不依赖 source 顺序。术语见 CONTEXT.md ob dev porcelain stdout。
+#   ob loader source 全部 lib; bash 运行时按名解析,不依赖 source 顺序。术语见 GLOSSARY.md ob dev porcelain stdout。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 
 # devtool_status_run <machine> <build_dir> <entries_outvar> <stage_outvar> <stderr_file_outvar>
@@ -379,7 +379,7 @@ devtool_status_run() {
 ```bash
 #!/usr/bin/env bash
 # lib/devtool_modify.sh — devtool modify 执行(devtool_modify_run;消费 lib/devtool_workspace.sh 的
-#   _devtool_env_exec / _devtool_parse_srctree)。术语见 CONTEXT.md。
+#   _devtool_env_exec / _devtool_parse_srctree)。术语见 GLOSSARY.md。
 # Exit: leaf-pure module(函数绝不 exit); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 ```
 - 新建 `tests/unit/devtool_status.sh`(status_run 三场景断言,从 modify 测试 modify.sh-test:148-178 搬入,含 mock `_devtool_env_exec`):

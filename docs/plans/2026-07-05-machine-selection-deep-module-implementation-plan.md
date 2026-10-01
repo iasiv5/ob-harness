@@ -4,7 +4,7 @@
 
 把"machine 选择"这个被复制 4 遍、且带一个 exit-code 契约 bug 的浅模式，深化成单一深 module `pick_machine`（`lib/machine_picker.sh`）。4 个 `cmd_*` 调用点（`cmd_build` / `cmd_start_qemu` / `cmd_stop_qemu` / `cmd_init`）统一走它；退役 `resolve_machine`（init 旧函数）与 `select_from_list`（零调用者的旧数字原语）；元数据移出选择表；附带修 `cmd_menu` 非交互终端 `exit 1`→`exit 3` 的契约 bug（ADR-0003 回归修正）。过程中先建测试网锁行为，再抽 module 迁移调用点，最后上结构锁清零旧 surface。
 
-设计来源：本仓 grill-with-docs 会话定稿的 Q1-Q8 八条决策。**不新增 ADR**（Q8 决策：machine selection 的"为什么"全可被 `CONTEXT.md` + surface gate 替代，属 ADR 边际价值最低的"部分可替代型"；与 ADR-0006 协同、强化 ADR-0003）。
+设计来源：本仓 grill-with-docs 会话定稿的 Q1-Q8 八条决策。**不新增 ADR**（Q8 决策：machine selection 的"为什么"全可被 `GLOSSARY.md` + surface gate 替代，属 ADR 边际价值最低的"部分可替代型"；与 ADR-0006 协同、强化 ADR-0003）。
 
 ## 架构快照
 
@@ -17,7 +17,7 @@
 ## 输入工件
 
 - 设计：grill-with-docs 会话（本仓当前会话上下文）Q1-Q8 结晶决策。
-- 术语：`CONTEXT.md`（`machine selection` 条目已落盘，与 `machine lifecycle state` 正交）。
+- 术语：`GLOSSARY.md`（`machine selection` 条目已落盘，与 `machine lifecycle state` 正交）。
 - 协同 ADR：ADR-0006（`machine_state` 提供 machine-name list interface，`pick_machine` 消费它）；ADR-0003（exit-code 契约，`cmd_menu` 修正回归它）。
 - 先例：`docs/plans/2026-07-04-qemu-sh-deepening-implementation-plan.md`（同范式：行为锁→抽 module→结构锁）。
 
@@ -33,24 +33,24 @@
 - Modify: `tests/protocol/exit_codes.sh` — 补 machine 选择 exit 码现状锁（回归基线）+ `cmd_menu` 非TTY=exit 3。
 - Modify: `tests/unit/interact.sh` — 删 `select_from_list` 单测段（12-16）+ 文件头注释。
 - Modify: `rules/03_WORKSPACE.md` — `lib/` 路由行加 `machine_picker.sh`。
-- Modify: `CONTEXT.md` — 已落盘 `machine selection` 条目（本计划执行前已修正 `select_from_list` 措辞矛盾）。
+- Modify: `GLOSSARY.md` — 已落盘 `machine selection` 条目（本计划执行前已修正 `select_from_list` 措辞矛盾）。
 
 ## 任务清单
 
 ### Task 0.1: 切 feature 分支 + 首个 commit
 
-- 目标：在独立分支上开工，首个 commit 落下已完成的 `CONTEXT.md` 修订 + 本计划文档。
-- Files: 已 Modify `CONTEXT.md`；已 Create 本计划。
+- 目标：在独立分支上开工，首个 commit 落下已完成的 `GLOSSARY.md` 修订 + 本计划文档。
+- Files: 已 Modify `GLOSSARY.md`；已 Create 本计划。
 - 验证范围：分支存在；首个 commit 含两文件。
 
 - [ ] Step 1: 写当前状态检查
 - Run: `git status --short; git branch --show-current`
-- Expected: 当前在 `main`，`CONTEXT.md` 与 `docs/plans/2026-07-05-machine-selection-deep-module-implementation-plan.md` 显示为变更/新增。
+- Expected: 当前在 `main`，`GLOSSARY.md` 与 `docs/plans/2026-07-05-machine-selection-deep-module-implementation-plan.md` 显示为变更/新增。
 - [ ] Step 2: 确认未在 main 直接动实现
 - Run: 同上。
 - Expected: `main`，尚未开始 Task 1.1 的代码改动。
 - [ ] Step 3: 切分支 + 首个 commit
-- Change: `git checkout -b feature/machine-selection-deepening`；`git add CONTEXT.md docs/plans/2026-07-05-machine-selection-deep-module-implementation-plan.md && git commit`。
+- Change: `git checkout -b feature/machine-selection-deepening`；`git add GLOSSARY.md docs/plans/2026-07-05-machine-selection-deep-module-implementation-plan.md && git commit`。
 - [ ] Step 4: 运行并确认通过
 - Run: `git branch --show-current; git log --oneline -1`
 - Expected: `feature/machine-selection-deepening`；首 commit 为 CONTEXT+计划文档。
@@ -102,7 +102,7 @@ assert_summary
 
 ```bash
 #!/usr/bin/env bash
-# lib/machine_picker.sh — machine selection 交互选择 module。术语见 CONTEXT.md machine selection.
+# lib/machine_picker.sh — machine selection 交互选择 module。术语见 GLOSSARY.md machine selection.
 # Exit: leaf-no-exit（leaf-pure module）; return 0(设 $MACHINE)/2(cancel)/1(read 失败), 绝不 exit.
 
 
@@ -393,14 +393,14 @@ fi
 ## 执行纪律
 
 - 开始实现前先批判性复查整份计划；发现缺项、矛盾、命名不一致或验证命令无效，先修计划再动。
-- **首个 commit**（Task 0.1）：切 `feature/machine-selection-deepening` 分支后，把 main 上已 staged 的 `CONTEXT.md` 修订 + 本计划文档作为首个 commit 落下，再开始 Task 1.1。`main` 不直接动实现。
+- **首个 commit**（Task 0.1）：切 `feature/machine-selection-deepening` 分支后，把 main 上已 staged 的 `GLOSSARY.md` 修订 + 本计划文档作为首个 commit 落下，再开始 Task 1.1。`main` 不直接动实现。
 - 按任务顺序执行，不无声跳步、合并步或改目标；**extract→pin→deepen 顺序不可乱**：Task 1.x（锁行为/抽 module）→ Task 2.x（迁移调用点）→ Task 3.x（退役+结构锁）。
 - 每完成一个任务运行其验证；`tools/ob_check.sh` 是改 `ob`/`lib/*.sh` 后的统一配套自检，多数任务以它收尾。
 - 遇阻塞、重复失败或计划与仓库现实不符（行段漂移、函数名对不上），立即停下说明，**用 grep 重新枚举符号**，不要猜路径或猜命令。
 - 每个 Step 5 的 checkpoint commit 是回滚点；某 Phase 整体退废可 `git reset --hard <该 Phase 前 commit>`。
 - **`exit_contract` 白名单登记**是硬约束：`machine_picker.sh` 登记进 `LEAF_EXIT_EXCEPTIONS_BY_BASENAME`（`set()`，无例外），类比 `machine_state.sh`，让 `check_Y` 守护 `pick_machine` 绝不 exit；若 exit-contract Y 段报 `pick_machine` 误 exit，回 lib 修，**不加例外**到该 set。
 - **surface gate 是硬约束**（Task 3.2 后）：任何后续改动若使 `select_from_list`/`SELECT_FROM_LIST_CHOICE`/`resolve_machine` 在 `lib/*.sh` 复现，gate 立即红，回滚该改动。
-- **不新增 ADR**（Q8 决策，已论证：machine selection 的"为什么"全可被 `CONTEXT.md` + gate 替代）。若执行中冒出"代码无法表达的非显而易见坑"（类比 ADR-0001 的 tee 截断），才考虑补 ADR，否则维持不新增。
+- **不新增 ADR**（Q8 决策，已论证：machine selection 的"为什么"全可被 `GLOSSARY.md` + gate 替代）。若执行中冒出"代码无法表达的非显而易见坑"（类比 ADR-0001 的 tee 截断），才考虑补 ADR，否则维持不新增。
 - off-path（`PIDFILE_*` 收口、git-mirror-url 三处去重、`exit_on_user_cancel` 三段式、status 多实例单行呈现）严禁顺手改。
 
 ## 最终验证

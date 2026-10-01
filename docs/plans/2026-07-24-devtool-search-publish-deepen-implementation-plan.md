@@ -17,7 +17,7 @@
 - **行为不变（逐字搬移）**：publish 的 fail-safe 部分失败语义——meta-先-cache-后（有意的更便宜失败路径）、`meta_published` 标志、cache-mv-fail 时 restore 旧 pair（`_devtool_recipes_restore_file` 尽力、失败 backup retained）、meta-mv-fail 时 `meta_published=0` 走 discard 不碰 cache、诊断文案（`ob dev refresh: ...`）——全部逐字搬移，不改顺序、不改消息、不改变量名。`tests/unit/devtool_search.sh` 的 PATH fake（`FAKE_MV_FAIL_CACHE_PUBLISH`/`FAKE_CP_FAIL_BACKUP`/`FAKE_MV_FAIL_META_RESTORE`/`FAKE_MKTEMP_FAIL_AT`）按参数模式匹配，抽取行为不变 → 参数模式仍命中 → 金标自动锁。**排他锁不变量**：helper 在 refresh 已持有的排他 `flock 9` 临界区内被调（refresh [L362-L467](../../lib/devtool_search.sh#L362-L467) 的 `flock 9 ... } 9>"$lock"` 块内），**不自加锁**——钉死此不变量，防后续误"优化"成 helper 自加锁致双锁/死锁。
 - **coverage 基线不涨**：当前 CI `--fail-if-uncovered 7`（[ob-tests.yml:28](../../.github/workflows/ob-tests.yml#L28)）；`_devtool_recipes_publish_pair` 被 refresh 端到端测试间接覆盖（xtrace 函数级命中），uncovered 保持 ≤7。
 - **不加 surface gate**：私有 helper 单 caller，无跨文件「必经 X」约束要锁，**不动 ob_check.sh**。
-- **不动 CONTEXT/WORKSPACE**：`_devtool_recipes_publish_pair` 是私有实现 seam，非领域概念；领域概念 `recipe metadata cache` 已在 CONTEXT.md，publish 是其 implementation。
+- **不动 CONTEXT/WORKSPACE**：`_devtool_recipes_publish_pair` 是私有实现 seam，非领域概念；领域概念 `recipe metadata cache` 已在 GLOSSARY.md，publish 是其 implementation。
 - **不碰 mktemp 样板**：refresh 入口 [L329-L354](../../lib/devtool_search.sh#L329-L354) 的 4 个失败处理块保持 inline（grilling 判定：4 块差异是「按依赖顺序清理」的正确性核心，抽 helper 行数不减、deletion test 不过、one-adapter）。
 - 无版本/平台额外约束。
 
@@ -25,12 +25,12 @@
 
 - grilling 共识（5 决策点，2026-07-24 本会话，`/grill-with-docs`）：① seam 边界=全吃 staged publish 全链；② 落点=文件内私有 helper；③ 行为契约=照搬 fail-safe 语义；④ 测试=只保留端到端不加直测；⑤ mktemp 样板=不抽。
 - 同构先例：[docs/plans/2026-07-24-image-build-extraction-implementation-plan.md](./2026-07-24-image-build-extraction-implementation-plan.md)（leaf-pure 深 module 抽取 + 行为金标回归锁；区别：image_build 是 public lib module 要登记 exit_contract Y，publish_pair 是私有 helper 不登记）。
-- 领域术语：[CONTEXT.md](../../CONTEXT.md) `recipe metadata cache`。
+- 领域术语：[GLOSSARY.md](../../GLOSSARY.md) `recipe metadata cache`。
 
 ## 文件结构与职责
 
 - Modify: `lib/devtool_search.sh` — 新增 `_devtool_recipes_publish_pair` 私有 helper（插入位置：`devtool_search_read` 函数 [L321](../../lib/devtool_search.sh#L321) 结尾之后、`# devtool_search_refresh` 注释 [L323](../../lib/devtool_search.sh#L323) 之前——紧贴唯一 caller refresh，locality 最好）；`devtool_search_refresh` 的 else 块（[L385-L461](../../lib/devtool_search.sh#L385-L461)）塌成一行调用。
-- 不动：`tools/exit_contract.py`、`tools/ob_check.sh`、`CONTEXT.md`、`rules/03_WORKSPACE.md`、`tests/unit/devtool_search.sh`。
+- 不动：`tools/exit_contract.py`、`tools/ob_check.sh`、`GLOSSARY.md`、`rules/03_WORKSPACE.md`、`tests/unit/devtool_search.sh`。
 
 接口契约：Task 1 产出 `_devtool_recipes_publish_pair`（Consumes 现有 `_devtool_recipes_*` helper + `devtool_recipes_cache_path`/`meta_path`；Produces 私有 helper `_devtool_recipes_publish_pair`），并把 refresh else 块接线到它；Task 2 消费 Task 1 成果做收口验证。
 

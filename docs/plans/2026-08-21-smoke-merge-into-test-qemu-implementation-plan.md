@@ -8,7 +8,7 @@
 2. romulus 与 b865g8-a2-bytedance 各落一份 `ar_probes.d/smoke.yaml`（5 AR）并实测通过。
 3. `ob smoke` 命令、`lib/smoke_assertions.sh`、`ob --help` smoke 段落整段删除，不留别名双轨。
 4. `tools/smoke_diff.py` 重写为消费两份 `--report` JSON；`tools/smoke_regression.sh` temporal gate 保留 caller 侧，改调 `ob test-qemu --suite smoke --report`。
-5. 旧 smoke 测试簇按新语义迁移；CONTEXT.md / ADR-0020/0023/0025 / bestpractice_06 就地修订（活文档原则）。
+5. 旧 smoke 测试簇按新语义迁移；GLOSSARY.md / ADR-0020/0023/0025 / bestpractice_06 就地修订（活文档原则）。
 
 ## 架构快照
 
@@ -71,7 +71,7 @@ AR 命名（两 machine 一致，便于 smoke_diff 配对）：
 | `contexts/baseline/b865g8-a2-bytedance/ar_probes.yaml` | include 追加 smoke.yaml（`schema_version: 2` 不动；auth.ipmi 已在） |
 | `tests/unit/test_qemu_runner.sh`、`tests/protocol/test_runner_contract.sh` | 增 probe-type 分派/兼容矩阵用例 |
 | `tests/protocol/test_qemu_surface.sh` | 增 `--suite smoke` surface 断言 |
-| CONTEXT.md、ADR-0020/0023/0025、`rules/knowhow/bestpractice_06-ob_first.md`、`rules/03_WORKSPACE.md` | 术语/正文就地修订（Task 13） |
+| GLOSSARY.md、ADR-0020/0023/0025、`rules/knowhow/bestpractice_06-ob_first.md`、`rules/03_WORKSPACE.md` | 术语/正文就地修订（Task 13） |
 
 **删除（测试簇）**：`tests/protocol/smoke_exit_contract.sh`、`smoke_surface.sh`、`smoke_substep_isolation.sh`、`smoke_assertions_judgment.sh`、`tests/unit/smoke_verdict.sh`、`smoke_regression_alpha_safety.sh`、`tests/orchestration/smoke_orchestration.sh`、`smoke_regression.sh`、`tests/integration/smoke_e2e.sh`、`smoke_help_clarity.sh`、`tests/fixtures/smoke_help_cases.sh`（与 Task 11 正文清单一致）；`tests/unit/smoke_diff.sh`、`smoke_diff_contract.sh` 改断言格式保留（随 Task 9）；`tests/protocol/start_qemu_noninteractive.sh` 中 smoke 引用按需适配；`tests/protocol/smoke_ob.sh`、`ob_check_smoke.sh` **保留**（通用 sanity，非退役命令）。
 
@@ -215,7 +215,7 @@ bash tools/smoke_regression.sh romulus -- true; echo "exit=$?"
 ### Task 13 — 文档与 ADR 活文档修订
 
 **Produces**（逐项就地修订，不新增 superseded 链）：
-1. CONTEXT.md：`ob smoke` 词条改写为 `smoke suite`（保留 probe-only/regression 归 caller/死实例 exit 3 语义内核）；新增 `probe-type` 词条；`ob test-qemu` 词条删"正交姊妹/不复用 smoke probe 原语"、补 probe-type 与 per-interface auth；`baseline` 词条"与 smoke 正交"句改写。
+1. GLOSSARY.md：`ob smoke` 词条改写为 `smoke suite`（保留 probe-only/regression 归 caller/死实例 exit 3 语义内核）；新增 `probe-type` 词条；`ob test-qemu` 词条删"正交姊妹/不复用 smoke probe 原语"、补 probe-type 与 per-interface auth；`baseline` 词条"与 smoke 正交"句改写。
 2. ADR-0020：正文修订——probe 收编 suite 体系、"零 per-machine"限定为 temporal gate（caller 侧）；ADR-0023：删除"暂缓/等第二个 adapter"结论（已等到，正文改为指向 ADR-0028 的现状）；ADR-0025：v2 增补的"未来收编保持结构统一"句改为"已收编（ADR-0028）"。
 3. 新建 `docs/adr/README.md`：目录索引（含 0028）+ 活文档原则一句（"ADR 是活文档：内容过期就地修订对齐现状，不做 superseded-by 链；新增仍须过 surprising 三重门槛"）。
 4. `rules/knowhow/bestpractice_06-ob_first.md`：删 smoke α exit 1 例外段（38-49 行区域）。
@@ -224,7 +224,7 @@ bash tools/smoke_regression.sh romulus -- true; echo "exit=$?"
 
 **Run/Expected**：
 ```bash
-! grep -rn "ob smoke" CONTEXT.md rules/ docs/adr/ tools/coverage_matrix.md --exclude="0028-*.md" && echo NO-DOC-RESIDUE; grep -q "活文档" docs/adr/README.md && echo DOC-OK
+! grep -rn "ob smoke" GLOSSARY.md rules/ docs/adr/ tools/coverage_matrix.md --exclude="0028-*.md" && echo NO-DOC-RESIDUE; grep -q "活文档" docs/adr/README.md && echo DOC-OK
 ```
 预期：`NO-DOC-RESIDUE` 打印（ADR-0028 是决策记录本身、合法含 "ob smoke"，故 exclude；其余活文档无残留——历史性 docs/plans 不追）；`DOC-OK`。
 

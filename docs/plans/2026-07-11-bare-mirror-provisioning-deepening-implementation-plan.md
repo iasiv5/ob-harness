@@ -50,7 +50,7 @@
 
 - 2026-07-11 架构分析与两轮独立评审共识：性能与回归锁为硬交付，新文件抽取必须通过 interface shrink test。
 - 临时可视化报告：`/home/iasi/.vscode-server-insiders/tmp/tmp_vscode_1/architecture-review-20260711-182742.html`。计划不依赖该临时文件长期存在。
-- 领域术语：`CONTEXT.md` 的 `bare mirror`、`deps.json`、`runtime Git mirror host`、`state file format`、`function semantic layer`、`test layer`。
+- 领域术语：`GLOSSARY.md` 的 `bare mirror`、`deps.json`、`runtime Git mirror host`、`state file format`、`function semantic layer`、`test layer`。
 - 相关 ADR：`docs/adr/0001-init-done-marker.md`、`docs/adr/0005-local-conf-var-detection-exit-code.md`。
 - 相关实践：`rules/skills/bestpractice_09-nonfunctional_regression_locks.md`、`rules/skills/bestpractice_10-deep_module_extraction.md`。
 - 无独立设计 spec；本计划记录已批准的实施边界与验收契约。
@@ -88,7 +88,7 @@
 - **Modify**: `tools/coverage_matrix.md`
   - init 行登记 module interface 与行为/成本测试。
   - 路径推导行移除 `derive_bitbake_git_mirror_path`。
-- **Modify**: `CONTEXT.md`
+- **Modify**: `GLOSSARY.md`
   - 登记 `bare mirror provisioning`，明确 module ownership、非致命失败语义与 report interface。
   - 更新 `function semantic layer` 的 `lib/*.sh` 列表。
 - **Modify**: `rules/03_WORKSPACE.md`
@@ -339,7 +339,7 @@ write_deps_fixture() {
 - Change: 新建 `lib/bare_mirror.sh`，文件头明确：
 ```bash
 #!/usr/bin/env bash
-# lib/bare_mirror.sh - bare mirror provisioning + per-run report state. See CONTEXT.md.
+# lib/bare_mirror.sh - bare mirror provisioning + per-run report state. See GLOSSARY.md.
 # Exit: leaf-pure module (functions never exit; file/process/network side effects are allowed).
 ```
 - Change: module 内包含：
@@ -404,7 +404,7 @@ write_deps_fixture() {
 - **Files**:
   - Modify: `tools/ob_check.sh`
   - Modify: `tools/coverage_matrix.md`
-  - Modify: `CONTEXT.md`
+  - Modify: `GLOSSARY.md`
   - Modify: `rules/03_WORKSPACE.md`
   - Modify: `rules/skills/workflow_01-obmc_env_init.md`
 - **接口契约**:
@@ -445,8 +445,8 @@ grep -q "bare mirror legacy state surface still in use" "$output"
 
 - [ ] **Step 3: 更新领域模型与文件路由**
 - Change:
-  1. `CONTEXT.md` 新增 `bare mirror provisioning`：定义其消费 `deps.json`、使用 effective `DL_DIR/git2`、拥有 URL expansion/rewrite/gitsrcname/clone/disposition/report state；individual clone failure 非致命；与 `source manifest`、`machine snapshot` 正交。
-  2. `CONTEXT.md:function semantic layer` 的 module 列表加入 `bare_mirror.sh`，标注 leaf-pure no-direct-exit。
+  1. `GLOSSARY.md` 新增 `bare mirror provisioning`：定义其消费 `deps.json`、使用 effective `DL_DIR/git2`、拥有 URL expansion/rewrite/gitsrcname/clone/disposition/report state；individual clone failure 非致命；与 `source manifest`、`machine snapshot` 正交。
+  2. `GLOSSARY.md:function semantic layer` 的 module 列表加入 `bare_mirror.sh`，标注 leaf-pure no-direct-exit。
   3. `rules/03_WORKSPACE.md` 的 `ob` 模块化主体路由加入 `bare_mirror.sh` 及职责。
   4. 不创建 ADR；本次不改变跨 module 的持久化或 command-level 决策，仅深化已有 Step 5 implementation。
 
@@ -457,7 +457,7 @@ grep -q "bare mirror legacy state surface still in use" "$output"
   3. `tools/coverage_matrix.md` 横切“路径推导”行删除 `derive_bitbake_git_mirror_path`，保留其他函数。
 
 - [ ] **Step 5: 运行长期知识与门禁验证**
-- Run: `grep -n 'bare mirror provisioning' CONTEXT.md && grep -n 'bare_mirror.sh' rules/03_WORKSPACE.md rules/skills/workflow_01-obmc_env_init.md tools/coverage_matrix.md`
+- Run: `grep -n 'bare mirror provisioning' GLOSSARY.md && grep -n 'bare_mirror.sh' rules/03_WORKSPACE.md rules/skills/workflow_01-obmc_env_init.md tools/coverage_matrix.md`
 - Expected: canonical term、路由、rewrite 维护位置和 coverage 声明均命中。
 - Run: `! grep -RIn 'clone_sub_repos.*_url_rewrites\|derive_bitbake_git_mirror_path' rules/skills/workflow_01-obmc_env_init.md tools/coverage_matrix.md`
 - Expected: 退出 0，无旧维护指引或旧 helper 声明。
@@ -465,7 +465,7 @@ grep -q "bare mirror legacy state surface still in use" "$output"
 - Expected: 全部静态检查绿，含新 surface gate。
 
 - [ ] **Step 6: 可选 checkpoint commit**
-- Run: `git add tools/ob_check.sh tools/coverage_matrix.md CONTEXT.md rules/03_WORKSPACE.md rules/skills/workflow_01-obmc_env_init.md && git diff --cached --name-only && git commit -m "docs(architecture): register bare mirror provisioning module"`
+- Run: `git add tools/ob_check.sh tools/coverage_matrix.md GLOSSARY.md rules/03_WORKSPACE.md rules/skills/workflow_01-obmc_env_init.md && git diff --cached --name-only && git commit -m "docs(architecture): register bare mirror provisioning module"`
 - Expected: 暂存区只含五个文件，commit 成功。
 
 ### Task 6: 最终验证与证据收口

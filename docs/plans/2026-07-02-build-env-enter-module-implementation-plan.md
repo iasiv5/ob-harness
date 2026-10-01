@@ -13,7 +13,7 @@
 - `bitbake_env.sh` = one-shot 查询，把 `source setup` 关在子进程 `( )` 里**隔离副作用**，pure、leaf-pure。
 - `build_env.sh`（本计划）= current-shell 进入，`source setup` 的副作用（cwd 漂移到 build dir、shell 变量）**刻意留在当前 shell** 供后续 `bitbake` 消费，有副作用、leaf-no-exit。
 
-对偶轴是「隔离 vs 泄漏」，术语已落 [CONTEXT.md](../../../CONTEXT.md) `current-shell build environment` 条目。
+对偶轴是「隔离 vs 泄漏」，术语已落 [GLOSSARY.md](../../../GLOSSARY.md) `current-shell build environment` 条目。
 
 interface 形状（grill 已定）：
 
@@ -47,12 +47,12 @@ build_env_enter() {                    # lib/build_env.sh, leaf-no-exit
 5. **失败语义**：silent 返回码（custom 不可靠）+ stderr 透传。
 6. **测试**：orchestration 行为测试 + protocol 结构回归锁（对齐 `machine_state`/`qemu profile` 两次收口的做法，[bestpractice_09](../../../rules/skills/bestpractice_09-nonfunctional_regression_locks.md)）。
 
-**ADR 评估**：hard-to-reverse 偏弱（代码可 git 回滚）、surprising 成立（未来 explorer 易想合并这两个文件）、real trade-off 成立。按项目「ADR 严格卡门槛」原则，(1) 不过线，**不起 ADR**；split 理由由 [CONTEXT.md](../../../CONTEXT.md) 对偶条目承载。若评审认为 split 理由足够 surprising 值得防 re-litigate，可补轻 ADR。
+**ADR 评估**：hard-to-reverse 偏弱（代码可 git 回滚）、surprising 成立（未来 explorer 易想合并这两个文件）、real trade-off 成立。按项目「ADR 严格卡门槛」原则，(1) 不过线，**不起 ADR**；split 理由由 [GLOSSARY.md](../../../GLOSSARY.md) 对偶条目承载。若评审认为 split 理由足够 surprising 值得防 re-litigate，可补轻 ADR。
 
 ## 输入工件
 
 - 设计：本仓库 `improve-codebase-architecture` + `grill-with-docs` 会话（决策见上）。
-- 术语：[CONTEXT.md](../../../CONTEXT.md) `current-shell build environment` / `BitBake environment support module`（已落）。
+- 术语：[GLOSSARY.md](../../../GLOSSARY.md) `current-shell build environment` / `BitBake environment support module`（已落）。
 - 先例计划：[docs/plans/2026-07-02-bitbake-env-one-shot-implementation-plan.md](2026-07-02-bitbake-env-one-shot-implementation-plan.md)（one-shot 查询那一半，本计划是其对偶收口）。
 - 事实依据：`workspace/openbmc/setup`（custom，含 `iec-set-env`）与 `ob-harness-community/workspace/openbmc/setup`（community）两份脚本行为差异。
 
@@ -151,7 +151,7 @@ build_env_enter() {                    # lib/build_env.sh, leaf-no-exit
   # lib/build_env.sh — current-shell build environment 进入原语.
   # Leaf module: 函数绝不 exit (leaf-no-exit), 调用者负责 exit-code/remedy/诊断.
   # 有副作用 (cd OPENBMC_DIR + source setup), 刻意非 pure — 与 lib/bitbake_env.sh
-  # 的子进程隔离查询对偶 (泄漏 vs 隔离). 术语见 CONTEXT.md `current-shell build environment`.
+  # 的子进程隔离查询对偶 (泄漏 vs 隔离). 术语见 GLOSSARY.md `current-shell build environment`.
 
   build_env_enter() {
       local machine="$1" build_dir="$2"

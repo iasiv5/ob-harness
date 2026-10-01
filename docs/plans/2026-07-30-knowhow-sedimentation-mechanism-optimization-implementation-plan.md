@@ -30,7 +30,7 @@
 - know-how 写作遵循 `rules/knowhow/bestpractice_01-knowhow_writing.md`（结果确定性、enabling 非 SOP）；行数 > 100 必须有 `## TL;DR`（ADR-0015 生产者硬义务）。
 - 改 `rules/knowhow/` 后必须跑 `tools/ob_check.sh`（AGENTS.md 要求；含 know-how TL;DR hard gate）。
 - ADR 格式参考 `docs/adr/0015-*.md`（标题→叙事→`Status: accepted`→Context→Considered Options→Consequences）。
-- CONTEXT.md 术语格式：`**term**:` + 定义段 + `_Avoid_:` 同义词，扁平挂于 `## Language` 下。
+- GLOSSARY.md 术语格式：`**term**:` + 定义段 + `_Avoid_:` 同义词，扁平挂于 `## Language` 下。
 - 所有改动在 working tree，可回滚；门禁/边界一旦生效成为持续义务，故核心决策落 ADR-0017。
 - 命令环境：Linux bash（当前平台）；验证命令均为仓库根目录下的 git/grep/wc/ob_check。
 
@@ -54,7 +54,7 @@
 - `rules/axioms/t09_data_strategy_mdp.md` —— 移除"参见 wf_03"单向引用。`[待执行]`
 - `rules/05_KNOWHOW_INDEX.md` —— wf_03 入口替换为 workflow_04 入口。`[待执行]`
 - `rules/knowhow/bestpractice_02-ai_programming_mindset.md` —— 拆解瘦身。`[待执行]`
-- `CONTEXT.md` —— 加 product/user know-how 等术语。`[待执行]`
+- `GLOSSARY.md` —— 加 product/user know-how 等术语。`[待执行]`
 - `.gitignore` —— 加 `contexts/knowhow/` 排除规则。`[待执行]`
 - `rules/06_AXIOMS_INDEX.md`、`rules/01_SOUL.md`、`AGENTS.md` —— axioms 措辞去个人化。`[待执行]`
 - `periodic_jobs/ai_heartbeat/docs/KNOWLEDGE_BASE.md` —— reflector/observer 边界显式化（§4.2/§2.2）。`[待执行]`
@@ -106,7 +106,7 @@
     - `.claude/commands/sediment.md`（无 frontmatter）：`# Sediment (Claude Code Entry)` + 一句"本文件只负责引用执行合同" + `## 执行合同` 段：读取 `rules/knowhow/workflow_04-manual_sedimentation.md` 按四步执行 + 两条要点（先判 product/user；判/写必须人，本命令只提供路径编排）+ 不跳过收口
     - `.github/prompts/sediment.prompt.md`（带 `--- agent: agent / description: 手动经验沉淀入口 ---` frontmatter）：标题 `# Sediment (Copilot Entry)` + 正文同 Claude Code 版
 - Step 5: 改动后验证（F1：不卡 100，只验 TL;DR 存在性）
-  - Run: `grep -rn "workflow_03\|knowledge_flywheel\|知识飞轮" --include="*.md" --exclude-dir=workspace --exclude-dir=docs rules/ AGENTS.md CONTEXT.md .claude/ .github/`
+  - Run: `grep -rn "workflow_03\|knowledge_flywheel\|知识飞轮" --include="*.md" --exclude-dir=workspace --exclude-dir=docs rules/ AGENTS.md GLOSSARY.md .claude/ .github/`
   - Expected: 无输出
   - Run: `grep -c "^## TL;DR" rules/knowhow/workflow_04-manual_sedimentation.md && wc -l rules/knowhow/workflow_04-manual_sedimentation.md`
   - Expected: TL;DR 计数 = 1；行数报告值（记录，**不卡 100**——编排层尽量薄但不以此阻塞）
@@ -141,19 +141,19 @@
   - Run: `grep -c "D[1-5]" docs/adr/0017-knowhow-distribution-boundary.md`
   - Expected: ≥5（5 个决策点）
 
-### Task 3: CONTEXT.md 加分发维度术语（grilling 共识待确认） `[待执行]`
+### Task 3: GLOSSARY.md 加分发维度术语（grilling 共识待确认） `[待执行]`
 
 - 目标：把分发维度术语补进 glossary（当前 47 条全为 ob 代码层，零知识体系术语）。
-- 涉及文件：`CONTEXT.md`（`## Language` 段末尾追加）。
+- 涉及文件：`GLOSSARY.md`（`## Language` 段末尾追加）。
 - 接口契约：
   - Consumes: ADR-0017（Task 2 产出）的决策口径。
   - Produces: glossary 新增术语，供 workflow_04 / KNOWLEDGE_BASE 引用。
 - 验证范围：新术语存在且 `_Avoid_` 标注术语冲突（OEM/dispatch）。
 - Step 1: 改动前检查
-  - Run: `grep -nE "product know-how|user know-how|ship with product|自动化天花板" CONTEXT.md`
+  - Run: `grep -nE "product know-how|user know-how|ship with product|自动化天花板" GLOSSARY.md`
   - Expected: 无输出（术语缺席）
 - Step 2: 确认当前状态
-  - Run: `grep -c "^\*\*" CONTEXT.md`
+  - Run: `grep -c "^\*\*" GLOSSARY.md`
   - Expected: 当前 glossary 条目数（基线 ≈47）
 - Step 3: 追加术语
   - Change: 在 `## Language` 段末尾追加（每条 `**term**:` + 定义 + `_Avoid_:`）：
@@ -163,7 +163,7 @@
     - **自动化天花板**: 经验沉淀中自动化不可越过的边界。两层：内容天花板 = product/user 边界（自动化只产 product）；环节天花板 = 沉淀四环节中仅"触发 + 机械收口"可自动化，"判所有权 + 写作"必须 manual-in-the-loop。
     - **contexts/knowhow（user 载体）**: user know-how 的物理落点，`contexts/` 下与 `memory/`（动态观测）平级，gitignore 不入上游。
 - Step 4: 改动后验证
-  - Run: `grep -nE "^\*\*product know-how\*\*|^\*\*user know-how\*\*|^\*\*ship with product\*\*|^\*\*自动化天花板\*\*" CONTEXT.md`
+  - Run: `grep -nE "^\*\*product know-how\*\*|^\*\*user know-how\*\*|^\*\*ship with product\*\*|^\*\*自动化天花板\*\*" GLOSSARY.md`
   - Expected: 4 条新术语各命中 1 次
 
 ### Task 4: user 层载体落地（grilling 共识待确认） `[已执行·v4 增补 user INDEX]`
@@ -285,7 +285,7 @@
 
 - Run: `tools/ob_check.sh`
   - Expected: 全绿（extract_funcs / surface gates / know-how TL;DR gate / shellcheck baseline / exit-contract / run_all / drift advisory 全过）
-- Run: `grep -rn "workflow_03\|knowledge_flywheel\|知识飞轮" --include="*.md" --exclude-dir=workspace --exclude-dir=docs rules/ AGENTS.md CONTEXT.md .claude/ .github/ periodic_jobs/`
+- Run: `grep -rn "workflow_03\|knowledge_flywheel\|知识飞轮" --include="*.md" --exclude-dir=workspace --exclude-dir=docs rules/ AGENTS.md GLOSSARY.md .claude/ .github/ periodic_jobs/`
   - Expected: 无输出（wf_03 彻底清除，含 ai-heartbeat 文档）
 - Run: `git check-ignore contexts/knowhow/_probe.md 2>/dev/null && echo "user-layer-isolated-ok"; git status --short`
   - Expected: 输出 `user-layer-isolated-ok`；working tree 改动清单符合预期

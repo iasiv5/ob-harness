@@ -3,16 +3,16 @@
 ## 目标
 
 - 清除 ob 入口与 lib 文件头里残留的 § 分区编号(单文件时代的注释锚点,拆分 lib 后已退役但未清扫,且 bitbake_env/build_env/machine_state 后加文件未标、已自相矛盾)
-- 把 8 个 `lib/*.sh` 文件头统一成同一个 **2 行中文模板**(职责+CONTEXT.md 指针 / Exit 契约),顺带修掉语言(中/英/混)、"被 ob source"表述的不一致
+- 把 8 个 `lib/*.sh` 文件头统一成同一个 **2 行中文模板**(职责+GLOSSARY.md 指针 / Exit 契约),顺带修掉语言(中/英/混)、"被 ob source"表述的不一致
 - Exit 字段按 `exit_contract.py` 权威**三态分类**(leaf-pure / direct-exit / exit seam)填写,不再凭注释臆测;util 列全三个例外
-- 让 basename 权威清单只有 `exit_contract.py` 一个源:CONTEXT.md 与 WORKSPACE.md 都不维护文字 basename 副本
-- 重写 CONTEXT.md `function semantic layer` 词条:区分"函数角色轴(L1/L2/L3)"与"文件级 exit 契约轴"两条正交轴;澄清 `leaf-pure` 只指 no-direct-exit、不指函数纯度;定义三态术语
+- 让 basename 权威清单只有 `exit_contract.py` 一个源:GLOSSARY.md 与 WORKSPACE.md 都不维护文字 basename 副本
+- 重写 GLOSSARY.md `function semantic layer` 词条:区分"函数角色轴(L1/L2/L3)"与"文件级 exit 契约轴"两条正交轴;澄清 `leaf-pure` 只指 no-direct-exit、不指函数纯度;定义三态术语
 - 保留"解释为什么不用 §"的决策理由注释与冻结历史
 
 ## 架构快照
 
 - **统一模板(2 行,中文)**:
-  - 第 1 行 `# lib/<name>.sh — <职责>. 术语见 CONTEXT.md <词条>.`(职责描述按需点明该模块的副作用性质,如 build_env 的"cd+source 副作用留在当前 shell"、bitbake_env 的"子进程隔离不泄漏")
+  - 第 1 行 `# lib/<name>.sh — <职责>. 术语见 GLOSSARY.md <词条>.`(职责描述按需点明该模块的副作用性质,如 build_env 的"cd+source 副作用留在当前 shell"、bitbake_env 的"子进程隔离不泄漏")
   - 第 2 行 `# Exit: <契约>[; 调用者负责 exit-code/remedy].`
 - **Exit 三态分类**(文件级,以 `exit_contract.py` 为权威):
   - `leaf-no-exit（leaf-pure module）`:Y 规则覆盖、函数不直接 exit(util/bitbake_env/build_env/machine_state);util 列例外 fn_quit/resolve_npm_registry/require_path
@@ -22,7 +22,7 @@
 - **leaf-pure 术语澄清**(回应评审 🔴):`leaf-pure` 只表示"Y 规则覆盖的 no-direct-exit module",**不指函数纯度**——leaf-pure module 的函数仍可有文件/进程/网络副作用(如 build_env 的 cd+source、machine_state 写 snapshot)。这消除 build_env "leaf-pure + 有副作用"的表面冲突
 - **两条正交轴**:函数角色轴(L1 cmd_* / L2 前置检查 / L3 底层工具) ≠ 文件级 exit 契约轴。一个文件可含多种角色函数;exit 契约按整文件归类
 - 砍掉"被 ob source"全称命题(8 文件都成立),改由 ob 入口 source 区一行注释统一声明
-- § 编号作为模板统一的副产品被消除;CONTEXT.md 保留 1 处"曾用 § 锚点"历史括注
+- § 编号作为模板统一的副产品被消除;GLOSSARY.md 保留 1 处"曾用 § 锚点"历史括注
 
 ## 输入工件
 
@@ -37,7 +37,7 @@
 - Modify: `ob`(入口 3 处注释:去 §1/§7 编号 + source 区改权威声明)
 - Modify: `lib/util.sh` `lib/repo.sh` `lib/qemu.sh` `lib/init_pipeline.sh` `lib/commands.sh` `lib/machine_state.sh` `lib/bitbake_env.sh` `lib/build_env.sh`(文件头套统一 2 行模板,Exit 三态)
 - Modify: `lib/util.sh` `detect_harness_root()` 定义处(下沉 OB_ENTRY_DIR 耦合注释)
-- Modify: `CONTEXT.md`(`function semantic layer` 词条重写:双轴正交 + 三态术语 + leaf-pure 澄清 + 指向 exit_contract.py)
+- Modify: `GLOSSARY.md`(`function semantic layer` 词条重写:双轴正交 + 三态术语 + leaf-pure 澄清 + 指向 exit_contract.py)
 - Modify: `rules/03_WORKSPACE.md:8`(leaf-pure basename 文字罗列改为指向 exit_contract.py 配置)
 - Modify: `tests/unit/exit_contract.sh`(注释 §2 → util.sh)
 - 不动(显式保留): `tools/exit_contract.py:156` / `tools/extract_funcs.py:43`(决策理由) / `tools/archive/reorder.py`(冻结历史)
@@ -89,7 +89,7 @@
 
   `lib/util.sh` 行 2-3 替换为:
   ```
-  # lib/util.sh — 底层通用工具(log/select_from_list/read_kv_field/require_path). 术语见 CONTEXT.md function semantic layer.
+  # lib/util.sh — 底层通用工具(log/select_from_list/read_kv_field/require_path). 术语见 GLOSSARY.md function semantic layer.
   # Exit: leaf-no-exit（leaf-pure module; 例外 fn_quit/resolve_npm_registry/require_path 可 direct exit, require_path 使用 caller code）; 调用者负责 exit-code/remedy.
   ```
   并在 `detect_harness_root()` 定义行(约 277,先 `grep -n 'detect_harness_root()' lib/util.sh` 定位)上方加:
@@ -99,25 +99,25 @@
 
   `lib/repo.sh` 行 2 替换为:
   ```
-  # lib/repo.sh — 仓库与 machine 解析(require_openbmc_repo/write_source_manifest). 术语见 CONTEXT.md source manifest.
+  # lib/repo.sh — 仓库与 machine 解析(require_openbmc_repo/write_source_manifest). 术语见 GLOSSARY.md source manifest.
   # Exit: direct-exit module（非 leaf-pure, 使用 exit-code 契约值 0/1/2/3）.
   ```
 
   `lib/qemu.sh` 行 2 替换为:
   ```
-  # lib/qemu.sh — QEMU runtime(binary/firmware/ports/SoC/pid/hostkey). 术语见 CONTEXT.md QEMU launch profile / QEMU manifest.
+  # lib/qemu.sh — QEMU runtime(binary/firmware/ports/SoC/pid/hostkey). 术语见 GLOSSARY.md QEMU launch profile / QEMU manifest.
   # Exit: direct-exit module（非 leaf-pure, 使用 exit-code 契约值 0/1/2/3）.
   ```
 
   `lib/init_pipeline.sh` 行 2 替换为:
   ```
-  # lib/init_pipeline.sh — init 流水线(clone/snapshot/config). 术语见 CONTEXT.md.
+  # lib/init_pipeline.sh — init 流水线(clone/snapshot/config). 术语见 GLOSSARY.md.
   # Exit: direct-exit module（非 leaf-pure, 使用 exit-code 契约值 0/1/2/3）.
   ```
 
   `lib/commands.sh` 行 2 替换为:
   ```
-  # lib/commands.sh — cmd_* 命令编排(status/init/build/start-qemu/stop-qemu/menu). 术语见 CONTEXT.md function semantic layer / exit-code 契约.
+  # lib/commands.sh — cmd_* 命令编排(status/init/build/start-qemu/stop-qemu/menu). 术语见 GLOSSARY.md function semantic layer / exit-code 契约.
   # Exit: exit seam（L1 cmd_* 顶层编排, 使用 exit-code 契约值 0/1/2/3）.
   ```
 
@@ -151,19 +151,19 @@
 
   `lib/machine_state.sh` 行 2-3 替换为:
   ```
-  # lib/machine_state.sh — machine lifecycle state(snapshot/init marker/build artifact 读写). 术语见 CONTEXT.md machine lifecycle state.
+  # lib/machine_state.sh — machine lifecycle state(snapshot/init marker/build artifact 读写). 术语见 GLOSSARY.md machine lifecycle state.
   # Exit: leaf-no-exit（leaf-pure module）; 调用者负责 exit-code/remedy.
   ```
 
   `lib/bitbake_env.sh` 行 2-3 替换为:
   ```
-  # lib/bitbake_env.sh — BitBake environment one-shot 查询(子进程隔离, 副作用不泄漏到当前 shell). 术语见 CONTEXT.md BitBake environment support module.
+  # lib/bitbake_env.sh — BitBake environment one-shot 查询(子进程隔离, 副作用不泄漏到当前 shell). 术语见 GLOSSARY.md BitBake environment support module.
   # Exit: leaf-no-exit（leaf-pure module）; 调用者负责 exit-code/remedy/诊断.
   ```
 
   `lib/build_env.sh` 行 2-5 替换为:
   ```
-  # lib/build_env.sh — current-shell build environment 进入原语(cd+source setup, 副作用刻意留在当前 shell, 与 bitbake_env 子进程隔离对偶). 术语见 CONTEXT.md current-shell build environment.
+  # lib/build_env.sh — current-shell build environment 进入原语(cd+source setup, 副作用刻意留在当前 shell, 与 bitbake_env 子进程隔离对偶). 术语见 GLOSSARY.md current-shell build environment.
   # Exit: leaf-no-exit（leaf-pure module）; 调用者负责 exit-code/remedy/诊断.
   ```
 
@@ -176,16 +176,16 @@
 - [ ] Step 4: 可选 checkpoint commit
 - Run: `git add lib/machine_state.sh lib/bitbake_env.sh lib/build_env.sh && git commit -m "refactor(lib): machine_state/bitbake_env/build_env 文件头归一 2 行模板; 副作用信息融入职责行"`
 
-### Task 4: 重写 CONTEXT.md function semantic layer 词条
+### Task 4: 重写 GLOSSARY.md function semantic layer 词条
 
 - 目标:双轴正交(函数角色 vs 文件级 exit 契约);定义三态术语(leaf-pure / direct-exit module / exit seam);澄清 leaf-pure 只指 no-direct-exit、不指函数纯度(消除 build_env "leaf-pure+有副作用"冲突);basename 指向 exit_contract.py 不罗列;压 § 历史
-- Files: `CONTEXT.md`(`function semantic layer` 词条,约 75-77 行)
+- Files: `GLOSSARY.md`(`function semantic layer` 词条,约 75-77 行)
 - 验证范围: 新词条含"函数角色轴"+"文件级 exit 契约轴"+三态术语+leaf-pure 不指纯度的澄清;不含文件枚举/basename 罗列;保留"曾用 §"括注;其他词条未动
 
 - [ ] Step 1: 改动前检查
-- Run: `grep -n 'function semantic layer' CONTEXT.md`
+- Run: `grep -n 'function semantic layer' GLOSSARY.md`
 - Expected: 命中词条起始行(约 75)
-- Run: `grep -c 'bitbake_env.sh / util.sh / machine_state.sh' CONTEXT.md`
+- Run: `grep -c 'bitbake_env.sh / util.sh / machine_state.sh' GLOSSARY.md`
 - Expected: 1(过时 basename 罗列仍在)
 
 - [ ] Step 2: 写最小实现
@@ -198,17 +198,17 @@
   ```
 
 - [ ] Step 3: 改动后验证
-- Run: `sed -n '75,77p' CONTEXT.md`
+- Run: `sed -n '75,77p' GLOSSARY.md`
 - Expected: 新词条含"函数角色轴,与文件级 exit 契约轴正交"、"三态"、"leaf-pure...不指函数纯度"、"direct-exit module"、"exit seam"、"曾用 § 注释分区锚点,因会漂移已退役"
-- Run: `grep -c 'bitbake_env.sh / util.sh / machine_state.sh' CONTEXT.md`
+- Run: `grep -c 'bitbake_env.sh / util.sh / machine_state.sh' GLOSSARY.md`
 - Expected: 0
-- Run: `grep -c 'lib/{util,repo,bitbake_env' CONTEXT.md`
+- Run: `grep -c 'lib/{util,repo,bitbake_env' GLOSSARY.md`
 - Expected: 0
-- Run: `git diff --stat CONTEXT.md`
+- Run: `git diff --stat GLOSSARY.md`
 - Expected: 仅 function semantic layer 词条区域变动
 
 - [ ] Step 4: 可选 checkpoint commit
-- Run: `git add CONTEXT.md && git commit -m "docs(context): function semantic layer 词条重写—双轴正交+三态(leaf-pure/direct-exit/exit seam)+leaf-pure 不指纯度澄清"`
+- Run: `git add GLOSSARY.md && git commit -m "docs(context): function semantic layer 词条重写—双轴正交+三态(leaf-pure/direct-exit/exit seam)+leaf-pure 不指纯度澄清"`
 
 ### Task 5: WORKSPACE.md leaf-pure basename 罗列改指向
 
@@ -282,8 +282,8 @@
 - Run: `grep -rn '§' tools/exit_contract.py rules/03_WORKSPACE.md tools/extract_funcs.py`
 - Expected: exit_contract.py:156 与 extract_funcs.py:43 保留命中;WORKSPACE.md 的 § 命中仅剩 reorder.py 归档句"文件边界接管 § 分区"。确认决策理由未被误删
 
-- Run: `! grep -R 'bitbake_env.sh/util.sh/machine_state.sh' CONTEXT.md rules/03_WORKSPACE.md`
+- Run: `! grep -R 'bitbake_env.sh/util.sh/machine_state.sh' GLOSSARY.md rules/03_WORKSPACE.md`
 - Expected: 命令退出码 0(两文件 basename 文字罗列已清除,权威指向 exit_contract.py)。用 `! grep -R` 而非 `grep -rc`:两文件都 0 命中时 grep 退出码非零,`!` 反转为 0 作通过信号(回应评审 🟢)
 
 - Run: `git diff --stat`
-- Expected: 改动文件限于 `ob` / `lib/*.sh`(8 个) / `CONTEXT.md` / `rules/03_WORKSPACE.md` / `tests/unit/exit_contract.sh`,无意外文件
+- Expected: 改动文件限于 `ob` / `lib/*.sh`(8 个) / `GLOSSARY.md` / `rules/03_WORKSPACE.md` / `tests/unit/exit_contract.sh`,无意外文件

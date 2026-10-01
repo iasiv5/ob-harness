@@ -38,7 +38,7 @@
 ## 输入工件
 
 - 设计文档：`docs/specs/2026-07-19-ob-dev-build-and-dispatch-seam-design.md`（零未决）。
-- 伴生已落：`docs/adr/0010-ob-dev-dispatch-leaf-pure-exit.md`、`CONTEXT.md`（`ob dev build` 术语 + porcelain stdout 补 build）。计划引用，不重述。
+- 伴生已落：`docs/adr/0010-ob-dev-dispatch-leaf-pure-exit.md`、`GLOSSARY.md`（`ob dev build` 术语 + porcelain stdout 补 build）。计划引用，不重述。
 
 ## 文件结构与职责
 
@@ -109,7 +109,7 @@
 #   dev_relay_result: 调完 devtool_*_run 后的标准动作 — cat+rm stderr_file + stage/phase/rc 诊断 → 返回 0/1。
 #   被 cmd_dev(modify/status/reset/finish/build)消费。per-subcmd verbatim message 表(逐字对齐 cmd_dev 现状,
 #   字节 faithful); refresh/list 不套本 relay(结构特殊)。token (phase=<phase>)/(stage=<stage>)/(rc=<rc>) 保留。
-#   ob loader source 全部 lib; bash 运行时按名解析。术语见 CONTEXT.md function semantic layer / ob dev porcelain stdout。
+#   ob loader source 全部 lib; bash 运行时按名解析。术语见 GLOSSARY.md function semantic layer / ob dev porcelain stdout。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断(ADR-0010)。
 
 # dev_relay_result <subcmd> <stderr_file> <stage> <phase> <rc>
@@ -344,7 +344,7 @@ EOF
 # lib/devtool_build.sh — ob dev build 执行(leaf-pure module)。
 #   devtool_build_run: status-first(recipe 未 modified → not_modified 信号, 不 build; status 失败 → 回传 stage+rc, 不继续)
 #   → devtool build。镜像 devtool_modify_run 结构。消费 lib/devtool_workspace.sh 的 _devtool_env_exec / _devtool_parse_status_all。
-#   术语见 CONTEXT.md ob dev build。
+#   术语见 GLOSSARY.md ob dev build。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 
 # devtool_build_run <machine> <build_dir> <recipe> <stage_outvar> <stderr_file_outvar> <not_modified_outvar>
@@ -618,7 +618,7 @@ Commit B 完成后，跑全套（Linux + bash）：
   - Expected: protocol（含 `.exp`，dev_interactive.exp `[1-7]` 通过）/ unit（含新 devtool_dispatch/devtool_build/扩 porcelain）/ orchestration（cmd_dev build 分支）全绿。
 - Run: `bash tests/run_all.sh --integration`（若环境有 init machine）
   - Expected: integration ob_dev.sh modify→build→reset→finish e2e 绿（或 exit 77 SKIP，合法）。
-- 抽检 porcelain 字节 faithful：`./ob dev --machine <m> reset <recipe> 2>/dev/null`（对一 modified recipe）输出与重构前同字段序/同 None 规则（CONTEXT.md `ob dev porcelain stdout` 契约）。
+- 抽检 porcelain 字节 faithful：`./ob dev --machine <m> reset <recipe> 2>/dev/null`（对一 modified recipe）输出与重构前同字段序/同 None 规则（GLOSSARY.md `ob dev porcelain stdout` 契约）。
 - Run: `./ob dev --help | grep build`
   - Expected: usage dev 行含 `build`（`list|modify|build|refresh|reset|status|finish`）。
 - 输出修改摘要：两 commit、新文件、exit_contract 新 basename、测试新增/改动清单。

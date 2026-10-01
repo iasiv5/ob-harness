@@ -26,7 +26,7 @@
 
 - 设计共识：本会话 `/grill-with-docs` 七项决策（D1–D7）。
 - [ADR-0019](../adr/0019-command-machine-resolution-seam.md)（已落盘）。
-- [CONTEXT.md](../../CONTEXT.md) `command machine resolution` / `machine selection guard` 术语（已落盘）。
+- [GLOSSARY.md](../../GLOSSARY.md) `command machine resolution` / `machine selection guard` 术语（已落盘）。
 
 ## 文件结构与职责
 
@@ -150,15 +150,15 @@
 
 ### Task 6: surface 回归锁 + CONTEXT 对齐 + coverage 基线 + 全量验证
 
-- 目标：钉死 interface-shrink（build/dev/deploy 不再内联 ritual）；reconcile CONTEXT.md guard 术语消费方措辞；更新 coverage radar 基线（若下降）；全量 ob_check + run_all --full 收口。
-- Files: Create `tests/protocol/machine_resolve_surface.sh`；Modify `CONTEXT.md`（`machine selection guard` 术语消费方句）、coverage radar 基线（若需）。
+- 目标：钉死 interface-shrink（build/dev/deploy 不再内联 ritual）；reconcile GLOSSARY.md guard 术语消费方措辞；更新 coverage radar 基线（若下降）；全量 ob_check + run_all --full 收口。
+- Files: Create `tests/protocol/machine_resolve_surface.sh`；Modify `GLOSSARY.md`（`machine selection guard` 术语消费方句）、coverage radar 基线（若需）。
 - 接口契约:
   - Consumes: Task 1-5 产物。
   - Produces: surface gate 防回潮；CONTEXT guard 术语消费方与现状一致。
 - 验证范围: 新 gate 绿；`grep` 确认 CONTEXT guard 术语消费方已更新；`bash tools/ob_check.sh` + `bash tests/run_all.sh --full` 全绿。
 
-- [ ] Step 1: reconcile `CONTEXT.md` `machine selection guard` 术语——其消费方句「消费方现为 cmd_build / cmd_dev / cmd_start_qemu / cmd_deploy_to_qemu 共享」更新为：build/dev/deploy 经 `resolve_command_machine`（`command machine resolution`）间接消费 guard，cmd_start_qemu 仍直接消费（cmd_stop_qemu 选 running instance、不经 guard）。`machine selection guard` 本体契约（恒返回 0、outvar status、不 exit/remedy/展示）不变。同步 `tools/coverage_matrix.md` L107 guard 行消费方措辞（build/dev/deploy 经 `resolve_command_machine`、cmd_start_qemu 直接）。
-- Run: `grep -n '消费方现为\|resolve_command_machine' CONTEXT.md`
+- [ ] Step 1: reconcile `GLOSSARY.md` `machine selection guard` 术语——其消费方句「消费方现为 cmd_build / cmd_dev / cmd_start_qemu / cmd_deploy_to_qemu 共享」更新为：build/dev/deploy 经 `resolve_command_machine`（`command machine resolution`）间接消费 guard，cmd_start_qemu 仍直接消费（cmd_stop_qemu 选 running instance、不经 guard）。`machine selection guard` 本体契约（恒返回 0、outvar status、不 exit/remedy/展示）不变。同步 `tools/coverage_matrix.md` L107 guard 行消费方措辞（build/dev/deploy 经 `resolve_command_machine`、cmd_start_qemu 直接）。
+- Run: `grep -n '消费方现为\|resolve_command_machine' GLOSSARY.md`
 - Expected: guard 术语消费方句含 `resolve_command_machine`（build/dev/deploy 经它）+ cmd_start_qemu 直接。
 - [ ] Step 2: 写 surface gate `tests/protocol/machine_resolve_surface.sh`——断言 production Bash（`lib/commands.sh` cmd_build/cmd_dev 段、`lib/qemu_commands.sh` cmd_deploy 段）**不再内联** `machine_selection_guard` + `pick_machine` + `is_initialized` 的组合 ritual（grep 这三个符号在 cmd_build/cmd_dev/cmd_deploy 函数体内同时出现 = 失败），且 `resolve_command_machine` 在三处各被调一次。（对照既有 `tests/protocol/qemu_launch_profile_structure.sh` 的 surface gate 写法。）
 - Run: `bash tests/protocol/machine_resolve_surface.sh`

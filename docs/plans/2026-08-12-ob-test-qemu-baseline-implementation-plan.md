@@ -12,7 +12,7 @@
 - **per-machine 全栈独立**(ADR-0025):每个 machine 的 baseline 目录**自包含** AR 数据 + probe 引擎 + 本地 applicability,**不共享** AR 定义、**不共享** probe 引擎。决策动因是组织约束(权限隔离、按项目解耦、自包含分发),技术 DRY 让位于组织边界。**test-qemu 不复用 `ob smoke` 的 probe 原语**(`_smoke_probe_*`),probe 引擎是各 baseline 目录里独立的实现。
 - **落点二分**:社区机 `tests/baseline/<machine>/`(随 ob-harness 上游);custom 机 `contexts/baseline/<machine>/`(不随上游,接 ADR-0017 的 `contexts/` 边界)。`cmd_test_qemu` porcelain 定位时 **custom 目录优先**(`contexts/` 命中先于 `tests/`),允许 custom 机覆盖/扩展社区基线。
 - **命令**:`ob test-qemu <machine>`(probe-only,不 boot 不 teardown,无实例 exit 3 + remedy 指向 `ob start-qemu`)。与 `ob smoke`(浅冒烟 5 条哨兵、零 per-machine、守 per-push 绿灯)**正交姊妹**;test-qemu 是逐条深测、nightly/PR-to-main 频率。
-- **术语**:`baseline`(开发基线/功能基线,固件领域 ubiquitous language)已立进 CONTEXT.md;`conformance` 弃用。
+- **术语**:`baseline`(开发基线/功能基线,固件领域 ubiquitous language)已立进 GLOSSARY.md;`conformance` 弃用。
 
 ## 全局约束
 
@@ -29,10 +29,10 @@
 ## 输入工件
 
 - [ADR-0025](../adr/0025-test-qemu-baseline-fullstack-per-machine.md):per-machine 全栈独立决策(权限隔离优先于 DRY)。
-- [CONTEXT.md](../../CONTEXT.md) `baseline` 术语条目 + `ob smoke` / `test layer` / `QEMU PID file` / `exit-code 契约`。
+- [GLOSSARY.md](../../GLOSSARY.md) `baseline` 术语条目 + `ob smoke` / `test layer` / `QEMU PID file` / `exit-code 契约`。
 - `/grill-with-docs` 共识(本计划架构快照即其固化)。
 - 参照实现:`ob smoke`(dispatch 注册 / cmd_smoke probe-only 形态)、`lib/qemu_commands.sh:529` `cmd_smoke`、`lib/smoke_assertions.sh` judge 形态。
-- 设计来源:本计划「架构快照」+ [ADR-0025](../adr/0025-test-qemu-baseline-fullstack-per-machine.md) + [CONTEXT.md](../../CONTEXT.md) `baseline` 词条(三者自包含,无外部设计文档依赖;早前的设计草案已删除,设计角色由这三者接管)。
+- 设计来源:本计划「架构快照」+ [ADR-0025](../adr/0025-test-qemu-baseline-fullstack-per-machine.md) + [GLOSSARY.md](../../GLOSSARY.md) `baseline` 词条(三者自包含,无外部设计文档依赖;早前的设计草案已删除,设计角色由这三者接管)。
 
 ## 文件结构与职责
 
@@ -67,7 +67,7 @@ Test:
   - Create: `contexts/baseline/.gitkeep`
   - Modify: `.gitignore`(加 `contexts/baseline/*` + `!contexts/baseline/.gitkeep`,紧邻既有 `contexts/knowhow/*` 行 ~16-17;当前 .gitignore 只覆盖 knowhow,baseline 必须显式补)
 - 接口契约
-  - Consumes: ADR-0025(落点二分)、CONTEXT.md `baseline`。
+  - Consumes: ADR-0025(落点二分)、GLOSSARY.md `baseline`。
   - Produces: `tests/baseline/<machine>/` 与 `contexts/baseline/<machine>/` 两条目录约定(后续 Task 2-4 落 `tests/baseline/romulus/`)。
 - 验证范围:两根目录存在且 `.gitkeep` 入库;`contexts/baseline/` 内容被 `.gitignore` 排除但 `.gitkeep` 不被排除。
 
@@ -78,7 +78,7 @@ Test:
 - Run: `test -d tests/baseline || echo MISSING`
 - Expected: `MISSING`。
 - [ ] Step 3: 建目录与骨架
-- Change: 创建 `tests/baseline/.gitkeep`(内容一行注释 `# community-machine baseline data; ships with ob-harness. See ADR-0025 / CONTEXT.md "baseline".`);创建 `contexts/baseline/.gitkeep`(内容 `# custom-machine baseline data; NOT shipped upstream (gitignored content). See ADR-0025 / CONTEXT.md "baseline".`);确认 `.gitignore` 规则覆盖 `contexts/baseline/*` 但放行 `.gitkeep`(对齐 `contexts/knowhow/` 既有规则;若缺则补一条 `contexts/baseline/*` + `!contexts/baseline/.gitkeep`)。
+- Change: 创建 `tests/baseline/.gitkeep`(内容一行注释 `# community-machine baseline data; ships with ob-harness. See ADR-0025 / GLOSSARY.md "baseline".`);创建 `contexts/baseline/.gitkeep`(内容 `# custom-machine baseline data; NOT shipped upstream (gitignored content). See ADR-0025 / GLOSSARY.md "baseline".`);确认 `.gitignore` 规则覆盖 `contexts/baseline/*` 但放行 `.gitkeep`(对齐 `contexts/knowhow/` 既有规则;若缺则补一条 `contexts/baseline/*` + `!contexts/baseline/.gitkeep`)。
 - [ ] Step 4: 运行并确认通过
 - Run: `touch contexts/baseline/fake.tmp; git check-ignore -q contexts/baseline/.gitkeep; s1=$?; git check-ignore -q contexts/baseline/fake.tmp; s2=$?; rm -f contexts/baseline/fake.tmp; test "$s1" = "1" && test "$s2" = "0" && echo OK || echo FAIL`
 - Expected: `OK`(`.gitkeep` 未被忽略=check-ignore exit 1→`$s1=1`;`fake.tmp` 被忽略=check-ignore exit 0→`$s2=0`;两者同时成立才 OK)。fake.tmp 测后清理。
@@ -232,26 +232,26 @@ Test:
 - Run: `bash tests/integration/test_qemu_baseline_e2e.sh; echo "rc=$?"`
 - Expected: `rc=0`(有 romulus image+实例,五态正确:`skip>=1`、`xfail+xpass>=1`)或 `rc=77`(无 image,SKIP 不阻断)。直接跑测试脚本看 rc,避免经 `run_all.sh --integration` 的聚合 rc 语义干扰。
 
-### Task 8: CONTEXT.md 新增 `ob test-qemu` 命令术语
+### Task 8: GLOSSARY.md 新增 `ob test-qemu` 命令术语
 
-- 目标:CONTEXT.md 新增 `ob test-qemu` 词条(对齐既有 `ob smoke` 完整词条深度),钉死 probe-only 边界、与 smoke 关系、per-machine baseline、目录优先级、skip/xfail/xpass 语义、exit contract。命令行为由 Task 5 实现,术语由本任务沉淀。
+- 目标:GLOSSARY.md 新增 `ob test-qemu` 词条(对齐既有 `ob smoke` 完整词条深度),钉死 probe-only 边界、与 smoke 关系、per-machine baseline、目录优先级、skip/xfail/xpass 语义、exit contract。命令行为由 Task 5 实现,术语由本任务沉淀。
 - Files
-  - Modify: `CONTEXT.md`(在 `ob smoke` 词条后插入 `ob test-qemu` 条目)
+  - Modify: `GLOSSARY.md`(在 `ob smoke` 词条后插入 `ob test-qemu` 条目)
 - 接口契约
   - Consumes: Task 5 实现的 `cmd_test_qemu` 真实行为 + ADR-0025 + `baseline` 词条。
   - Produces: `ob test-qemu` CONTEXT 词条。
 - 验证范围:词条存在;定义与 Task 5 行为一致(不漂移);`_Avoid_` 含 `conformance`。
 
 - [ ] Step 1: 写失败检查(词条存在性)
-- Run: `grep -q '^\*\*ob test-qemu\*\*' CONTEXT.md && echo EXISTS || echo MISSING`
+- Run: `grep -q '^\*\*ob test-qemu\*\*' GLOSSARY.md && echo EXISTS || echo MISSING`
 - Expected: `MISSING`。
 - [ ] Step 2: 运行并确认失败
 - Run: 同上
 - Expected: `MISSING`。
 - [ ] Step 3: 写词条
-- Change: 在 `CONTEXT.md` 的 `ob smoke` 词条后插入 `**ob test-qemu**:` 条目:定义(probe-only 深测命令,在已在跑 QEMU 实例上逐条跑该 machine `baseline` 的 QEMU 可仿真 AR 子集,产出 `pass/fail/skip/xfail/xpass`);与 `ob smoke` 正交姊妹(smoke 浅冒烟 5 哨兵 + 零 per-machine 守 per-push 绿灯;test-qemu 逐条深测 + 全栈 per-machine,nightly/PR-to-main 频率);baseline 目录优先级(`contexts/baseline/<machine>` custom 优先 > `tests/baseline/<machine>` 社区,见 ADR-0025);probe-only(不 boot/teardown,无实例 exit 3 + remedy 指向 `ob start-qemu`,端口从 PID file 读);`skip`(不适用/硬件依赖,不调 probe)/`xfail`(预期失败,调 probe:预期 fail→xfail,意外 pass→xpass,xpass 不影响 exit)/exit 0/1/2/3(0 全 applicable pass;1 有 fail = α BMC truth 非 broken;2 cancel;3 前置缺失 + remedy)。`_Avoid_:` conformance(弃用),test-qemu verify。
+- Change: 在 `GLOSSARY.md` 的 `ob smoke` 词条后插入 `**ob test-qemu**:` 条目:定义(probe-only 深测命令,在已在跑 QEMU 实例上逐条跑该 machine `baseline` 的 QEMU 可仿真 AR 子集,产出 `pass/fail/skip/xfail/xpass`);与 `ob smoke` 正交姊妹(smoke 浅冒烟 5 哨兵 + 零 per-machine 守 per-push 绿灯;test-qemu 逐条深测 + 全栈 per-machine,nightly/PR-to-main 频率);baseline 目录优先级(`contexts/baseline/<machine>` custom 优先 > `tests/baseline/<machine>` 社区,见 ADR-0025);probe-only(不 boot/teardown,无实例 exit 3 + remedy 指向 `ob start-qemu`,端口从 PID file 读);`skip`(不适用/硬件依赖,不调 probe)/`xfail`(预期失败,调 probe:预期 fail→xfail,意外 pass→xpass,xpass 不影响 exit)/exit 0/1/2/3(0 全 applicable pass;1 有 fail = α BMC truth 非 broken;2 cancel;3 前置缺失 + remedy)。`_Avoid_:` conformance(弃用),test-qemu verify。
 - [ ] Step 4: 运行并确认通过
-- Run: `grep -q '^\*\*ob test-qemu\*\*' CONTEXT.md && echo "test-qemu词条EXISTS" || echo MISSING; awk '/^\*\*baseline \(开发基线/,/_Avoid_/' CONTEXT.md | grep -q 'xpass' && echo "baseline含xpass" || echo "baseline缺xpass"`
+- Run: `grep -q '^\*\*ob test-qemu\*\*' GLOSSARY.md && echo "test-qemu词条EXISTS" || echo MISSING; awk '/^\*\*baseline \(开发基线/,/_Avoid_/' GLOSSARY.md | grep -q 'xpass' && echo "baseline含xpass" || echo "baseline缺xpass"`
 - Expected: `test-qemu词条EXISTS`;`baseline含xpass`(baseline 词条上轮已加 xpass,此处防漂移,见评审二轮 🟡4)。
 
 ## 执行纪律

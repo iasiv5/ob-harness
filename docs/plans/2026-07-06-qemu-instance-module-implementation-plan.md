@@ -26,7 +26,7 @@
 ## 输入工件
 
 - 设计共识：grilling 走完的 7 分支决策（本会话确认，未另落 spec）。
-- 领域术语：[CONTEXT.md](CONTEXT.md) 的 `QEMU instance` / `QEMU PID file` / `function semantic layer` / `exit-code 契约`。
+- 领域术语：[GLOSSARY.md](GLOSSARY.md) 的 `QEMU instance` / `QEMU PID file` / `function semantic layer` / `exit-code 契约`。
 - 架构报告：`/tmp/architecture-review-20260705-222053.html`（candidate 可视化）。
 - 相关 ADR：无直接冲突（ADR-0007 是 `QEMU launch profile` 的 decision seam，与 instance lifecycle 正交）。
 
@@ -46,7 +46,7 @@
 
 ### Task 0: git preflight
 
-- **目标**：确认分支、处置当前已 staged 的非任务文件（CONTEXT.md 术语 + 本 plan），建立 path-limited commit 纪律。防止后续 task 的 commit 把无关文件卷入。
+- **目标**：确认分支、处置当前已 staged 的非任务文件（GLOSSARY.md 术语 + 本 plan），建立 path-limited commit 纪律。防止后续 task 的 commit 把无关文件卷入。
 - **Files**: 无代码改动（仅 git 操作）。
 - **验证范围**：`git status --short` 暂存区清空到只含本次处置的文件；分支符合预期。
 - **接口契约**: Consumes 无；Produces 干净起点（后续 task 依赖）。
@@ -57,8 +57,8 @@
 
 - [ ] **Step 2: 处置已 staged 的非任务文件**
   - Run: `git status --short`
-  - Expected: 看到 `M  CONTEXT.md`（grilling 加 `QEMU instance` 术语）与 `A  docs/plans/2026-07-06-qemu-instance-module-implementation-plan.md`（本文件）。各自独立 commit，**不混入**后续代码 task：
-    - Run: `git commit -m "docs(context): add QEMU instance glossary term" -- CONTEXT.md`
+  - Expected: 看到 `M  GLOSSARY.md`（grilling 加 `QEMU instance` 术语）与 `A  docs/plans/2026-07-06-qemu-instance-module-implementation-plan.md`（本文件）。各自独立 commit，**不混入**后续代码 task：
+    - Run: `git commit -m "docs(context): add QEMU instance glossary term" -- GLOSSARY.md`
     - Run: `git commit -m "docs(plan): qemu instance module implementation plan" -- docs/plans/2026-07-06-qemu-instance-module-implementation-plan.md`
     - Expected: 两个 commit 成功；`git status --short` 干净。
 
@@ -82,7 +82,7 @@
   - Change: 新建文件，header 标注 leaf-pure module，从 `lib/qemu.sh` 原样搬入 4 函数（连同其上方的中文注释）。文件头：
     ```bash
     #!/usr/bin/env bash
-    # lib/qemu_instance.sh — QEMU instance 只读视图 + stale 清理 + stop. 术语见 CONTEXT.md QEMU instance / QEMU PID file.
+    # lib/qemu_instance.sh — QEMU instance 只读视图 + stale 清理 + stop. 术语见 GLOSSARY.md QEMU instance / QEMU PID file.
     # Exit: leaf-pure module（函数绝不 exit, 只 return; 与 machine_state.sh 同构）.
     ```
     搬入的 4 函数体保持一字不改（含 `read_pid_file` 的 `while IFS='=' read` 自解析、`validate_pid` 的 `/proc/$pid/cmdline` 校验、`qemu_instance_describe` 的四行 echo、`qemu_stop_instance` 的 kill+wait+SIGKILL+rm）。

@@ -25,7 +25,7 @@
 
 - 设计：grill-with-docs 会话（本仓当前会话上下文）8 条结晶决策。
 - ADR：`docs/adr/0007-qemu-launch-profile-start-qemu-decision-seam.md`（已修订，line 17 deferral 反转）。
-- 术语：`CONTEXT.md`（`QEMU launch profile`/`QB variable`/`function semantic layer`/`exit-code 契约`/`remedy line`）。
+- 术语：`GLOSSARY.md`（`QEMU launch profile`/`QB variable`/`function semantic layer`/`exit-code 契约`/`remedy line`）。
 
 ## 文件结构与职责
 

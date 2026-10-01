@@ -1,6 +1,6 @@
 # ob-managed variable assignment-state 对齐实施计划
 
-> 修订 r4（吸收评审 round 3 的 4 条 finding：generate_build_config 的 resolver preflight 提前到 backup 之前、结构锁精确到 DL_DIR=3/SSTATE_DIR=2、resolver 措辞改为"leaf-pure path resolver（有受控文件系统探测副作用）"对齐 CONTEXT.md `function semantic layer` 术语、Task 1 Step 2 expected failure 文案修正）。r3 对 round 2 的吸收保留。评审结论：修完 finding 1、2 即可进入实现。
+> 修订 r4（吸收评审 round 3 的 4 条 finding：generate_build_config 的 resolver preflight 提前到 backup 之前、结构锁精确到 DL_DIR=3/SSTATE_DIR=2、resolver 措辞改为"leaf-pure path resolver（有受控文件系统探测副作用）"对齐 GLOSSARY.md `function semantic layer` 术语、Task 1 Step 2 expected failure 文案修正）。r3 对 round 2 的吸收保留。评审结论：修完 finding 1、2 即可进入实现。
 
 ## 目标
 
@@ -14,7 +14,7 @@
 ## 架构快照
 
 - **Seam 选择**：`read_local_conf_var`（[lib/util.sh:99](../../lib/util.sh)）是 generic local.conf reader，承载 assignment-state 底层事实。本次只把两个 resolver 对齐到它，**不**把 `ob-managed variable` 落成完整领域 module（明确非目标）。
-- **resolver 形态**：leaf-pure path resolver（按 CONTEXT.md `function semantic layer`，leaf-pure 仅指 no-direct-exit，**不指无副作用**——它有受控文件系统可用性探测副作用 `mkdir`/`touch`/`rm`）。成功 → stdout 路径、return 0；失败（set 但空 / 路径不可 mkdir 或不可写 / 默认路径不可用）→ 静默 `return 1`、不输出。**不打印、不 fallback**——所有诊断与 remedy 归调用点（保证 exit 3 输出仍是两段式，见 round 2 finding 3）。
+- **resolver 形态**：leaf-pure path resolver（按 GLOSSARY.md `function semantic layer`，leaf-pure 仅指 no-direct-exit，**不指无副作用**——它有受控文件系统可用性探测副作用 `mkdir`/`touch`/`rm`）。成功 → stdout 路径、return 0；失败（set 但空 / 路径不可 mkdir 或不可写 / 默认路径不可用）→ 静默 `return 1`、不输出。**不打印、不 fallback**——所有诊断与 remedy 归调用点（保证 exit 3 输出仍是两段式，见 round 2 finding 3）。
 - **调用点形态**：`if ! var=$(resolve_effective_*); then error "..."; echo "<remedy>" >&2; exit 3; fi`。DL_DIR / SSTATE_DIR 分别 `if`（精确诊断，SSTATE_DIR 不带 "fetch"）。码 = `exit 3`（前置 = 有效 cache path 未满足；remedy 友好、不让 agent 误走 exit 1 手动 fallback）。`error`（[util.sh:12](../../lib/util.sh)，stderr）满足 `exit_contract` 对 direct `exit 3` 的静态检查（同函数内有 error）。
 - **preflight 时机（round 3 finding 1）**：`generate_build_config` 的 resolver preflight 必须在 **backup 旧 .inc（[init_pipeline.sh:389](../../lib/init_pipeline.sh)）之前**——因 backup（389）在 `_user_*_set` 检测（409）之前，preflight 必须比 backup 更早，才能让 exit 3 不产生任何 inc 副作用（r3 放在 508 会先 backup + 重写 inc 再 exit 3）。`init_bitbake_env`（138）与 `clone_sub_repos`（232）的 preflight 本就在各自副作用（mkdir / mirror population）之前，无需调整。
 - **set -e 安全**：ob 入口 `set -euo pipefail`（[ob:4](../../ob)）。mkdir/touch 在 resolver 内用 `if ! ... || ! ...` 受控条件（现状 [util.sh:158](../../lib/util.sh) 单独行是 set -e 隐患，本次修）。
@@ -23,7 +23,7 @@
 ## 全局约束
 
 - 命名规则：snake_case（`rules/03_WORKSPACE.md`）。
-- `ob-managed variable` 术语口径以 `CONTEXT.md` 为准（当前 DL_DIR、SSTATE_DIR、PREMIRRORS）。effective-path 失败语义**只适用 DL_DIR/SSTATE_DIR**（路径类）；PREMIRRORS="" 合法禁用。
+- `ob-managed variable` 术语口径以 `GLOSSARY.md` 为准（当前 DL_DIR、SSTATE_DIR、PREMIRRORS）。effective-path 失败语义**只适用 DL_DIR/SSTATE_DIR**（路径类）；PREMIRRORS="" 合法禁用。
 - exit-code 契约：0=成功，1=真实失败/用法错，2=取消，3=前置缺失。本次路径变量无效用 **exit 3**。util.sh 是 leaf-pure basename，`resolve_effective_*` 只 `return`、不直接 `exit`。
 - ADR-0005（exit code 判定，不用 `-n`/`-z`）、ADR-0004（PREMIRRORS="" 合法禁用）：本计划强化一致性，不改结论。
 - set -e 安全：受控条件内 mkdir/touch。
@@ -43,7 +43,7 @@
 - Modify: `lib/init_pipeline.sh` — 3 个调用点：[init_pipeline.sh:138](../../lib/init_pipeline.sh) `init_bitbake_env`、[init_pipeline.sh:232](../../lib/init_pipeline.sh) `clone_sub_repos`、`generate_build_config`（preflight 提前到 backup 前 [init_pipeline.sh:384 后](../../lib/init_pipeline.sh) + 末尾 [508](../../lib/init_pipeline.sh) mkdir 复用变量）。
 - Modify: `tests/unit/conf_read.sh` — assignment-state 三态 + 可写性失败 case（printf 写 conf）。
 - Modify: `tests/protocol/premirrors_injection.sh` — 场景 4 改子 shell 断言 rc=3 + remedy + `$INC` 不存在。
-- Modify: `CONTEXT.md` — `ob-managed variable` 条目追加 existing-seam 说明 + effective-path 失败语义（区分 PREMIRRORS）。
+- Modify: `GLOSSARY.md` — `ob-managed variable` 条目追加 existing-seam 说明 + effective-path 失败语义（区分 PREMIRRORS）。
 - 不新建文件（不新增 module）。
 
 ## 任务清单
@@ -310,18 +310,18 @@
   - Run: `bash tests/protocol/premirrors_injection.sh; rc=$?; test "$rc" -eq 0`
   - Expected: 退出码 0，`PASS=N FAIL=0`，场景 4 断言 rc=3 + remedy + $INC 不存在全通过；场景 1-3 不受影响（PREMIRRORS="" 合法禁用，不进路径 resolver，场景 3 仍通过）。
 
-### Task 5: CONTEXT.md ob-managed variable 条目（existing-seam + 区分 PREMIRRORS）
+### Task 5: GLOSSARY.md ob-managed variable 条目（existing-seam + 区分 PREMIRRORS）
 
-- 目标：把"assignment-state 由 read_local_conf_var 承载、两个 resolver 对齐它、effective-path 失败语义（区分 PREMIRRORS）"写进 `CONTEXT.md`，明确 existing seam alignment（非完整 module）。
+- 目标：把"assignment-state 由 read_local_conf_var 承载、两个 resolver 对齐它、effective-path 失败语义（区分 PREMIRRORS）"写进 `GLOSSARY.md`，明确 existing seam alignment（非完整 module）。
 - Files
-  - Modify: `CONTEXT.md`（`ob-managed variable` 条目，当前 [CONTEXT.md:115-117](../../CONTEXT.md)）
+  - Modify: `GLOSSARY.md`（`ob-managed variable` 条目，当前 [GLOSSARY.md:115-117](../../GLOSSARY.md)）
 - 验证范围：grep 确认条目含新增关键词；`ob_check` 不破坏。
 - 接口契约
   - Consumes: Task 1-4 的对齐语义与 exit 3 行为。
-  - Produces: `CONTEXT.md` 条目更新（无后续任务依赖，本计划终点）。
+  - Produces: `GLOSSARY.md` 条目更新（无后续任务依赖，本计划终点）。
 
 - [ ] Step 1: 确认当前条目未提及 `resolve_effective_*` 对齐 / effective-path 失败语义。
-  - Run: `n=$(grep -c "resolve_effective" CONTEXT.md); test "$n" -eq 0`
+  - Run: `n=$(grep -c "resolve_effective" GLOSSARY.md); test "$n" -eq 0`
   - Expected: `test` 退出码 0（当前条目只描述注入规则）。
 - [ ] Step 2: 确认缺失（同 Step 1）。
 - [ ] Step 3: 在 `ob-managed variable` 条目现有正文末尾（`-n` 判定理由句之后、`_Avoid_` 行之前）追加下面这段；`_Avoid_` 行追加 `-z` 判定。
@@ -332,7 +332,7 @@
   `_Avoid_` 行追加：`, \`-z\` 判定（resolve_effective_* 已对齐 exit code）`（接在现有 `` `-n` 判定（已统一为 exit code） `` 之后）。
   - Change: 条目从"只描述注入规则"扩展为"两侧共用 assignment-state seam + effective-path 失败语义（区分 PREMIRRORS 合法禁用）"，明确非完整 module 抽取。
 - [ ] Step 4: 验证条目更新。
-  - Run: `n=$(grep -c "resolve_effective" CONTEXT.md); test "$n" -ge 1`
+  - Run: `n=$(grep -c "resolve_effective" GLOSSARY.md); test "$n" -ge 1`
   - Expected: `test` 退出码 0（条目已含 `resolve_effective`）。文档改动不影响 `ob_check`。
 
 ## 执行纪律

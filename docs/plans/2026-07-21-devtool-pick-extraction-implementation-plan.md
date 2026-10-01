@@ -6,9 +6,9 @@
 
 ## 架构快照
 
-- 新建 `lib/devtool_pick.sh`，封装 `modified recipe selection`（CONTEXT.md 术语已落）。helper 是 leaf-pure，内部复用 `dev_relay_result`（`lib/devtool_dispatch.sh`）收口 status 阶段失败，消费 `devtool_status_run`（`lib/devtool_status.sh`）取列表 + `read_list_choice`（`lib/machine_picker.sh`）选号。
+- 新建 `lib/devtool_pick.sh`，封装 `modified recipe selection`（GLOSSARY.md 术语已落）。helper 是 leaf-pure，内部复用 `dev_relay_result`（`lib/devtool_dispatch.sh`）收口 status 阶段失败，消费 `devtool_status_run`（`lib/devtool_status.sh`）取列表 + `read_list_choice`（`lib/machine_picker.sh`）选号。
 - `cmd_dev` 的 TTY `reset|finish|build` 分支（当前 `lib/commands.sh` 的 TTY 引导段）各缩成一次 helper 调用 + 一个 `case` 信号→exit 映射。
-- 与 `machine selection`（`pick_machine`）同构：独立 module、leaf-pure、CONTEXT.md 有术语。协议不同（见全局约束），今天不动 `pick_machine`。
+- 与 `machine selection`（`pick_machine`）同构：独立 module、leaf-pure、GLOSSARY.md 有术语。协议不同（见全局约束），今天不动 `pick_machine`。
 
 ## 全局约束
 
@@ -24,7 +24,7 @@
 ## 输入工件
 
 - 设计：本会话 grill-with-docs 锁定的 5 决策（Q1 范围只抽选号块 / Q2 leaf-pure / Q3 恒返回码+5 态字符串+复用 dev_relay_result / Q4 新文件 devtool_pick.sh / Q5 全 5 态 unit）。
-- 术语：`CONTEXT.md` 已落 `modified recipe selection`（含与 `machine selection` 的协议差异与不统一理由）。
+- 术语：`GLOSSARY.md` 已落 `modified recipe selection`（含与 `machine selection` 的协议差异与不统一理由）。
 - 无独立设计文档（grill 产出即设计）。
 
 ## 文件结构与职责
@@ -66,7 +66,7 @@
 #   devtool_pick_modified_recipe: ob dev 的 reset/finish/build TTY 子命令共享的"先选一个 modified
 #   recipe 再动手"前置。取 modified recipe 列表(devtool_status_run) → status 阶段失败复用 dev_relay_result
 #   收口为 status-failed → 空 empty → 非空渲染序号 + read_list_choice 选号 → ok:<recipe>/cancel/read-fail。
-#   消费 devtool_status_run / dev_relay_result / read_list_choice。术语见 CONTEXT.md modified recipe selection。
+#   消费 devtool_status_run / dev_relay_result / read_list_choice。术语见 GLOSSARY.md modified recipe selection。
 # Exit: leaf-pure module(函数绝不 exit; 允许文件/进程/交互副作用); 调用者(cmd_dev)负责 exit-code/remedy/诊断。
 
 # devtool_pick_modified_recipe <machine> <build_dir> <verb> <status_outvar>
@@ -271,7 +271,7 @@ devtool_pick_modified_recipe() {
 ## 最终验证
 
 - Run: `tools/ob_check.sh && tests/run_all.sh --full && git diff --stat`
-- Expected: `ob_check.sh` 与 `run_all.sh --full` 均退出码 0（`ALL GREEN`）；`git diff --stat` 显示新增 `lib/devtool_pick.sh` + `tests/unit/devtool_pick.sh`，修改 `lib/commands.sh` / `tools/exit_contract.py` / `tests/.shellcheck-baseline` / `rules/03_WORKSPACE.md` / `tools/coverage_matrix.md` / `CONTEXT.md`。
+- Expected: `ob_check.sh` 与 `run_all.sh --full` 均退出码 0（`ALL GREEN`）；`git diff --stat` 显示新增 `lib/devtool_pick.sh` + `tests/unit/devtool_pick.sh`，修改 `lib/commands.sh` / `tools/exit_contract.py` / `tests/.shellcheck-baseline` / `rules/03_WORKSPACE.md` / `tools/coverage_matrix.md` / `GLOSSARY.md`。
 - 环境：bash + 仓库根目录；`expect` 需已安装（`run_all.sh --full` 的 `.exp` 层，缺失则该层 skip，非失败）。
 
 ## 审阅 Checkpoint

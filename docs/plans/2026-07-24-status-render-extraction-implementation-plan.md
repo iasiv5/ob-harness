@@ -25,13 +25,13 @@
 - **命名**：snake_case（仓库约定）；`lib/status_render.sh` 遵循 lib 三段结构（header / 函数定义 / 无顶层语句），过 `extract_funcs` 检查。
 - **ADR-0006 叙事**：呈现层归宿在该 ADR 留悬（只规定呈现不下沉到 `machine_state` 数据层，未规定呈现落哪个文件），本 module 给归宿——**不**说"刻意推迟"。
 - **不立 ADR**：方法论已在 bestpractice_10 §7，本次作为第 2 canonical 实例补进 skill（Task 5），不单立 ADR-0013。
-- **upstream git fetch 归属**：v1 留 `cmd_status` 内联（open-question，不进 CONTEXT.md glossary；本计划记录）。
+- **upstream git fetch 归属**：v1 留 `cmd_status` 内联（open-question，不进 GLOSSARY.md glossary；本计划记录）。
 
 ## 输入工件
 
 - 设计：本会话 grill-with-docs 锁定的 10 决策（Q1 纯参数注入 / Q2 单数组+raw 记录串 / Q3 gather 内联 cmd_status / Q4 全静态 grep surface gate / Q5 golden+复用 fixture / Q6 unit+protocol(surface,golden) / Q7 exit_contract set() / Q8 coverage matrix+baseline / Q9 不立 ADR 补 skill §7 / Q10 pin→optimize→deepen）。
 - 评审：Approve + 🟡(§7 两锁 / ADR-0006 叙事修正) + 🟢(machines 三态回归 / 术语 status presentation module / F7 全限定名 grep)。
-- 术语：`CONTEXT.md` 已落 `status presentation module`（本会话 grill 期间写入）。
+- 术语：`GLOSSARY.md` 已落 `status presentation module`（本会话 grill 期间写入）。
 - 无独立设计文档（grill 产出即设计）。
 
 ## 文件结构与职责
@@ -104,7 +104,7 @@
 #   ob status 仪表盘呈现层:把 cmd_status 已采集的事实格式化为 stdout(表格/diagnostics 段/tips)。
 #   纯参数注入——绝不读全局($OPENBMC_DIR/$SOURCE_MANIFEST_FILE)、绝不拉网络(git/timeout)、
 #   绝不调数据接口(machine_state_*/qemu_instance_*/read_manifest_field);数据全由 cmd_status 以参数喂入。
-#   呈现逻辑(emoji 映射/列宽/分段)归本 module。术语见 CONTEXT.md status presentation module。
+#   呈现逻辑(emoji 映射/列宽/分段)归本 module。术语见 GLOSSARY.md status presentation module。
 # Exit: leaf-pure module(函数绝不 exit; 只 print stdout); exit-code/remedy/采集归 cmd_status(L1)。
 
 # status_render_main_repo <repo_exists 0/1> <origin_url> <source_label> <branch> <commit> <upstream_display> <first_init> <local_path>
@@ -341,7 +341,7 @@ assert_summary
 ## 最终验证
 
 - Run: `tools/ob_check.sh && tests/run_all.sh --full && git diff --stat`
-- Expected: `ob_check.sh` 与 `run_all.sh --full` 均退出码 0（`ALL GREEN`）；`git diff --stat` 显示新增 `lib/status_render.sh` / `tests/lib/status_fixtures.sh` / `tests/unit/status_render.sh` / `tests/protocol/status_render_surface.sh` / `tests/protocol/status_golden.sh` / `tests/protocol/status_golden.expected`，修改 `lib/commands.sh` / `tests/protocol/status_machine_state.sh` / `tools/exit_contract.py` / `rules/03_WORKSPACE.md` / `tools/coverage_matrix.md` / `rules/skills/bestpractice_10-deep_module_extraction.md` / `tests/.shellcheck-baseline` / `CONTEXT.md`。
+- Expected: `ob_check.sh` 与 `run_all.sh --full` 均退出码 0（`ALL GREEN`）；`git diff --stat` 显示新增 `lib/status_render.sh` / `tests/lib/status_fixtures.sh` / `tests/unit/status_render.sh` / `tests/protocol/status_render_surface.sh` / `tests/protocol/status_golden.sh` / `tests/protocol/status_golden.expected`，修改 `lib/commands.sh` / `tests/protocol/status_machine_state.sh` / `tools/exit_contract.py` / `rules/03_WORKSPACE.md` / `tools/coverage_matrix.md` / `rules/skills/bestpractice_10-deep_module_extraction.md` / `tests/.shellcheck-baseline` / `GLOSSARY.md`。
 - 环境：bash + 仓库根目录；`expect` 需已安装（`run_all.sh --full` 的 `.exp` 层，缺失则该层 skip，非失败）。
 
 ## 审阅 Checkpoint

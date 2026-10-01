@@ -36,7 +36,7 @@ runner 六文件（run.sh / runner.py / plan.py / probe_redfish.py / assemble.py
 | `lib/smoke_assertions.sh:93` 附近注释、`tests/baseline/README.md` | 路径文案更新 | 文档一致性 |
 | `docs/adr/0027-*.md` | 新建 | 决策记录 |
 | `docs/adr/0026-*.md` | References 加一行交叉引用 | 指路 0027 |
-| `CONTEXT.md` | `baseline` / `ob test-qemu` 词条补"runner 单副本、子仓纯数据"语义 | 术语表（纯语言，无实现细节） |
+| `GLOSSARY.md` | `baseline` / `ob test-qemu` 词条补"runner 单副本、子仓纯数据"语义 | 术语表（纯语言，无实现细节） |
 
 **子仓**（`contexts/baseline/b865g8-a2-bytedance/`，嵌套 git）
 | 文件 | 动作 |
@@ -53,13 +53,13 @@ runner 六文件（run.sh / runner.py / plan.py / probe_redfish.py / assemble.py
 
 `docs/adr/0026-test-qemu-baseline-lineage-routing.md` References 段加一行：路由标的经 [ADR-0027](0027-....md) 收窄为纯数据目录（runner 单副本于 `tests/baseline/runner/`）。
 
-`CONTEXT.md` 的 `baseline` / `ob test-qemu` 词条补充：baseline = 数据 + 适用性（per-machine，谱系路由）；runner = 共享引擎（主仓单副本）。
+`GLOSSARY.md` 的 `baseline` / `ob test-qemu` 词条补充：baseline = 数据 + 适用性（per-machine，谱系路由）；runner = 共享引擎（主仓单副本）。
 
 验证：
 ```bash
 ls docs/adr/0027-*.md && grep -c "0027" docs/adr/0026-test-qemu-baseline-lineage-routing.md
 grep -q "schema_version" docs/adr/0027-*.md
-grep -q "tests/baseline/runner" CONTEXT.md && grep -q "单副本" CONTEXT.md
+grep -q "tests/baseline/runner" GLOSSARY.md && grep -q "单副本" GLOSSARY.md
 ```
 （CONTEXT 锚定新语义关键词，不 grep 泛词 "runner"——旧 per-machine 语义也含该词，会假绿。）
 预期：均 exit 0。
@@ -181,7 +181,7 @@ bool 穿透正是上一轮评审抓到的真 bug，必须进长期回归，不�
 
 验证：
 ```bash
-! grep -rn "baseline/romulus/runner" lib/ tests/unit/ tests/protocol/ tests/baseline/ README.md CONTEXT.md
+! grep -rn "baseline/romulus/runner" lib/ tests/unit/ tests/protocol/ tests/baseline/ README.md GLOSSARY.md
 ```
 预期：无命中（`!` 取反为 0）。历史 ADR（docs/adr/）的旧状态描述不在清理范围——ADR 是决策史不改写，只要求 0027 交叉引用到位。
 

@@ -47,7 +47,7 @@
 | `tests/lib/ob_loader.sh` | `export OB_CMD="${OB_CMD:-./ob}"`（export 保证二级 child bash 继承） |
 | tests 断言（17 文件 + golden） | `Run 'ob ...'` / `: ob xxx` 字面量 → `./ob`（详见 Task 6 清单，含 `tests/orchestration/qemu_launch_profile.sh` 与 `tests/protocol/status_golden.expected`） |
 | `AGENTS.md`、`rules/knowhow/bestpractice_06-ob_first.md` | 祈使句命令 `ob --help`/`ob <cmd>` → `./ob`（指称保留） |
-| `CONTEXT.md` | 词条内 remedy 示例字面量 `Run 'ob ...' first` → `./ob`（remedy line 词条已于计划前同步；剩 179/195/199 行的示例） |
+| `GLOSSARY.md` | 词条内 remedy 示例字面量 `Run 'ob ...' first` → `./ob`（remedy line 词条已于计划前同步；剩 179/195/199 行的示例） |
 
 ## 任务清单
 
@@ -141,11 +141,11 @@ exit "$fail"
 ```
 退出码 0 且无 `FAIL:` 行为通过信号。
 
-### Task 7: agent 指令文档 + CONTEXT.md 示例同步
+### Task 7: agent 指令文档 + GLOSSARY.md 示例同步
 
 - `AGENTS.md:41`：`先 \`ob --help\` 查` → `先 \`./ob --help\` 查`；`就走 \`ob <cmd>\`` → `就走 \`./ob <cmd>\``；「`ob --help` 是唯一权威能力清单」同理。
 - `rules/knowhow/bestpractice_06-ob_first.md`：祈使句的 `ob --help`（13/17/19/21/23/24 行）与 48 行 remedy 链 `ob init <machine>` → `ob build` → `ob start-qemu` 改 `./ob`；命令名列表（init/build/status/...）与指称（"`ob` 为唯一前门"）保留。
-- `CONTEXT.md`：179/195/199 行词条内 `Run 'ob ...' first` 示例字面量 → `./ob`；命令指称（`ob smoke` 等）与 `_Avoid_` 行不动。
+- `GLOSSARY.md`：179/195/199 行词条内 `Run 'ob ...' first` 示例字面量 → `./ob`；命令指称（`ob smoke` 等）与 `_Avoid_` 行不动。
 - 判据（写进 commit message 亦可）：该行是否被期望原样敲进 shell。
 
 验证:
@@ -153,7 +153,7 @@ exit "$fail"
 fail=0
 if grep -n 'ob --help\|ob <cmd>' AGENTS.md | grep -v '\./ob'; then echo "unexpected: AGENTS.md 指令残留"; fail=1; fi
 if grep -n 'ob --help\|ob <cmd>' rules/knowhow/bestpractice_06-ob_first.md | grep -v '\./ob'; then echo "unexpected: bp_06 指令残留"; fail=1; fi
-if grep -n "Run 'ob " CONTEXT.md; then echo "unexpected: CONTEXT.md 示例残留"; fail=1; fi
+if grep -n "Run 'ob " GLOSSARY.md; then echo "unexpected: GLOSSARY.md 示例残留"; fail=1; fi
 grep -n "\./ob init <machine>.*\./ob build <machine>.*\./ob start-qemu" rules/knowhow/bestpractice_06-ob_first.md || fail=1   # 断言带 ./ 前缀: 'ob init' 是 './ob init' 的子串, 不带 ./ 的正则区分不了已修/没修
 exit "$fail"
 ```

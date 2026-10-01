@@ -41,7 +41,7 @@ Date: 2026-07-15
 6. postcondition 含**二次 `devtool status`**：reset 后 status 成功 + 不再含 recipe；任一不符 `phase=postcondition` exit 1。
 7. `<workspace>` 取 devtool effective `workspace_path`（严格解析 `<build>/conf/devtool.conf [General]`：不存在/无字段→默认，存在但无法读/解析/字段无效→`phase=metadata`）。
 8. machine 模型沿用现有。
-9. exit-code 遵循 [exit-code 契约](../../CONTEXT.md) + [ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md)；phase 区分 status/metadata/reset/postcondition。
+9. exit-code 遵循 [exit-code 契约](../../GLOSSARY.md) + [ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md)；phase 区分 status/metadata/reset/postcondition。
 10. `devtool_reset.sh` leaf-pure，登记 `exit_contract.py`。
 11. 四层测试（含 appends/recipes 重叠、sources-* 歧义、expected 验证、devtool.conf 严格解析、JSON round-trip）+ `ob_check.sh` 全绿；integration 单独 `tests/run_all.sh --integration`。
 
@@ -173,7 +173,7 @@ predicate 定义（python，P/O 双向）：
 
 ## 错误处理与回退
 
-遵循 [exit-code 契约](../../CONTEXT.md) + [ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md)：
+遵循 [exit-code 契约](../../GLOSSARY.md) + [ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md)：
 
 | 场景 | exit | stdout | stderr / 处置 |
 |---|---|---|---|
@@ -276,7 +276,7 @@ mock build dir + 假 devtool（status/reset stub）+ 造 `appends/<pn>_<ver>.bba
 | `lib/commands.sh` `cmd_dev` | reset 分支（替换 reserved 死路）+ phase 诊断 + JSON via json.dumps(stdin/argv) |
 | `lib/devtool_reset.sh` | 新增 leaf-pure `devtool_reset_run`（effective workspace 严格解析 + bbappend 鲁棒定位 + expected_disposition + postcondition 二次 status 验证） |
 | `tools/exit_contract.py` | LEAF dict 加 `devtool_reset.sh` |
-| **[CONTEXT.md](../../CONTEXT.md) `ob dev porcelain stdout`** | 登记 reset JSON 契约（disposition + destination_parent/destination） |
+| **[GLOSSARY.md](../../GLOSSARY.md) `ob dev porcelain stdout`** | 登记 reset JSON 契约（disposition + destination_parent/destination） |
 | **[03_WORKSPACE.md](../../rules/03_WORKSPACE.md)** | `ob dev` 子命令清单加 reset；`lib/` 加 devtool_reset.sh |
 | `workflow_02-obmc_dev_modify.md` | 补 reset 收尾 + srctree 生命周期（modify 生效 → reset disposition 五态）；**不建议 agent 自动清理 attic，需删除时用户手动** |
 

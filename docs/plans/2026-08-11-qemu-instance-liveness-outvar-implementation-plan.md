@@ -16,7 +16,7 @@
 - **set -euo pipefail**（`ob:4`）：liveness 内部 `load` 失败与 probe 非零都用条件位或 `|| _rc=$?` 消费，外部恒 return 0。
 - **outvar 写法**：`printf -v "$status_outvar" '%s' <status>`（镜像 `lib/machine_selection_guard.sh`，非 `local -n` nameref，避循环引用）。
 - **行为保持**（除一项修正）：4 cmd 的 exit code（0/1/2/3）+ remedy + `clean_stale` 触发不变；`summarize_brief` 输出（`✅ running`/`⚠️ stale`）不变；**例外**：corrupt/空字段 PID file 今天 `is_alive '' '' ''` 误返 rc 0（false running），新接口加字段防线→`exited`，bug 修正非行为保持（评审 🔴1）
-- **文案规则**：CONTEXT.md 不含实现细节（函数名），用概念表述。
+- **文案规则**：GLOSSARY.md 不含实现细节（函数名），用概念表述。
 - 无额外版本/平台约束。
 
 ## 输入工件
@@ -49,7 +49,7 @@ qemu_instance_is_alive                                # 退役(过渡 wrapper �
 - Modify: `tests/unit/qemu_instance.sh` — 新增 liveness 4 状态 + 恒 return 0 断言；路径 B stub 由 is_alive 改 liveness
 - Modify: `tests/unit/ports.sh` — 删 is_alive rc 断言（L28-30）+ 注释（L3）
 - Modify: `tests/protocol/smoke_surface.sh` — cmd_smoke body-grep（L64 is_alive→liveness、L65 load 删除）+ 注释（L9、L104）
-- Modify: `CONTEXT.md` — L92（重启）/ L191（smoke）is_alive 函数名引用改概念表述
+- Modify: `GLOSSARY.md` — L92（重启）/ L191（smoke）is_alive 函数名引用改概念表述
 - Modify: `tools/coverage_matrix.md` — L69（PID 校验→liveness）、L81（instance module 加 liveness）
 - Modify: `tools/coverage_radar.py` L15 / `tools/trace_collect.sh` L7 — 注释核实更新（grep 确认是否硬编码函数列表）
 - Modify: `rules/03_WORKSPACE.md` — qemu_instance.sh 职责描述补 liveness
@@ -173,10 +173,10 @@ qemu_instance_is_alive                                # 退役(过渡 wrapper �
 
 ### Task 4: 文档维护（CONTEXT / coverage_matrix / radar / trace / WORKSPACE / 注释）
 
-- 目标：文档与代码一致；CONTEXT.md 清函数名泄漏；coverage 矩阵指向新接口
-- 涉及文件：`CONTEXT.md`、`docs/adr/0020-ob-smoke-probe-only-smoke-prober.md`（:19 流程）、`tools/coverage_matrix.md`、`tools/coverage_radar.py`、`tools/trace_collect.sh`、`rules/03_WORKSPACE.md`、`tests/protocol/smoke_exit_contract.sh`（L10 注释）、`tests/orchestration/start_qemu_force_restart.sh`（L42 注释）
+- 目标：文档与代码一致；GLOSSARY.md 清函数名泄漏；coverage 矩阵指向新接口
+- 涉及文件：`GLOSSARY.md`、`docs/adr/0020-ob-smoke-probe-only-smoke-prober.md`（:19 流程）、`tools/coverage_matrix.md`、`tools/coverage_radar.py`、`tools/trace_collect.sh`、`rules/03_WORKSPACE.md`、`tests/protocol/smoke_exit_contract.sh`（L10 注释）、`tests/orchestration/start_qemu_force_restart.sh`（L42 注释）
 
-- [ ] Step 1: CONTEXT.md L92/L191 + ADR 死指针核查更新（评审 🟡2：函数退役后 grep adr 旧符号，区分历史 rationale 保留 vs 当前机制引用更新）
+- [ ] Step 1: GLOSSARY.md L92/L191 + ADR 死指针核查更新（评审 🟡2：函数退役后 grep adr 旧符号，区分历史 rationale 保留 vs 当前机制引用更新）
   - Run: `grep -rn 'qemu_instance_is_alive' docs/adr/`
   - Expected: 输出命中 ADR 行（ADR-0024 自身是决策说明→保留；ADR-0020:19 是 smoke 当前机制流程→更新；其余历史 rationale→保留）
   - Change:
@@ -196,8 +196,8 @@ qemu_instance_is_alive                                # 退役(过渡 wrapper �
     - `rules/03_WORKSPACE.md` L11 `qemu_instance.sh` 职责描述：`list/load/is_alive/summarize...` → 补 `qemu_instance_liveness`（outvar 存活状态）、`is_alive` 标注已退役为私有 `_qemu_instance_probe_alive`
     - `tests/protocol/smoke_exit_contract.sh` L10 注释 + `tests/orchestration/start_qemu_force_restart.sh` L42 注释：`qemu_instance_is_alive` 提法更新
 - [ ] Step 5: CONTEXT 函数名清零验证
-  - Run: `! grep -n 'qemu_instance_is_alive' CONTEXT.md`
-  - Expected: rc=0（CONTEXT.md 零 `qemu_instance_is_alive` 函数名引用——L195 已改概念表述「存活探测」、L92/L191 经 Step 1 改概念表述）
+  - Run: `! grep -n 'qemu_instance_is_alive' GLOSSARY.md`
+  - Expected: rc=0（GLOSSARY.md 零 `qemu_instance_is_alive` 函数名引用——L195 已改概念表述「存活探测」、L92/L191 经 Step 1 改概念表述）
 - [ ] Step 6: checkpoint commit（`docs(qemu_instance): sync CONTEXT/coverage/WORKSPACE to liveness interface`）
 
 ### Task 5: 最终验证
@@ -225,7 +225,7 @@ qemu_instance_is_alive                                # 退役(过渡 wrapper �
 - `bash tools/ob_check.sh` → 全 ✓
 - `bash tests/run_all.sh --full` → protocol/unit/orchestration 全绿
 - `! grep -rn 'qemu_instance_is_alive' lib/ ob` → rc=0（公开名从 production 清零，私有 probe 留存）
-- `! grep -n 'qemu_instance_is_alive' CONTEXT.md` → rc=0（CONTEXT.md 零函数名引用）
+- `! grep -n 'qemu_instance_is_alive' GLOSSARY.md` → rc=0（GLOSSARY.md 零函数名引用）
 
 ## 审阅 Checkpoint
 

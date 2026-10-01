@@ -30,7 +30,7 @@
 - **Modify** `tests/unit/interact.sh`
   - 新增 `exit_on_user_cancel` 的 unit case：rc 0→0 / 2→2（含 cancel 文案子串断言）/ 1→1。
   - 更新顶部注释覆盖范围说明。
-- **不改动**：`lib/util.sh`（leaf-pure 边界）、`lib/repo.sh`（`resolve_machine` 本轮不动）、`CONTEXT.md`、`docs/adr/`（本轮无 surprising 决策）。
+- **不改动**：`lib/util.sh`（leaf-pure 边界）、`lib/repo.sh`（`resolve_machine` 本轮不动）、`GLOSSARY.md`、`docs/adr/`（本轮无 surprising 决策）。
 
 ## 任务清单
 

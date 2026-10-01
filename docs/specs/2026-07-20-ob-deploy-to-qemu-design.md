@@ -35,7 +35,7 @@ Date: 2026-07-20
 - `tests/orchestration/` 加 deploy-to-qemu 编排测试（7 场景）。
 - `tests/protocol/usage_dispatch_sync.sh` 加 deploy-to-qemu 登记块。
 - `tests/integration/` 加 deploy-to-qemu e2e（gate `--integration`）。
-- `CONTEXT.md` 加 `ob deploy-to-qemu` 术语。
+- `GLOSSARY.md` 加 `ob deploy-to-qemu` 术语。
 - `rules/skills/workflow_02-obmc_dev_modify.md` 补完整验证链（modify → build → **deploy-to-qemu** → finish）。
 - `docs/adr/0011-ob-deploy-to-qemu-toplevel-ownership.md`（deploy 归属）。
 
@@ -69,7 +69,7 @@ deploy-to-qemu 编排 build + stop + start。三个动作的现状分三层（�
 
 ### confirm 策略（开放点 1 子决策）— 仅 QEMU 在跑时 banner（采纳）
 
-遵循 [CONTEXT.md](../../CONTEXT.md) `confirmation banner` 术语的"路径风险"原则：
+遵循 [GLOSSARY.md](../../GLOSSARY.md) `confirmation banner` 术语的"路径风险"原则：
 
 - QEMU 没跑：直接 build + start，**无 banner**（显式快路径，与 `ob build <machine>` / `ob start-qemu <machine>` 显式一致）。
 - QEMU 在跑：弹 confirmation banner（告知将 kill 运行中 QEMU + build + restart），确认后执行。
@@ -360,7 +360,7 @@ deploy-to-qemu 是**用户交互式**命令（非 agent-facing）：stdout 透�
 - `ob`（usage Commands 段加 `deploy-to-qemu` 行 + parse_args case + main dispatch + Examples 段加示例）
 - `tests/protocol/usage_dispatch_sync.sh`（加 deploy-to-qemu 登记块）
 - `rules/03_WORKSPACE.md`（顺手：ob 条目补 `deploy-to-qemu`）
-- `CONTEXT.md`（新 `ob deploy-to-qemu` 术语）
+- `GLOSSARY.md`（新 `ob deploy-to-qemu` 术语）
 - `rules/skills/workflow_02-obmc_dev_modify.md`（补完整验证链：modify → build → **deploy-to-qemu** → finish）
 - `docs/adr/0011-ob-deploy-to-qemu-toplevel-ownership.md`（新）
 

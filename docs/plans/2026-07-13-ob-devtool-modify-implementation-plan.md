@@ -93,7 +93,7 @@
 - Expected: No such file
 - [ ] Step 3: 写最小实现
   - `tools/exit_contract.py` LEAF dict(在 `bare_mirror.sh` 后)加 `'devtool_modify.sh': set(),` + `'devtool_search.sh': set(),`
-  - 创建两骨架,header 仿 machine_state.sh(首行 shebang + `# lib/devtool_*.sh — <职责>. 术语见 CONTEXT.md.` + `# Exit: leaf-no-exit（leaf-pure module）; 调用者负责 exit-code/remedy/诊断.` + 空函数区占位注释)。确保 extract_funcs 无 GAPS。
+  - 创建两骨架,header 仿 machine_state.sh(首行 shebang + `# lib/devtool_*.sh — <职责>. 术语见 GLOSSARY.md.` + `# Exit: leaf-no-exit（leaf-pure module）; 调用者负责 exit-code/remedy/诊断.` + 空函数区占位注释)。确保 extract_funcs 无 GAPS。
 - Change: exit_contract LEAF +2 entry;两骨架文件
 - [ ] Step 4: 运行 ob_check 确认全绿
 - Run: `tools/ob_check.sh`

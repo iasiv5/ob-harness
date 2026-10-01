@@ -19,13 +19,13 @@
 - **边界**：intake 落在 `confirm_action` 通过 + `info "Init confirmed"` 之后；`BUILD_DIR/SRC_DIR` 重派生、`machine_state_clear_init_progress`、`devtool_recipes_clear_cache`、rerun 探测全留 cmd_init（副作用 + exit 1 路径属 L1）。
 - **testability 收益边界（诚实）**：unit 覆盖 empty/arg-fastpath/nontty 三态（不依赖 PTY）；pick+confirm 的 cancel/ok 两态留 `.exp`（依赖真交互，[manual_matrix.exp](../tests/protocol/manual_matrix.exp) 已覆盖）。
 - **ob 改 lib 后跑 ob_check**（AGENTS.md Working Mode）：改动 `lib/*.sh` 后 `tools/ob_check.sh` 是配套自检。
-- 命名规则：文件 `lib/init_intake.sh`，函数 `init_intake`，术语见 [CONTEXT.md `ob init command intake`](../../CONTEXT.md)。
+- 命名规则：文件 `lib/init_intake.sh`，函数 `init_intake`，术语见 [GLOSSARY.md `ob init command intake`](../../GLOSSARY.md)。
 
 ## 输入工件
 
 - 设计共识：`/pick-one-arch-task` + 独立评审 + `/grill-with-docs` 锁定的 5 决策 + 7 约束（本会话）。
 - [ADR-0016](../adr/0016-defer-init-intake-guard-reuse.md)（Phase 2 暂缓 + 触发条件）。
-- [CONTEXT.md `ob init command intake`](../../CONTEXT.md) + [`ob dev command intake`](../../CONTEXT.md)（同构术语）。
+- [GLOSSARY.md `ob init command intake`](../../GLOSSARY.md) + [`ob dev command intake`](../../GLOSSARY.md)（同构术语）。
 - 同构参照：[devtool_intake.sh](../../lib/devtool_intake.sh) + [tests/unit/devtool_intake.sh](../../tests/unit/devtool_intake.sh) + [tests/protocol/devtool_intake_surface.sh](../../tests/protocol/devtool_intake_surface.sh)。
 
 ## 文件结构与职责
@@ -155,7 +155,7 @@
     #   (empty 前置 / arg 校验快路径 / 非 TTY 拦截 / pick_machine + confirm) 封装为一个入口。
     #   return 0/1/2/3; $MACHINE 沿用全局(fastpath 给定值 / pick 路径 pick_machine 设值)。
     #   消费 list_available_machines / print_previously_initialized / pick_machine / confirm_action / error / warn / info。
-    #   术语见 CONTEXT.md ob init command intake; guard 第 3 消费暂缓见 ADR-0016。
+    #   术语见 GLOSSARY.md ob init command intake; guard 第 3 消费暂缓见 ADR-0016。
     # Exit: leaf-pure module(横切惯例, 同 devtool_intake.sh); 函数绝不 exit, return 契约值; exit 归 cmd_init。
 
     # init_intake

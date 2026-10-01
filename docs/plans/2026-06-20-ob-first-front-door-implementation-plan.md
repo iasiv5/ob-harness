@@ -2,7 +2,7 @@
 
 ## 目标
 
-把"ob 优先"约定固化进 harness：agent 做 OpenBMC 环境生命周期动作前，先 `ob --help` 查 ob 是否提供对应能力，提供就走 `ob <cmd>`，仅当 `exit 1` 真实失败且 ob 确无此能力时才手动兜底。落点覆盖常驻约定层（AGENTS.md）、按需细节层（新 skill）、能力清单审核与防漂移（ob usage() + 测试）、provenance（CONTEXT.md 术语 + ADR）。
+把"ob 优先"约定固化进 harness：agent 做 OpenBMC 环境生命周期动作前，先 `ob --help` 查 ob 是否提供对应能力，提供就走 `ob <cmd>`，仅当 `exit 1` 真实失败且 ob 确无此能力时才手动兜底。落点覆盖常驻约定层（AGENTS.md）、按需细节层（新 skill）、能力清单审核与防漂移（ob usage() + 测试）、provenance（GLOSSARY.md 术语 + ADR）。
 
 ## 架构快照
 
@@ -27,7 +27,7 @@
 - Modify: `rules/05_SKILLS_INDEX.md`（BestPractice 分类）— 登记第 6 条
 - Modify: `rules/03_WORKSPACE.md`（`ob` 路由项）— +1 行交叉引用
 - Modify: `rules/skills/workflow_01-obmc_env_init.md`（可用资源段）— +1 行指针
-- Modify: `CONTEXT.md`（Language 段）— 新增 `ob 优先`、`exit-code 契约` 两术语
+- Modify: `GLOSSARY.md`（Language 段）— 新增 `ob 优先`、`exit-code 契约` 两术语
 - Create: `docs/adr/0003-ob-first-front-door.md` — 决策记录（仿 0001 格式）
 
 环境前提：`bash`、`python3`、`shellcheck`、`git`（本地与 CI 均已具备）。所有验证命令在仓库根执行。
@@ -149,19 +149,19 @@
 - Run: `grep -l 'bestpractice_06-ob_first' rules/03_WORKSPACE.md rules/skills/workflow_01-obmc_env_init.md | wc -l`
 - Expected: 输出 `2`
 
-### Task 7: CONTEXT.md 两术语
+### Task 7: GLOSSARY.md 两术语
 
 - 目标：固化 `ob 优先`、`exit-code 契约` 两个 glossary 术语（仅定义，不放实现细节）。
-- Files: Modify `CONTEXT.md`
+- Files: Modify `GLOSSARY.md`
 - 验证范围：两术语均出现在 Language 段，格式含 `_Avoid_`。
 
 - [ ] Step 1: 确认当前缺失
-- Run: `grep -q '^\*\*ob 优先' CONTEXT.md && echo PRESENT || echo MISSING`
+- Run: `grep -q '^\*\*ob 优先' GLOSSARY.md && echo PRESENT || echo MISSING`
 - Expected: `MISSING`
 - [ ] Step 2: 在 Language 段追加两条（沿用现有 `**term**: / 定义 / _Avoid_:` 格式）
 - Change: `ob 优先 (ob-first)` 与 `exit-code 契约`，定义对齐架构快照里的措辞；`exit-code 契约` 补充现有 `function semantic layer` 条目里关于 exit 3 的说法。
 - [ ] Step 3: 确认两术语落地
-- Run: `grep -E '^\*\*(ob 优先|exit-code 契约)' CONTEXT.md | wc -l`
+- Run: `grep -E '^\*\*(ob 优先|exit-code 契约)' GLOSSARY.md | wc -l`
 - Expected: 输出 `2`
 
 ### Task 8: 写 ADR 0003

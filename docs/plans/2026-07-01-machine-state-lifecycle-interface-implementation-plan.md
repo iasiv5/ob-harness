@@ -17,7 +17,7 @@
 
 ## 输入工件
 
-- `CONTEXT.md`：`machine lifecycle state` glossary。
+- `GLOSSARY.md`：`machine lifecycle state` glossary。
 - `docs/adr/0006-machine-state-firmware-image-readiness.md`：接受“明确状态查询 + facts interface”，拒绝 public `machine_state_records`。
 - 当前分支：`feature/machine-state-lifecycle-interface`。
 
@@ -253,9 +253,9 @@ Files:
 
 ## 执行纪律
 
-- 开始实现前先批判性复查本计划；若发现 ADR-0006、`CONTEXT.md`、代码现状或验证命令不一致，先修计划再实现。
+- 开始实现前先批判性复查本计划；若发现 ADR-0006、`GLOSSARY.md`、代码现状或验证命令不一致，先修计划再实现。
 - 当前工作应在 `feature/machine-state-lifecycle-interface` 分支执行；如果执行者发现自己在 `main` 或 `master`，必须先停下。
-- 实现前确认 `CONTEXT.md` 与 `docs/adr/0006-machine-state-firmware-image-readiness.md` 已稳定，且没有与本计划冲突的新改动。
+- 实现前确认 `GLOSSARY.md` 与 `docs/adr/0006-machine-state-firmware-image-readiness.md` 已稳定，且没有与本计划冲突的新改动。
 - 按 Task 顺序执行，不要无声跳步、合并任务或扩大目标。
 - 每完成一个 Task，都运行该 Task 定义的验证命令。
 - `machine_state.sh` 不得新增 `exit`；如必须改变 exit 行为，先停下重新审查 ADR 和计划。
@@ -273,7 +273,7 @@ Files:
 
 ## Inline 自检结果
 
-- 设计覆盖：覆盖了 ADR-0006、`CONTEXT.md`、用户确认的“删除 public record surface”“严格门禁”“先小查询函数迁移”三项要求，并吸收了评审指出的现状漂移。
+- 设计覆盖：覆盖了 ADR-0006、`GLOSSARY.md`、用户确认的“删除 public record surface”“严格门禁”“先小查询函数迁移”三项要求，并吸收了评审指出的现状漂移。
 - 文件范围：只覆盖 `machine_state` lifecycle interface、调用方迁移、测试和门禁；不改 QEMU launch profile、source manifest 或其他子系统。
 - 占位符扫描：计划中没有未决占位标记或未展开的验证项。
 - 可执行性：每个 Task 都有具体路径、命令和预期结果；最终验证使用 Linux bash 和仓库现有命令。

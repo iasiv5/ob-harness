@@ -26,7 +26,7 @@
 ## 输入工件
 
 - 设计决策：`docs/adr/0012-ob-dev-subcmd-handler-leaf-pure-exit.md`（exit 归属）。
-- 术语：`CONTEXT.md` 的 `subcommand handler` 词条。
+- 术语：`GLOSSARY.md` 的 `subcommand handler` 词条。
 - grill 共识 6 决策（D1-D6，见架构快照与全局约束）。
 - 范式参照：`lib/devtool_pick.sh`（leaf-pure handler 写法）、`tests/unit/devtool_pick.sh`（unit 测范式）、`tools/ob_check.sh`（回归门禁）。
 
@@ -65,7 +65,7 @@
 
 - [ ] Step 3: 写最小实现
 - Change:
-  1. Create `lib/devtool_subcmd.sh`，文件头注释（参照 `devtool_pick.sh`：说明 module 职责 = ob dev 二级子命令 porcelain 生命周期编排、leaf-pure、消费 devtool_*_run/dev_relay_result/dev_emit_*、术语见 CONTEXT.md subcommand handler；Exit 行显式引 ADR-0012，措辞 `Exit: leaf-pure module (ADR-0012); 函数绝不 exit，return 0/1/2/3；exit 归 cmd_dev`（类比 devtool_pick.sh 引 ADR-0010））。写入：
+  1. Create `lib/devtool_subcmd.sh`，文件头注释（参照 `devtool_pick.sh`：说明 module 职责 = ob dev 二级子命令 porcelain 生命周期编排、leaf-pure、消费 devtool_*_run/dev_relay_result/dev_emit_*、术语见 GLOSSARY.md subcommand handler；Exit 行显式引 ADR-0012，措辞 `Exit: leaf-pure module (ADR-0012); 函数绝不 exit，return 0/1/2/3；exit 归 cmd_dev`（类比 devtool_pick.sh 引 ADR-0010））。写入：
   ```bash
   # _dev_dryrun_gate <dry_run> <notice_msg>
   # dry-run 命中 → notice(stderr) + return 0(handler 应 return 0)；否则 return 1(继续)。

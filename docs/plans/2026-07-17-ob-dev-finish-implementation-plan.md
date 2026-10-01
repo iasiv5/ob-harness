@@ -23,7 +23,7 @@
 
 ## 全局约束
 
-逐字继承 [CONTEXT.md](../../CONTEXT.md)（`ob dev finish`、`patch landing`、`ob dev porcelain stdout`、`ob dev cleanup/收尾语义`）+ [ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md) + [ADR-0009](../adr/0009-ob-dev-workspace-single-writer.md)，全程不可违反：
+逐字继承 [GLOSSARY.md](../../GLOSSARY.md)（`ob dev finish`、`patch landing`、`ob dev porcelain stdout`、`ob dev cleanup/收尾语义`）+ [ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md) + [ADR-0009](../adr/0009-ob-dev-workspace-single-writer.md)，全程不可违反：
 
 - `ob` 不内嵌 LLM；finish 是 agent-facing 子命令，machine 用 `--machine` flag（省略时复用 cmd_dev 既有 machine 前置 [:862-884](../../lib/commands.sh#L862-L884)）。
 - `lib/devtool_finish.sh`、`lib/devtool_porcelain.sh` **leaf-pure**（函数绝不 exit，允许文件/进程副作用），登记 `exit_contract.py` `LEAF_EXIT_EXCEPTIONS_BY_BASENAME`；exit/remedy 只在 `cmd_dev`。
@@ -37,7 +37,7 @@
 - **landing 探测 = status + content digest diff**（不止 status）：detect diff 规则"post 有 pre 无 / status 变 / **digest 变**"。识别 finish 对 dirty 文件的二次修改（pre/post 都 ` M` 但 sha 变 → 进 recipe_files/patches）。纯 status diff 会漏报 dirty-to-dirty，禁用。**deleted `.patch`/recipe（pre 有 post 无）→ phase=landing fail closed**（unsupported，devtool finish 不删 patch；不塞进 patches/recipe_files，避免 integration 检查不存在文件）。
 - **detect 接口需 openbmc_dir**：detect 签名 `_devtool_finish_detect_landing <openbmc_dir> <pre_json> <post_json> ...`——openbmc_dir 作 base（拼 abs 读 post recipe SRCREV、增量文件找 `conf/layer.conf`、landing_layer 相对输出），不偷读全局；capture JSON 只携 relpath（不携机器路径字段）。T5/T8 调用显式传 `"$OPENBMC_DIR"`。
 - **capture/detect 复用**：T5 runtime 和 T8 integration 必须用同一 `_devtool_finish_capture_landing_snapshot`（不手写一套 snapshot 逻辑）。
-- **JSON null 契约（CONTEXT.md）**：noop 时 `cleaned_bbappend`/`landing_mode`/`landing_layer`/`srcrev` 为 `null`、`patches`/`recipe_files` 为 `[]`。内部 outvar 可空串，JSON encoder 必须 `or None`（空→null）。
+- **JSON null 契约（GLOSSARY.md）**：noop 时 `cleaned_bbappend`/`landing_mode`/`landing_layer`/`srcrev` 为 `null`、`patches`/`recipe_files` 为 `[]`。内部 outvar 可空串，JSON encoder 必须 `or None`（空→null）。
 - **landing fields 相对路径**：patches/recipe_files/landing_layer/snapshot relpath 用相对 `$OPENBMC_DIR`；destination（resolve_layer_root 输出、给 devtool）用**绝对**。两者不混用。
 - **patch landing = 新增或内容变化的 patch**：detect 用 status+digest diff 捕捉新增+修改，都进 `patches`。
 - **landing_layer 来源 = conf/layer.conf 向上找**（非公共前缀）：每增量文件向上找最近 `conf/layer.conf` 得 layer root；所有增量必须同 layer root 否则 `phase=landing`；复用 destination resolver 逻辑。
@@ -75,7 +75,7 @@
 影响：
 1. **T5 safety copy 整段逻辑应删除**：copy-before-finish、`<recipe>.<timestamp>.finish-copy` 命名、成功后三分支（删 copy / rename 发布 attic / retained 删 copy）、失败兜底——均无必要。finish 的 srctreebase 处置直接复用 reset disposition 五态（devtool 原生 `_reset` 已归档），与 reset 完全对称。
 2. **capture 过滤 attic 仍保留**（attic 是 devtool 归档产物，不属于 landing；safety copy 专属过滤理由消失，但 attic 过滤本身仍需——devtool move 进来的归档不应算 landing）。
-3. **CONTEXT.md / ADR-0008 复用确认**：finish 物理层与 reset 同构（ADR-0008 fail-safe 通则直接复用），进一步坐实"finish = reset 链 + landing 观测"，safety copy 是多余复杂度。
+3. **GLOSSARY.md / ADR-0008 复用确认**：finish 物理层与 reset 同构（ADR-0008 fail-safe 通则直接复用），进一步坐实"finish = reset 链 + landing 观测"，safety copy 是多余复杂度。
 
 **结论**：T1（emit）/T2（reset 对齐）已完成并 commit（dbc26cd docs + 06b2b7f impl），不受 FACT_② 影响。本 v6 修订确立 T3-T10 执行规格：**finish 物理层复用 reset disposition 五态，无 safety copy**。plan 中所有 `safety copy` / `finish-copy` / `copy-before-finish` / `safety copy 时序` 字样（架构快照行20、全局约束行45-46、T5 行273-301、T8 行369-400、执行纪律行468、最终验证行484-485）一律按下述 v6 规格覆盖。
 
@@ -106,7 +106,7 @@ resolve_workspace(_resolved_*) → devtool status → _devtool_parse_status_entr
 
 ## 输入工件
 
-- 设计：grilling 共识（已落 [CONTEXT.md](../../CONTEXT.md) `ob dev finish`/`patch landing` + porcelain 七/十二字段 + cleanup→ADR-0009）+ [ADR-0009](../adr/0009-ob-dev-workspace-single-writer.md)。
+- 设计：grilling 共识（已落 [GLOSSARY.md](../../GLOSSARY.md) `ob dev finish`/`patch landing` + porcelain 七/十二字段 + cleanup→ADR-0009）+ [ADR-0009](../adr/0009-ob-dev-workspace-single-writer.md)。
 - [ADR-0008](../adr/0008-ob-dev-cleanup-fail-safe.md)。
 - 结构镜像参考：[reset 实施计划](./2026-07-15-ob-dev-reset-implementation-plan.md)、`lib/devtool_reset.sh`、`lib/devtool_workspace.sh`、`lib/devtool_modify.sh`。
 - 先例测试：`tests/integration/ob_dev.sh`、`tests/unit/ob_dev_integration_safety.sh`、`tests/protocol/dev_interactive.exp`、`tests/protocol/usage_dispatch_sync.sh`。
@@ -429,8 +429,8 @@ resolve_workspace(_resolved_*) → devtool status → _devtool_parse_status_entr
 
 ### Task 9: harness 同步（WORKSPACE + workflow_02 + 确认 CONTEXT/ADR 已落）
 
-- 目标：登记路由；workflow_02 finish 收尾；确认 CONTEXT.md（finish/patch landing/porcelain 七十二字段，grilling 已落）+ ADR-0009 在场。
-- Files: Modify `rules/03_WORKSPACE.md`、`rules/skills/workflow_02-obmc_dev_modify.md`；确认 `CONTEXT.md`、`docs/adr/0009-ob-dev-workspace-single-writer.md`。
+- 目标：登记路由；workflow_02 finish 收尾；确认 GLOSSARY.md（finish/patch landing/porcelain 七十二字段，grilling 已落）+ ADR-0009 在场。
+- Files: Modify `rules/03_WORKSPACE.md`、`rules/skills/workflow_02-obmc_dev_modify.md`；确认 `GLOSSARY.md`、`docs/adr/0009-ob-dev-workspace-single-writer.md`。
 - 验证范围：`tools/ob_check.sh` + 精确文档断言。
 - 接口契约: Consumes finish 命令形态 + JSON 契约；Produces harness 登记。
 
@@ -443,12 +443,12 @@ resolve_workspace(_resolved_*) → devtool status → _devtool_parse_status_entr
 - [ ] Step 3: 写最小实现
   - `rules/03_WORKSPACE.md`：lib 加 `devtool_porcelain.sh`（emit 原语）+ `devtool_finish.sh`（finish 执行，leaf-pure）；ob dev 子命令枚举加 finish。
   - `rules/skills/workflow_02-obmc_dev_modify.md`：收尾段补 finish（`ob dev --machine <m> finish <recipe>` 落回原属 layer，stdout 12 字段 JSON 读 landing_mode/patches；moved→srctreebase safety-copy 归档 attic；reset 丢弃 / finish 落回 对称；单 writer，无并发；build/deploy 待 ob）。
-  - 确认 `CONTEXT.md` `ob dev finish`/`patch landing` + porcelain 七/十二字段（`or None` null 契约）+ cleanup→ADR-0009 在场。
+  - 确认 `GLOSSARY.md` `ob dev finish`/`patch landing` + porcelain 七/十二字段（`or None` null 契约）+ cleanup→ADR-0009 在场。
 - Change: WORKSPACE + workflow_02；CONTEXT/ADR 核对。
 - [ ] Step 4: 运行确认（精确文档断言）
   - Run: `tools/ob_check.sh`
   - Expected: ALL GREEN。
-  - Run: `rc=0; grep -q 'devtool_finish.sh' rules/03_WORKSPACE.md && grep -q 'devtool_porcelain.sh' rules/03_WORKSPACE.md && grep -q 'finish' rules/03_WORKSPACE.md && grep -q 'landing_mode' CONTEXT.md && grep -q 'patch landing' CONTEXT.md && test -f docs/adr/0009-ob-dev-workspace-single-writer.md; rc=$?; (( rc == 0 )) || { echo "doc assert fail rc=$rc" >&2; exit 1; }`
+  - Run: `rc=0; grep -q 'devtool_finish.sh' rules/03_WORKSPACE.md && grep -q 'devtool_porcelain.sh' rules/03_WORKSPACE.md && grep -q 'finish' rules/03_WORKSPACE.md && grep -q 'landing_mode' GLOSSARY.md && grep -q 'patch landing' GLOSSARY.md && test -f docs/adr/0009-ob-dev-workspace-single-writer.md; rc=$?; (( rc == 0 )) || { echo "doc assert fail rc=$rc" >&2; exit 1; }`
   - Expected: 全部命中（`&&` 链 + `rc=$?` + `test -f` 收尾）。
 - [ ] Step 5: checkpoint（可选）
   - Run: `git add rules/ && git commit -m "docs(dev): harness sync for finish"`

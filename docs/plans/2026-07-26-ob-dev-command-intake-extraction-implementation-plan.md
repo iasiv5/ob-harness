@@ -2,7 +2,7 @@
 
 ## 目标
 
-把 `cmd_dev`（`lib/commands.sh` 的 `cmd_dev` 内，argv 解析段 + TTY 菜单段）抽成 `lib/devtool_intake.sh` 的 leaf-pure intake module（`ob dev command intake`，见 `CONTEXT.md`），含两个函数：`dev_intake_argv`（确定性 argv 解析，return 0/1）与 `dev_intake_tty`（TTY 子命令引导，读 stdin，return 0/1/2/3）。`cmd_dev` 收缩为 intake → machine 前置 → init-done 前置 → (条件) intake_tty → dispatch → exit 的 L1 编排，exit 收口独占留 `cmd_dev`（ADR-0010/0012）。状态走 return-code（0/1/2/3 契约值），parsed fields 经 nameref outvar 回传（不污染全局）。
+把 `cmd_dev`（`lib/commands.sh` 的 `cmd_dev` 内，argv 解析段 + TTY 菜单段）抽成 `lib/devtool_intake.sh` 的 leaf-pure intake module（`ob dev command intake`，见 `GLOSSARY.md`），含两个函数：`dev_intake_argv`（确定性 argv 解析，return 0/1）与 `dev_intake_tty`（TTY 子命令引导，读 stdin，return 0/1/2/3）。`cmd_dev` 收缩为 intake → machine 前置 → init-done 前置 → (条件) intake_tty → dispatch → exit 的 L1 编排，exit 收口独占留 `cmd_dev`（ADR-0010/0012）。状态走 return-code（0/1/2/3 契约值），parsed fields 经 nameref outvar 回传（不污染全局）。
 
 ## 架构快照
 
@@ -15,18 +15,18 @@
 - **exit 归属（ADR-0010/0012）**：intake 是 leaf-pure，函数绝不 `exit`，`return` 契约值；`exit` 只在 `cmd_dev`（L1）。`exit_contract` Y 规则覆盖新 basename `'devtool_intake.sh'`。
 - **状态走 return-code（i 决策）**：`dev_intake_argv` return 0/1（1=usage-error）；`dev_intake_tty` return 0/1/2/3。`cmd_dev` 复用现成 `\|\| _rc=$?; case "$_rc" in 0)...` 字面 case 收口（不用 `exit $?`——exit_contract X 规则禁 dynamic exit）。
 - **fields 走 nameref outvar**：`(machine, subcmd, pattern, recipe)` 经调用方声明的 local + nameref 回填，不污染全局（区别于历史 `pick_machine` 设全局 `$MACHINE`）。outvar 形参名不得与函数内 local 同名（bash nameref 循环引用陷阱，参见 `devtool_pick.sh` unit 注释）。
-- **return-code 不落多态返回码坑**：这是契约值 0/1/2/3（`dev_dispatch_subcmd` 已用、ADR-0012 背书），用 `\|\| _rc=$?` 捕获；非 `pick_machine` 式 0/1/2 多态存活探测码（`CONTEXT.md` `modified recipe selection` 条警告的那种）。论证留作 design note，不另起 ADR。
-- **dry_run 设全局**：`dev_intake_argv` 解析到 `-d|-D|--dry-run` 时设全局 `DRY_RUN=1`（跟 `ob` 入口 `parse_args` 对称、跟现状一致）；`cmd_dev` 末端仍读 `"${DRY_RUN:-0}"` 传给 dispatch。intake 是"解析全局选项"的层，设全局选项变量属其职责（leaf-pure 允许副作用，`CONTEXT.md` `function semantic layer` 条：pure 仅指 no-direct-exit）。
+- **return-code 不落多态返回码坑**：这是契约值 0/1/2/3（`dev_dispatch_subcmd` 已用、ADR-0012 背书），用 `\|\| _rc=$?` 捕获；非 `pick_machine` 式 0/1/2 多态存活探测码（`GLOSSARY.md` `modified recipe selection` 条警告的那种）。论证留作 design note，不另起 ADR。
+- **dry_run 设全局**：`dev_intake_argv` 解析到 `-d|-D|--dry-run` 时设全局 `DRY_RUN=1`（跟 `ob` 入口 `parse_args` 对称、跟现状一致）；`cmd_dev` 末端仍读 `"${DRY_RUN:-0}"` 传给 dispatch。intake 是"解析全局选项"的层，设全局选项变量属其职责（leaf-pure 允许副作用，`GLOSSARY.md` `function semantic layer` 条：pure 仅指 no-direct-exit）。
 - **machine 前置 + init-done 前置留 cmd_dev**：`dev_machine` 空 → 枚举 initialized + 非 TTY guard + `pick_machine` + cancel 映射（440-462），以及 `machine_state_is_initialized` 前置（464-469），都留 `cmd_dev`——它们是 machine 生命周期前置，不是命令语法解析。intake 不调 `machine_state_*`。
 - **文案逐字照搬**：菜单文案、notice/error/remedy 从 `cmd_dev` 原段原样搬进 intake 函数，不改写。
 - **`_positional_count` 不照搬（dead variable）**：`cmd_dev` 原 argv 段的 `_positional_count`（L405 声明 + L420/L430 递增）全程无读取点、dispatch 不传它，是死代码。抽取进 `dev_intake_argv` 时丢弃，不固化进新 module。
 - **lib 文件结构**：过 `extract_funcs` 三段（header 注释 + 函数定义 + footer 纯函数定义），参照 `lib/devtool_pick.sh`。
-- **不写新 ADR**：三条件不满足（可逆 / 不 surprising——照搬 ADR-0010/0012 模式 / 真分叉已被先例覆盖）；intake 术语已落 `CONTEXT.md`，本计划归档即可。
+- **不写新 ADR**：三条件不满足（可逆 / 不 surprising——照搬 ADR-0010/0012 模式 / 真分叉已被先例覆盖）；intake 术语已落 `GLOSSARY.md`，本计划归档即可。
 
 ## 输入工件
 
 - grill 共识（5 决策）：YAGNI 闸门通过（零单测 + 5+ bug-fix 史 + `ob dev` 命令面还会变）；范围选项 C（argv + TTY 同 module 两函数）；接口 (i)（return-code + nameref）；命名 `ob dev command intake`；不写新 ADR。
-- 术语：`CONTEXT.md` 的 `ob dev command intake` 词条（本计划前置已落）。
+- 术语：`GLOSSARY.md` 的 `ob dev command intake` 词条（本计划前置已落）。
 - exit 归属：`docs/adr/0010-ob-dev-dispatch-leaf-pure-exit.md`、`docs/adr/0012-ob-dev-subcmd-handler-leaf-pure-exit.md`。
 - 范式参照：`lib/devtool_pick.sh`（leaf-pure + nameref outvar + 头注释引 ADR）、`tests/unit/devtool_pick.sh`（unit 范式：`ob_loader.sh` + here-string 喂 stdin + outvar 当前 shell 跑 + `2>"$_err"` 捕 stderr）、`tests/protocol/status_render_surface.sh`（surface gate forbidden-token 范式）、`tools/ob_check.sh`（回归门禁）。
 
@@ -67,7 +67,7 @@
 - [ ] Step 3: 写最小实现
 - Change:
   - **⚠️ 顺序约束（防 exit_contract Y 假绿）**：先做第 2 点（`exit_contract.py` 登记 `devtool_intake.sh`），再创建 `lib/devtool_intake.sh`（第 1 点），再改 `cmd_dev`（第 3 点），三处同 commit。Y 规则只查 `LEAF_EXIT_EXCEPTIONS_BY_BASENAME` 字典里登记的 basename——intake.sh 已创建但未登记的中间态，里面误写 `exit` 不会被 Y 报。禁止在该中间态跑 `ob_check` 当门禁。
-  1. Create `lib/devtool_intake.sh`，文件头注释（参照 `devtool_pick.sh`：职责 = `ob dev` 命令入口的解析+引导层、leaf-pure、消费 `"$@"`/`devtool_pick_modified_recipe`/`read`、术语见 `CONTEXT.md` `ob dev command intake`）。Exit 行显式引 ADR-0010/0012，措辞 `Exit: leaf-pure module (ADR-0010/0012); 函数绝不 exit，return 契约值；exit 归 cmd_dev`。写入 `dev_intake_argv`（从 `cmd_dev` argv 段照搬 case 逻辑，return 化 + nameref outvar 回填；`-d|-D|--dry-run` 设全局 `DRY_RUN=1`）：
+  1. Create `lib/devtool_intake.sh`，文件头注释（参照 `devtool_pick.sh`：职责 = `ob dev` 命令入口的解析+引导层、leaf-pure、消费 `"$@"`/`devtool_pick_modified_recipe`/`read`、术语见 `GLOSSARY.md` `ob dev command intake`）。Exit 行显式引 ADR-0010/0012，措辞 `Exit: leaf-pure module (ADR-0010/0012); 函数绝不 exit，return 契约值；exit 归 cmd_dev`。写入 `dev_intake_argv`（从 `cmd_dev` argv 段照搬 case 逻辑，return 化 + nameref outvar 回填；`-d|-D|--dry-run` 设全局 `DRY_RUN=1`）：
   签名定为 **nameref 在前 4 位、args 在后**（函数内 `shift 4` 后 `$@` 即 ob dev argv，最干净；nameref 可直接赋值，不用 `printf -v`）。从 `cmd_dev` argv 段原样搬 case 逻辑，仅 `exit 1` → `return 1`：
   ```bash
   # dev_intake_argv <out_machine> <out_subcmd> <out_pattern> <out_recipe> <args...>

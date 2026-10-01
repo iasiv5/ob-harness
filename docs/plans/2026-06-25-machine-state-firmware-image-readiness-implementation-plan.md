@@ -26,7 +26,7 @@ Firmware image discovery 只接受标准同名路径：`$OPENBMC_DIR/build/<mach
 
 - `docs/adr/0001-init-done-marker.md`
 - `docs/adr/0006-machine-state-firmware-image-readiness.md`
-- `CONTEXT.md` 中的 `firmware-image-ready machine` 与 `orphan firmware image artifact`
+- `GLOSSARY.md` 中的 `firmware-image-ready machine` 与 `orphan firmware image artifact`
 
 ## 文件结构与职责
 

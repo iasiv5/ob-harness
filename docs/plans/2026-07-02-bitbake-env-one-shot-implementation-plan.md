@@ -10,7 +10,7 @@
 - `lib/bitbake_env.sh` 是 leaf-pure/no-exit support module，并被 `exit_contract.py` 的 Y 规则守住。
 - `repo.sh` 改为调用 one-shot helper 且行为不变；`qemu.sh` 改为调用 one-shot helper 后保持既有成功路径与调用次数，并显式收窄 helper 非零返回为失败。
 - ADR-0002 的 QB 来源真实性不变；ADR-0007 的 qemuboot fast path 0 次 bitbake、fallback 1 次 bitbake 调用次数锁不变。
-- `CONTEXT.md` 和 `rules/03_WORKSPACE.md` 的 `lib/` 文件边界描述同步到新 module。
+- `GLOSSARY.md` 和 `rules/03_WORKSPACE.md` 的 `lib/` 文件边界描述同步到新 module。
 
 ## 架构快照
 
@@ -70,7 +70,7 @@ Current-shell 三处保持原状并只加测试锁：
   - 保留空输出/失败诊断、exit 1、QB 解析和 QEMU launch profile 决策。
 - Modify: `tools/exit_contract.py`
   - 在 `LEAF_EXIT_EXCEPTIONS_BY_BASENAME` 中登记 `'bitbake_env.sh': set()`。
-- Modify: `CONTEXT.md`
+- Modify: `GLOSSARY.md`
   - 更新 `function semantic layer` 的 `lib/` 文件边界描述，加入 `bitbake_env`。
   - 补充 BitBake environment support module 的术语说明。
 - Modify: `rules/03_WORKSPACE.md`
@@ -188,10 +188,10 @@ Current-shell 三处保持原状并只加测试锁：
 ### Task 6: 同步 glossary 和 workspace 路由文档
 
 - 目标：把新 module 纳入仓库长期知识，消除 `lib/` 六文件边界描述漂移。
-- 涉及文件：`CONTEXT.md`、`rules/03_WORKSPACE.md`
+- 涉及文件：`GLOSSARY.md`、`rules/03_WORKSPACE.md`
 - 验证范围：文档中明确 `bitbake_env.sh` 职责，且不新增 ADR。
 
-- [ ] Step 1: 更新 `CONTEXT.md`
+- [ ] Step 1: 更新 `GLOSSARY.md`
 - Change:
   - 在 `function semantic layer` 术语中把 `lib/{util,repo,qemu,machine_state,init_pipeline,commands}` 更新为包含 `bitbake_env`。
   - 增加或嵌入 `BitBake environment support module` 说明：封装 one-shot `source setup` / `bitbake -e` 查询，不承担 caller exit/remedy，不接管 current-shell setup。
@@ -200,7 +200,7 @@ Current-shell 三处保持原状并只加测试锁：
   - 在 `lib/` 路由说明中加入 `bitbake_env.sh` 的职责。
   - 保持 `ob/lib` 改动后需要跑 `tools/ob_check.sh` 的说明不变。
 - [ ] Step 3: 磁盘级验证文档落点
-- Run: `grep -n "bitbake_env\|BitBake environment" CONTEXT.md rules/03_WORKSPACE.md`
+- Run: `grep -n "bitbake_env\|BitBake environment" GLOSSARY.md rules/03_WORKSPACE.md`
 - Expected: 两个文件均命中新 module 名称或术语；`docs/adr/` 未新增文件。
 
 ### Task 7: 全量收口验证
@@ -219,7 +219,7 @@ Current-shell 三处保持原状并只加测试锁：
 - Run: `OB_CHECK_SKIP_TESTS=1 OB_CHECK_READONLY=1 bash tools/ob_check.sh`
 - Expected: `extract_funcs`、machine-state public surface gate、shellcheck baseline、exit-contract 全部通过；命令以 0 退出。
 - [ ] Step 4: 检查工作区 diff 范围
-- Run: `git diff -- docs/plans/2026-07-02-bitbake-env-one-shot-implementation-plan.md lib/bitbake_env.sh lib/repo.sh lib/qemu.sh tools/exit_contract.py tests/protocol/bitbake_env_entry_contract.sh tests/protocol/bitbake_env_structure.sh CONTEXT.md rules/03_WORKSPACE.md`
+- Run: `git diff -- docs/plans/2026-07-02-bitbake-env-one-shot-implementation-plan.md lib/bitbake_env.sh lib/repo.sh lib/qemu.sh tools/exit_contract.py tests/protocol/bitbake_env_entry_contract.sh tests/protocol/bitbake_env_structure.sh GLOSSARY.md rules/03_WORKSPACE.md`
 - Expected: diff 只包含本计划范围内的文件和本次目标相关改动。
 
 ## 执行纪律

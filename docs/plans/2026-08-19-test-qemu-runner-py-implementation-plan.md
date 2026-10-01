@@ -24,7 +24,7 @@
 - 双 export（`PYTHONIOENCODING=utf-8` + `PYTHONUTF8=1`）保留在 run.sh shim，防御面不减（probe 子进程仍继承；runner.py 自身进程也继承）。
 - `report.py` CLI 形态保留（`tests/unit/test_qemu_runner.sh:313` 以 `--results -` stdin 直调）；`plan.py` / `assemble.py` 的 `__main__` CLI 删除（全量 grep 确认无外部消费方）。
 - contexts 侧 `contexts/baseline/b865g8-a2-bytedance/runner/` 完成后须与 romulus 侧的**六个运行时 runner 文件**（`run.sh runner.py plan.py assemble.py report.py probe_redfish.py`）保持逐字节相同，本计划产物同步拷贝过去（单点化 + ADR-0025 修订是另立任务，本轮不做）；custom 侧 `gen_baseline.py`/`reconcile.py` 落点私有，不参与逐字节一致性。
-- 不新 ADR；更新 CONTEXT.md / tests/baseline/README.md / rules/03_WORKSPACE.md 的 runner 结构表述。
+- 不新 ADR；更新 GLOSSARY.md / tests/baseline/README.md / rules/03_WORKSPACE.md 的 runner 结构表述。
 - 环境前提：bash + python3 + PyYAML（`python3 -c "import yaml"`）；shell 命令均按本仓 bash 惯例。
 
 ## 文件结构与职责
@@ -38,7 +38,7 @@
 | `tests/baseline/romulus/runner/assemble.py` | 修改 | 三形态改函数：`assemble_record(ar, appl, source, appl_reason, rc, probe_stdout) -> dict`、`skip_record(ar, reason, source) -> dict`、`fallback_record(ar) -> dict`；`emit()` 的 `print` 移除（record 直接返回）；删 `main`/`__main__` |
 | `tests/unit/test_qemu_runner.sh` | 修改（追加） | 新增函数级直调段：`oneline`/`live_line` 单测 + live 行与 report 逐条行共用 `oneline` 的不变量断言 |
 | `contexts/baseline/b865g8-a2-bytedance/runner/*` | 同步 | 逐字节拷贝 romulus 侧六个运行时 runner 文件（`gen_baseline.py`/`reconcile.py` 私有不动） |
-| `CONTEXT.md` / `tests/baseline/README.md` / `rules/03_WORKSPACE.md` | 修改 | runner 结构表述：`run.sh 编排 + plan.py + assemble.py` → `run.sh 薄 shim + runner.py 编排（in-process import）` |
+| `GLOSSARY.md` / `tests/baseline/README.md` / `rules/03_WORKSPACE.md` | 修改 | runner 结构表述：`run.sh 编排 + plan.py + assemble.py` → `run.sh 薄 shim + runner.py 编排（in-process import）` |
 
 接口契约（后续任务消费）：
 - `report.oneline(value) -> str`：`str(value or "").replace("\n", " ")[:120]`
@@ -180,16 +180,16 @@ done
 ```
 Expected: 六个运行时 runner 文件逐字节一致（`cmp -s` 全过、退出 0）。**不做整目录 `diff -r`**：custom 侧 `gen_baseline.py`/`reconcile.py` 是落点私有工具，保留不动；禁删。
 
-### Task 8: 文档同步（CONTEXT.md / README / WORKSPACE）
+### Task 8: 文档同步（GLOSSARY.md / README / WORKSPACE）
 
-1. `CONTEXT.md`：ob test-qemu / runner 相关表述中 "run.sh 编排" 改为 "run.sh 薄 shim + runner.py 编排（in-process import plan/assemble/report；live 行格式同源 report.oneline/live_line）"，术语语义不变的不动。
+1. `GLOSSARY.md`：ob test-qemu / runner 相关表述中 "run.sh 编排" 改为 "run.sh 薄 shim + runner.py 编排（in-process import plan/assemble/report；live 行格式同源 report.oneline/live_line）"，术语语义不变的不动。
 2. `tests/baseline/README.md`：结构地图段（现 L59-64 一带）改为 5+1 件新职责描述。
 3. `rules/03_WORKSPACE.md` L10：`run.sh 编排 + plan.py planner + assemble.py record 装配 + probe_redfish.py/report.py` → `run.sh 薄 shim + runner.py 编排 + plan.py/assemble.py/report.py 函数件 + probe_redfish.py`。
 
 Run:
 ```bash
-! grep -rn 'run.sh 编排' CONTEXT.md tests/baseline/README.md rules/03_WORKSPACE.md
-grep -ln '薄 shim' CONTEXT.md tests/baseline/README.md rules/03_WORKSPACE.md
+! grep -rn 'run.sh 编排' GLOSSARY.md tests/baseline/README.md rules/03_WORKSPACE.md
+grep -ln '薄 shim' GLOSSARY.md tests/baseline/README.md rules/03_WORKSPACE.md
 ```
 Expected: 第一条退出 0（无残留旧表述），第二条三文件各命中（执行时按实际文案把锚点从字面 `runner.py 编排` 校正为 `薄 shim`——三处措辞各自成文，不共享同一连续子串）。
 

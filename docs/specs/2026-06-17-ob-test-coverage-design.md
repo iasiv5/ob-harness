@@ -1,7 +1,7 @@
 # ob 测试覆盖体系 设计文档
 
 > 状态：设计（2026-06-17），已批准，实施中（见配套实施计划）。经三轮评审修订冻结；退出码 status/stop-qemu 空值按第五轮评审实测修正为 0。
-> 术语：测试体系采用**语义名分层** `protocol` / `unit` / `orchestration` / `integration`（曾用 L0–L3，为脱离与 `ob` function semantic layer 的 L1/L2/L3 撞名而改，详见 [CONTEXT.md](../../CONTEXT.md)）。`ob` 源码注释里的 function semantic layer（`# L3 — never exits` 等）是 ob 真实属性，不在本设计改动范围。
+> 术语：测试体系采用**语义名分层** `protocol` / `unit` / `orchestration` / `integration`（曾用 L0–L3，为脱离与 `ob` function semantic layer 的 L1/L2/L3 撞名而改，详见 [GLOSSARY.md](../../GLOSSARY.md)）。`ob` 源码注释里的 function semantic layer（`# L3 — never exits` 等）是 ob 真实属性，不在本设计改动范围。
 > 依据：本文由 `/grill-with-docs` 对齐、按 `/brainstorming` 标准重写、经三轮评审修订。配套实施计划见 [`docs/plans/2026-06-17-ob-test-system-implementation-plan.md`](../plans/2026-06-17-ob-test-system-implementation-plan.md)。
 
 ## 背景与目标

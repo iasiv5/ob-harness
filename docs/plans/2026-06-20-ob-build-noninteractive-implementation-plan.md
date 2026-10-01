@@ -9,19 +9,19 @@
 3. `cmd_build` 无参数非 TTY 的 remedy line 改写为 `Specify a machine: ob build <machine>`（把"无 TTY 伪前置"纠正为可补全前置）。
 4. `cmd_build` 支持 `-d`：machine 解析 + marker 校验后、`source setup`/`bitbake` 副作用前加 dry-run 闸 → `exit 0`。
 5. **姊妹修复** `cmd_stop_qemu` 的同款 footgun：`-d` 当前被忽略，加 dry-run 闸（放在 confirm/force 守卫之前，使非 TTY 无 `--force` 也能零副作用预览）。
-6. 文档与测试随动：usage、协议测试、`CONTEXT.md` build 描述、`bestpractice_06` 已知缺口关闭。
+6. 文档与测试随动：usage、协议测试、`GLOSSARY.md` build 描述、`bestpractice_06` 已知缺口关闭。
 7. **顺带收敛 L3352**：`cmd_start_qemu` no-built-machines 的两命令 remedy 拆为两条单命令子分支（无 init-done → `ob init`；init-done 未 built → `ob build`），同时修正评审指出的语义不准（init-done-未-built 时不再误导去 init）。
 
 非目标（本次不做）：build 的 `--target <recipe>`（写死 `obmc-phosphor-image`）、build 的 `--force`、quiet/agent 输出模式、JSON 输出。（L3352 单命令收敛已纳入本计划任务 9，不再是 follow-up。）
 
-设计依据：本仓 `docs/adr/0003-ob-first-front-door.md`（含"消费侧契约：诊断行 + remedy line"）、`CONTEXT.md` 的 `remedy line` / `confirmation banner` / `init-done marker` / `exit-code 契约` 词条。
+设计依据：本仓 `docs/adr/0003-ob-first-front-door.md`（含"消费侧契约：诊断行 + remedy line"）、`GLOSSARY.md` 的 `remedy line` / `confirmation banner` / `init-done marker` / `exit-code 契约` 词条。
 
 ## 环境前提
 
 - 执行环境：Linux + bash（WSL Ubuntu）。所有验证命令为 bash 原生，在仓库根 `/home/iasi/ob-harness` 执行。
 - 改 `ob` 后**必须**跑 `tools/ob_check.sh`（extract_funcs GAPS → reorder → shellcheck baseline → run_all）。
 - 改了退出码 / 交互路径，最终验证用 `tests/run_all.sh --full`（含 `.exp` 矩阵），不只默认 `.sh` 子集。
-- **已知仓库 gotcha**：编辑**已存在**的 `.md`（`CONTEXT.md`、`bestpractice_06`）时，VS Code 编辑工具可能静默不落盘；改后用 `grep` 核对磁盘字节，必要时用 `python3` 读改写。新建文件不受此影响。
+- **已知仓库 gotcha**：编辑**已存在**的 `.md`（`GLOSSARY.md`、`bestpractice_06`）时，VS Code 编辑工具可能静默不落盘；改后用 `grep` 核对磁盘字节，必要时用 `python3` 读改写。新建文件不受此影响。
 
 ## 架构快照
 
@@ -55,7 +55,7 @@ cmd_build:
 **修改：**
 - `ob` — `parse_args`（build 位置参数）、`cmd_build`（双路径 + dry-run 闸 + remedy 文案）、`cmd_stop_qemu`（dry-run 闸）、`usage`（build 行 + examples）。
 - `tests/protocol/exit_codes.sh` — 加 1 例：`build <machine>` 位置参数在空 workspace 被接受（→ 3，证明不再 `exit 1` unknown option）。
-- `CONTEXT.md` — 头部 `ob build` 描述补"非交互 `ob build <machine>` 直构"。
+- `GLOSSARY.md` — 头部 `ob build` 描述补"非交互 `ob build <machine>` 直构"。
 - `rules/skills/bestpractice_06-ob_first.md` — 关闭/改写"已知缺口"节。
 - `tests/.shellcheck-baseline` — 若行号平移，由 `ob_check.sh` 自动重生成（git diff 确认）。
 
@@ -176,15 +176,15 @@ cmd_build:
 
 ### 任务 8 — 文档随动（已存在 `.md`，注意 gotcha）
 
-> ⚠️ 前置：`CONTEXT.md` 与 `rules/skills/bestpractice_06-ob_first.md` 当前已带本轮（设计阶段）未提交改动（remedy line / banner / exit-3 协议）。任务 8 是在其上**叠加**编辑，不是重复落盘——开工前先 `git diff` 这两个文件确认既有改动就位、且与本任务编辑位置不冲突。
+> ⚠️ 前置：`GLOSSARY.md` 与 `rules/skills/bestpractice_06-ob_first.md` 当前已带本轮（设计阶段）未提交改动（remedy line / banner / exit-3 协议）。任务 8 是在其上**叠加**编辑，不是重复落盘——开工前先 `git diff` 这两个文件确认既有改动就位、且与本任务编辑位置不冲突。
 
-1. 改 `CONTEXT.md` 头部段：把 `ob build`（交互选择已初始化的 machine，执行 bitbake 编译）改为同时点出 `ob build <machine>` 非交互直构。
+1. 改 `GLOSSARY.md` 头部段：把 `ob build`（交互选择已初始化的 machine，执行 bitbake 编译）改为同时点出 `ob build <machine>` 非交互直构。
 2. 改 `rules/skills/bestpractice_06-ob_first.md`：把"## 已知缺口"中 `ob build` 纯交互那条改写为"已补齐"——`ob build <machine>` 非交互路径 + dry-run 已落地；若该节再无其它缺口，整节移除或留一句"当前无已知缺口"。
 3. **Run**（核对磁盘字节，因编辑工具可能静默不落盘）：
-   grep -n "ob build <machine>" CONTEXT.md
+   grep -n "ob build <machine>" GLOSSARY.md
    grep -n "已知缺口" rules/skills/bestpractice_06-ob_first.md
 ```raw
-   **预期**：`CONTEXT.md` 命中非交互描述；`bestpractice_06` 不再把 `ob build` 列为未补缺口（命中数为 0 或仅剩"无已知缺口"语句）。
+   **预期**：`GLOSSARY.md` 命中非交互描述；`bestpractice_06` 不再把 `ob build` 列为未补缺口（命中数为 0 或仅剩"无已知缺口"语句）。
 
 ### 任务 9 — `cmd_start_qemu` L3352 两命令 remedy 收敛为单命令（独立于 build，先写失败测试）
 
@@ -237,6 +237,6 @@ cmd_build:
 - `bash tests/protocol/stop_qemu_dryrun.sh` → `FAIL=0`
 - `bash tests/protocol/start_qemu_remedy.sh` → `PASS=2 FAIL=0`
 - `./ob --help` 显示 `build [<machine>]` + 两条 examples；`bash tests/protocol/usage_dispatch_sync.sh` → `FAIL=0`
-- `grep` 确认 `CONTEXT.md` 非交互描述、`bestpractice_06` 已知缺口已关闭（均磁盘核对）
+- `grep` 确认 `GLOSSARY.md` 非交互描述、`bestpractice_06` 已知缺口已关闭（均磁盘核对）
 
 ```
