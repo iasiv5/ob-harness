@@ -1,17 +1,18 @@
 #!/usr/bin/env bash
-# update.sh — 从 m marketplace 的 iasi 插件全量原子同步 skills 到本目录
+# update.sh — 将 iasiv5/m 的 iasi 插件 skills 全量同步到本目录（受控镜像）
 #
-# 本目录（ob-harness/.claude/skills）是 m/plugins/iasi/skills 的受控镜像：
-#   - 不就地编辑；要改 skill 去 m 仓库的 plugins/iasi/skills，再跑本脚本同步。
-#   - 同步语义 1:1 全量：源有的 skill 原子替换进来，源没有的 skill 删除。
-#   - 同步 skill 目录和 ATTRIBUTIONS.md（都从 m 镜像）；不碰 update.sh 脚本本身。
+# 本目录（ob-harness/.claude/skills）是 iasiv5/m/plugins/iasi/skills 的本地镜像：
+#   - 自研 skills 的维护源是 iasiv5/skills；本脚本同步进入 iasi 插件后的完整集合，不直接读取维护源。
+#   - 修改自研 skill 时，先更新维护源并确认更新已进入 iasi 插件，再运行本脚本更新本地镜像。
+#   - 同步策略为 1:1 全量：源端已有的 skill 原子替换本地同名目录，源端没有的本地 skill 删除。
+#   - 同步 skill 目录和插件级 ATTRIBUTIONS.md；update.sh 本身不参与同步。
 #
 # 用法:
-#   ./update.sh                                  # 从 github iasiv5/m clone 同步
+#   ./update.sh                                  # 克隆 iasiv5/m 并同步其 iasi 插件
 #
 # 环境变量:
-#   GITHUB_BASE_URL      github 基址，默认 https://github.com
-#   GITHUB_MIRROR        github 镜像，默认 https://gh-proxy.com/https://github.com
+#   GITHUB_BASE_URL      GitHub 基址，默认 https://github.com
+#   GITHUB_MIRROR        GitHub 镜像基址，默认 https://gh-proxy.com/https://github.com
 
 set -euo pipefail
 
@@ -25,7 +26,7 @@ log()  { printf '\033[34m▶\033[0m %s\n' "$*"; }
 ok()   { printf '\033[32m✓\033[0m\n'; }
 fail() { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; }
 
-# 克隆 github iasiv5/m，输出其 plugins/iasi/skills 路径
+# 克隆 iasiv5/m，并返回 iasi 插件的 skills 目录路径。
 clone_remote() {
   local repo="iasiv5/m" dest="$TMP_BASE/remote_src"
   local base="${GITHUB_BASE_URL:-https://github.com}"
@@ -41,7 +42,7 @@ clone_remote() {
   fail "克隆失败: $repo"; sed 's/^/    /' "$err" >&2; return 1
 }
 
-# 列出某目录下的 skill 子目录名（非隐藏目录），每行一个
+# 列出目录下的非隐藏一级子目录名，每行一个。
 list_skills() {  # $1=dir
   local d
   for d in "$1"/*/; do
@@ -50,7 +51,7 @@ list_skills() {  # $1=dir
   done
 }
 
-# 原子替换：src 内容 stage 后 mv 覆盖 dest，失败回滚
+# 先将 skill 复制到临时暂存目录，再替换目标；失败时恢复旧目录。
 replace_skill_dir() {  # $1=src_dir $2=dest_dir $3=skill_name
   local src_dir="$1" dest_dir="$2" skill_name="$3"
   local stage="$TMP_BASE/.stage_${skill_name}" old="$TMP_BASE/.rollback_${skill_name}"
@@ -69,7 +70,7 @@ log "同步源: github.com/iasiv5/m (plugins/iasi/skills)"
 log "目标:   $SKILLS_DIR"
 echo
 
-# 源 skill 集合
+# 获取插件提供的 skill 目录列表；空列表时中止，避免误删本地内容。
 src_names=()
 while IFS= read -r name; do
   [[ -n "$name" ]] && src_names+=("$name")
@@ -81,11 +82,11 @@ if (( ${#src_names[@]} == 0 )); then
   exit 1
 fi
 
-# 关联数组做 O(1) 查询
+# 保存源端 skill 名称，供后续判断本地目录是否仍存在于源端。
 declare -A src_set=()
 for name in "${src_names[@]}"; do src_set["$name"]=1; done
 
-# 同步：源有则原子替换
+# 将源端存在的 skill 原子替换到本地。
 log "同步 skill（源共 ${#src_names[@]} 个）"
 for name in "${src_names[@]}"; do
   printf '  %s ... ' "$name"
@@ -94,7 +95,7 @@ for name in "${src_names[@]}"; do
   fi
 done
 
-# 同步 ATTRIBUTIONS.md（从 m 的 iasi 目录镜像到本目录）
+# 同步 iasi 插件目录中的 ATTRIBUTIONS.md。
 if [[ -f "$SRC/../ATTRIBUTIONS.md" ]]; then
   printf '  ATTRIBUTIONS.md ... '
   cp "$SRC/../ATTRIBUTIONS.md" "$SKILLS_DIR/ATTRIBUTIONS.md" && ok
@@ -102,7 +103,7 @@ else
   fail "m 的 ATTRIBUTIONS.md 未找到: $SRC/../ATTRIBUTIONS.md"
 fi
 
-# 删除：本地有但源没有的 skill
+# 仅删除本地存在、但源端已不存在的 skill。
 removed=()
 while IFS= read -r name; do
   [[ -n "$name" ]] && [[ -z "${src_set[$name]:-}" ]] && removed+=("$name")

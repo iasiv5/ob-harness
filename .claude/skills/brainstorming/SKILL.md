@@ -2,6 +2,7 @@
 name: brainstorming
 description: "在开始实现前，把需求澄清成设计文档。适用于新增功能、修改行为、组件设计、接口设计、流程改造、架构取舍和多方案比较。只要改动跨文件、改行为或涉及多方案取舍，就值得先做设计，无论体量大小；单点直改不必走本 skill。用户说'先想一下''先给方案''先规划一下''先比较两种做法'时优先使用这个 skill。"
 argument-hint: 描述要做的功能、约束、背景或已有想法；可留空
+disable-model-invocation: true
 ---
 
 # Brainstorming Skill

@@ -2,6 +2,7 @@
 name: cleanup
 description: "在任务完成后，对仓库内长期知识做深度整理、沉淀与规范审计。仅在用户明确要求 cleanup、最终沉淀、长期知识同步、收尾整理，或明确要求检查仓库规则执行情况时触发；不要用于中途续做、普通总结、状态同步或实现过程中的正常文档更新。默认保守触发，强制 cleanup 也不默认写入用户记忆。"
 argument-hint: 请说明要沉淀的任务、范围或收尾目标；可留空
+disable-model-invocation: true
 ---
 
 # Cleanup Skill
