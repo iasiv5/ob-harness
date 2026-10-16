@@ -69,22 +69,40 @@ status_render_machines() {
     done
 }
 
-# status_render_diagnostics <orphan_records_nameref>  每元素: name|path
+# status_render_diagnostics <orphan_records_nameref> <stale_conf_records_nameref>
+# orphan 每元素: name|path; stale 每元素: machine|file_rel|path(见 build_env_stale_conf_paths)
 status_render_diagnostics() {
     local -n _sr_diag_records="$1"
-    [[ ${#_sr_diag_records[@]} -gt 0 ]] || return 0
+    local -n _sr_stale_records="$2"
+    [[ ${#_sr_diag_records[@]} -gt 0 || ${#_sr_stale_records[@]} -gt 0 ]] || return 0
     echo ""
     step_header "Diagnostics"
-    echo "  Orphan firmware image artifacts"
-    local _rec _name _path
-    for _rec in "${_sr_diag_records[@]}"; do
-        IFS='|' read -r _name _path <<< "$_rec"
+    if [[ ${#_sr_diag_records[@]} -gt 0 ]]; then
+        echo "  Orphan firmware image artifacts"
+        local _rec _name _path
+        for _rec in "${_sr_diag_records[@]}"; do
+            IFS='|' read -r _name _path <<< "$_rec"
+            echo ""
+            echo "    $_name"
+            echo "      Path      : ${_path:-<unknown>}"
+            echo "      Reason    : firmware image artifact exists, but machine init is incomplete"
+            echo "      Next step : $OB_CMD init $_name"
+        done
+    fi
+    if [[ ${#_sr_stale_records[@]} -gt 0 ]]; then
         echo ""
-        echo "    $_name"
-        echo "      Path      : ${_path:-<unknown>}"
-        echo "      Reason    : firmware image artifact exists, but machine init is incomplete"
-        echo "      Next step : $OB_CMD init $_name"
-    done
+        echo "  Stale absolute paths in machine build conf"
+        local _srec _sm _sf _sp
+        for _srec in "${_sr_stale_records[@]}"; do
+            IFS='|' read -r _sm _sf _sp <<< "$_srec"
+            echo ""
+            echo "    $_sm"
+            echo "      File      : build/$_sm/conf/$_sf"
+            echo "      Path      : $_sp"
+            echo "      Reason    : absolute path does not exist on this host; typical after the harness root directory was relocated"
+            echo "      Next step : edit the file to the current harness root prefix (setup does NOT recreate an existing bblayers.conf); then re-run $OB_CMD build $_sm"
+        done
+    fi
 }
 
 # status_render_tips <repo_exists 0/1> <has_init 0/1> <has_init_no_fw 0/1>

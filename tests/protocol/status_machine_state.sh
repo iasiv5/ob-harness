@@ -50,7 +50,7 @@ assert_contains "status shows recycled instance stale" "$recycbox_line" "⚠️ 
 assert_true "status keeps exited stale pid file" test -f "$QEMU_PIDS_DIR/stalebox.pid"
 assert_true "status keeps recycled stale pid file" test -f "$QEMU_PIDS_DIR/recycbox.pid"
 
-rm -f "$CONFIGS_DIR/markeronly.init-done" "$CONFIGS_DIR/failm.init-done"
+rm -f "$CONFIGS_DIR/markeronly.init-done" "$CONFIGS_DIR/failm.init-done" "$CONFIGS_DIR/staleconf.init-done"
 rm -rf "$OPENBMC_DIR/build/failm"
 
 : > "$status_records_calls_file"

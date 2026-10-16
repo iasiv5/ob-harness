@@ -54,6 +54,24 @@ status_build_fixture() {
     mkdir -p "$orphan_dir"
     touch "$orphan_dir/orphan.static.mtd"
 
+    # staleconf: 既有 conf 含搬迁遗留旧绝对前缀 → ob status Diagnostics 的 stale-conf 段 fixture。
+    # DL_DIR 指向存在的 downloads(不 flag); bblayers 一条存在一条不存在(只 flag 后者); 注释行豁免。
+    _status_write_marker staleconf
+    local sc_conf="$OPENBMC_DIR/build/staleconf/conf"
+    mkdir -p "$OPENBMC_DIR/meta-openbmc-standalone" "$WORKSPACE_DIR/downloads" "$sc_conf"
+    cat > "$sc_conf/bblayers.conf" <<EOF
+# LAYER_CONF_VERSION (comment with /nonexistent/comment-path must be skipped)
+BBLAYERS = " \\
+  $OPENBMC_DIR/meta-openbmc-standalone \\
+  /nonexistent/old-root/workspace/openbmc/meta-phosphor \\
+"
+EOF
+    cat > "$sc_conf/local.conf" <<EOF
+MACHINE ??= "staleconf"
+DL_DIR = "$WORKSPACE_DIR/downloads"
+export XDG_CACHE_HOME = "/nonexistent/old-root/workspace/xdg-cache"
+EOF
+
     # 两类 stale QEMU 实例:exited(pid 不存在) + recycled(pid=$$ 测试进程,cmdline 不匹配 qemu)
     QEMU_PIDS_DIR="$WORKSPACE_DIR/qemu-bin/.pids"
     mkdir -p "$QEMU_PIDS_DIR"

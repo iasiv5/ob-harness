@@ -131,6 +131,18 @@ init_bitbake_env() {
 
     ensure_bootstrap_local_conf
 
+    # 搬迁诊断: 既有 conf 中指向不存在目录的绝对路径(harness 根整体搬迁典型)。只诊断不修改——
+    # 包括用户 DL_DIR(bp_03 固定 mirror 约束)。vendor setup 不重建已存在的 bblayers.conf,
+    # 所以 remedy 是手工改前缀, 不是重跑 init。
+    if ! build_env_stale_conf_paths "$BUILD_DIR"; then
+        local _stale_rec
+        warn "Stale absolute paths in $BUILD_DIR/conf (point to non-existent dirs; typical after harness root relocation):"
+        for _stale_rec in "${_BUILD_ENV_STALE_RECORDS[@]}"; do
+            warn "  ${_stale_rec%%|*} -> ${_stale_rec#*|}"
+        done
+        warn "Fix: edit those files to the current harness root prefix. Re-running init will NOT recreate an existing bblayers.conf; bitbake fails hard on missing BBLAYERS dirs. Ignore entries you intend to create later."
+    fi
+
     # Pre-create DL_DIR and SSTATE_DIR so bitbake sanity checks don't fail
     # when the .inc file (generated later in Step 7) references them.
     # Use resolve functions to respect overrides in local.conf (e.g. DL_DIR="/shared/downloads").

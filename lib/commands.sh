@@ -43,9 +43,11 @@ cmd_status() {
 
     # --- gather machines records(raw facts;renderer 做 emoji 映射。gather 原样透传,禁兜底——否则破坏 golden) ---
     local -a status_machine_records=()
+    local -a status_machine_names=()
     local _m
     while IFS= read -r _m; do
         [[ -n "$_m" ]] || continue
+        status_machine_names+=("$_m")
         local _init_state _snapshot_state _repo_count _init_time _fw_ready="0" _fw_path="" _fw_mtime=""
         _init_state=$(machine_state_init_state "$_m")
         _snapshot_state=$(machine_state_snapshot_state "$_m")
@@ -69,7 +71,19 @@ cmd_status() {
         _opath=$(machine_state_firmware_image_path "$_om" 2>/dev/null || true)
         status_orphan_records+=("$_om|$_opath")
     done < <(machine_state_orphan_firmware_image_machines)
-    status_render_diagnostics status_orphan_records
+
+    # --- gather stale conf path diagnostics(harness 根搬迁遗留旧绝对前缀; build_env_stale_conf_paths 只诊断) ---
+    local -a status_stale_records=()
+    local _sn _sbdir _sr_rec
+    for _sn in "${status_machine_names[@]}"; do
+        _sbdir=$(machine_state_build_dir "$_sn")
+        if ! build_env_stale_conf_paths "$_sbdir"; then
+            for _sr_rec in "${_BUILD_ENV_STALE_RECORDS[@]}"; do
+                status_stale_records+=("$_sn|$_sr_rec")
+            done
+        fi
+    done
+    status_render_diagnostics status_orphan_records status_stale_records
 
     # --- gather tips inputs ---
     local has_initialized_machine=0

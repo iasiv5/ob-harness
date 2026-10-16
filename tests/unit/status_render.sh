@@ -49,15 +49,26 @@ assert_contains "machines empty shows none" "$out" "(none)"
 
 # ---- diagnostics ----
 orphan_recs=( "orphan1|/tmp/orphan.static.mtd" )
-out=$(status_render_diagnostics orphan_recs)
+stale_recs=( "m1|bblayers.conf|/nonexistent/old-root/meta" )
+out=$(status_render_diagnostics orphan_recs stale_recs)
 assert_contains "diag title" "$out" "Orphan firmware image artifacts"
 assert_contains "diag name" "$out" "orphan1"
 assert_contains "diag next step" "$out" "Next step : ./ob init orphan1"
+assert_contains "stale diag title" "$out" "Stale absolute paths in machine build conf"
+assert_contains "stale diag file" "$out" "build/m1/conf/bblayers.conf"
+assert_contains "stale diag next step" "$out" "then re-run ./ob build m1"
 
 empty_orphan=()
-out=$(status_render_diagnostics empty_orphan); rc=$?
+empty_stale=()
+out=$(status_render_diagnostics empty_orphan empty_stale); rc=$?
 assert_eq "diag empty rc" "$rc" 0
 assert_false "diag empty no section" grep -Fq "Orphan firmware" <<< "$out"
+assert_false "diag empty no stale section" grep -Fq "Stale absolute paths" <<< "$out"
+
+out=$(status_render_diagnostics empty_orphan stale_recs); rc=$?
+assert_eq "stale-only rc" "$rc" 0
+assert_contains "stale-only renders stale section" "$out" "Stale absolute paths in machine build conf"
+assert_false "stale-only hides orphan section" grep -Fq "Orphan firmware" <<< "$out"
 
 # ---- tips (4 分支全断言 rc=0——bp07 set -e 陷阱点:tips 空 tip 时末句若返回非 0 会在 cmd_status set -e 下炸;unit 虽 set +e,显式 assert rc 把这个契约钉进单测) ----
 out=$(status_render_tips 0 0 0); rc=$?
