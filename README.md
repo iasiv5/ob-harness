@@ -149,7 +149,7 @@ Examples:
 - devtool_* 深模块抽取族：devtool_pick（modified recipe selection）/ devtool_dispatch（relay）/ devtool_porcelain（emit）/ devtool_subcmd（subcommand handler），ADR-0010/0012。
 - 新增 `tools/cache_hit_rate.py`（缓存飞轮观测）、`tools/exit_contract.py`（exit 纪律静态断言）、`bestpractice_08-09`、`v06` 概率乘公理。
 - Breaking：`openbmc-source.lock` → `openbmc-source.manifest`、`<machine>.lock` → `<machine>.snapshot`（术语见 `GLOSSARY.md`）。
-- 接入 DeepSeek Harness：`.dsh/skills/` 桥接 9 个 skill（符号链接至单一物理来源 `.claude/skills/`）+ 4 个斜杠命令三入口（bestpractice_16）。
+- 接入 DeepSeek Harness：`.dsh/skills/` 桥接 10 个 skill（符号链接至单一物理来源 `.claude/skills/`）+ 4 个斜杠命令三入口（bestpractice_16）。
 
 ### v1.2 — 2026-06-21
 

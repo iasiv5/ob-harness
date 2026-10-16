@@ -41,24 +41,7 @@ MIT License · Copyright (c) 2025 Jesse Vincent
 
 ---
 
-## cleanup
-
-致敬 KKKKhazix `neat-freak` 的核心思想：
-https://github.com/KKKKhazix/khazix-skills/tree/main/neat-freak
-
-MIT License · Copyright (c) 2026 数字生命卡兹克 (Digital Life Khazix)
-
-继承了以下设计理念：
-- 你是知识编辑，不是记录员
-- 长期知识要保持准确、简洁、可复用
-- 清理动作要优先考虑删旧、合并和纠偏，而不是一味追加
-- 规则层也会过期，规范执行审计要区分安全自动修复和需要用户拍板的破坏性动作
-
-当前实现围绕 GitHub Copilot 做了本地化改造，重点解决 handoff 与长期沉淀之间的职责边界。
-
----
-
-## grilling / codebase-design / domain-modeling / grill-with-docs / improve-codebase-architecture
+## 上游同步 skills（mattpocock/skills）
 
 致敬 mattpocock/skills 的同名 skill：
 
@@ -67,16 +50,18 @@ MIT License · Copyright (c) 2026 数字生命卡兹克 (Digital Life Khazix)
 - domain-modeling: https://github.com/mattpocock/skills/tree/main/skills/engineering/domain-modeling/
 - grill-with-docs: https://github.com/mattpocock/skills/tree/main/skills/engineering/grill-with-docs/
 - improve-codebase-architecture: https://github.com/mattpocock/skills/tree/main/skills/engineering/improve-codebase-architecture/
+- retro: https://github.com/mattpocock/skills/tree/main/skills/engineering/retro/
+- writing-for-agents: https://github.com/mattpocock/skills/tree/main/skills/productivity/writing-for-agents/
 
 MIT License · Copyright (c) 2026 Matt Pocock
 
-这五个 skill 由本目录的 `update.sh` 从 mattpocock/skills 上游原样同步（英文、标准 SKILL.md），保留上游格式、不做中文化适配——Claude Code 与 GitHub Copilot 均直接加载 `.claude/skills` 下标准 SKILL.md，英文原版两个 runtime 均可用。
+这七个 skills 由本目录的 `update.sh` 从 mattpocock/skills 上游原样同步（英文、标准 SKILL.md），保留上游格式、不做中文化适配——Claude Code 与 GitHub Copilot 均直接加载 `.claude/skills` 下标准 SKILL.md，英文原版两个 runtime 均可用。
 
 ---
 
 ## 许可证全文
 
-### MIT License (obra/superpowers, mattpocock/skills, KKKKhazix/khazix-skills)
+### MIT License (obra/superpowers, mattpocock/skills)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 

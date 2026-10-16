@@ -4,7 +4,7 @@
 
 本仓库的 skill 与斜杠命令要同时服务 Claude Code / GitHub Copilot / DeepSeek Harness (DSH) 三家，适配结构三句话：
 
-1. **skill 实体只有一个物理来源**：`.claude/skills/<name>/`（Claude Code 和 Copilot 都从这里读）；DSH 不读 `.claude/`，靠 `.dsh/skills/<name>` 相对符号链接桥接。**新增第 10 个 skill = 实体 + 一条链接**：`ln -sfn ../../.claude/skills/<name> .dsh/skills/<name>`。
+1. **skill 实体只有一个物理来源**：`.claude/skills/<name>/`（Claude Code 和 Copilot 都从这里读）；DSH 不读 `.claude/`，靠 `.dsh/skills/<name>` 相对符号链接桥接。**新增一个 skill = 实体 + 一条链接**：`ln -sfn ../../.claude/skills/<name> .dsh/skills/<name>`。
 2. **新增斜杠命令**：`.claude/commands/<n>.md` + `.github/prompts/<n>.prompt.md` + `.dsh/skills/<n>.md` 三入口，DSH 入口是带 `name`/`description` frontmatter 的 skill 文件（DSH 里命令就是 skill，`/name` 即调用）。
 3. **三个入口互不引用**（尤其不引用 `.claude/commands/` 这类 Claude Code 专属入口文件）：共同事实只允许是中立合同（`periodic_jobs/` SOP、`rules/knowhow/` workflow）或 skill 物理文件本身；拿掉任何一家 harness 的入口文件，另外两家不受影响。
 

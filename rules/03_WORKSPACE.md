@@ -24,7 +24,7 @@
 - GitHub Copilot 入口与 hooks：`.github/`
 - 三家 harness（Claude Code/Copilot/DSH）仓库级 skills 的单一物理来源：`.claude/skills/`
 - Claude Code 仓库级自定义命令：`.claude/commands/`（如 `/ai-heartbeat` 入口）
-- DeepSeek Harness 的 skill/斜杠命令发现入口：`.dsh/skills/`（9 个 skill 为指向 `.claude/skills/` 同名目录的相对符号链接，4 个斜杠命令为独立 `.md`，与 `.github/prompts/` 同模式、不引用其他 harness 的入口文件。发现机制、rank 覆盖、维护动作见 `rules/knowhow/bestpractice_16-multi_harness_skill_adaptation.md`）
+- DeepSeek Harness 的 skill/斜杠命令发现入口：`.dsh/skills/`（10 个 skill 为指向 `.claude/skills/` 同名目录的相对符号链接，4 个斜杠命令为独立 `.md`，与 `.github/prompts/` 同模式、不引用其他 harness 的入口文件。发现机制、rank 覆盖、维护动作见 `rules/knowhow/bestpractice_16-multi_harness_skill_adaptation.md`）
 - 设计文档：`docs/specs/`（`/brainstorming` skill 落盘，命名 `<YYYY-MM-DD>-<topic>-design.md`；已批准文档为冻结快照，一般不修改）
 - 实施计划：`docs/plans/`（`/writing-plans` skill 落盘，命名 `<YYYY-MM-DD>-<feature>-implementation-plan.md`；已完成文档为冻结快照，一般不修改）
 
