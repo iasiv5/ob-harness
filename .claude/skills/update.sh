@@ -6,6 +6,9 @@
 #   - 修改自研 skill 时，先更新维护源并确认更新已进入 iasi 插件，再运行本脚本更新本地镜像。
 #   - 同步策略为 1:1 全量：源端已有的 skill 原子替换本地同名目录，源端没有的本地 skill 删除。
 #   - 同步 skill 目录和插件级 ATTRIBUTIONS.md；update.sh 本身不参与同步。
+#   - 自动对齐 .dsh/skills 桥接（目录存在时）：为每个 skill 补齐/修正指向
+#     ../../.claude/skills/<name> 的相对符号链接，并清理目标已消失的断链；
+#     斜杠命令 .md 与其他条目一律不动（bestpractice_16）。
 #
 # 用法:
 #   ./update.sh                                  # 克隆 iasiv5/m 并同步其 iasi 插件
@@ -17,6 +20,7 @@
 set -euo pipefail
 
 SKILLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SKILLS_DIR/../.." && pwd)"
 TMP_BASE="$(mktemp -d "$SKILLS_DIR/.sync_tmp.XXXXXX")"
 trap 'rm -rf "$TMP_BASE"' EXIT
 
@@ -114,8 +118,49 @@ if (( ${#removed[@]} > 0 )); then
   log "删除本地多余 skill（源已移除，共 ${#removed[@]} 个）"
   for name in "${removed[@]}"; do
     printf '  %s ... ' "$name"
-    if rm -rf "$SKILLS_DIR/$name"; then ok; fi
+    if rm -rf "${SKILLS_DIR:?}/${name:?}"; then ok; fi
   done
+fi
+
+# ── 同步 .dsh/skills 桥接符号链接（bestpractice_16：单一物理来源 + DSH 桥接）──
+# DSH 不读 .claude/，靠 .dsh/skills/<name> -> ../../.claude/skills/<name> 相对符号链接桥接。
+# 只管理指向 ../../.claude/skills/ 的 skill 链接：为每个 skill 补齐/修正，再清理目标已
+# 消失的断链；斜杠命令 .md 与外部链接一律不动。必须排在本地 stale skill 删除之后，
+# 被删 skill 的断链此时才已成立。
+DSH_SKILLS_DIR="$REPO_ROOT/.dsh/skills"
+if [[ -d "$DSH_SKILLS_DIR" ]]; then
+  echo
+  log "同步 .dsh/skills 桥接链接（$DSH_SKILLS_DIR）"
+  for name in "${src_names[@]}"; do
+    link="$DSH_SKILLS_DIR/$name"
+    dest="../../.claude/skills/$name"
+    # 已是正确链接则静默跳过；同名非链接条目（真实目录/文件）不接管，人工确认。
+    if [[ -L "$link" ]] && [[ "$(readlink "$link")" == "$dest" ]]; then
+      continue
+    fi
+    if [[ -e "$link" ]] && [[ ! -L "$link" ]]; then
+      fail "跳过 $name：.dsh/skills 下存在同名非链接条目，请人工确认"
+      continue
+    fi
+    printf '  %s ... ' "$name"
+    if ln -sfn "$dest" "$link"; then ok; fi
+  done
+  pruned=0
+  for link in "$DSH_SKILLS_DIR"/*; do
+    [[ -L "$link" ]] || continue
+    [[ "$(readlink "$link")" == ../../.claude/skills/* ]] || continue
+    if [[ -e "$link" ]]; then continue; fi
+    printf '  断链 %s ... ' "$(basename "$link")"
+    if rm "$link"; then
+      ok
+      pruned=$((pruned + 1))
+    fi
+  done
+  if (( pruned == 0 )); then
+    printf '  断链清理：无\n'
+  fi
+else
+  log "跳过 .dsh/skills 桥接同步（未找到 $DSH_SKILLS_DIR）"
 fi
 
 rm -rf "$TMP_BASE"; trap - EXIT
@@ -126,6 +171,13 @@ echo
 
 if git -C "$SKILLS_DIR" rev-parse --git-dir >/dev/null 2>&1; then
   changed=$(git -C "$SKILLS_DIR" status --short --untracked-files=all -- . || true)
+  if [[ -d "$DSH_SKILLS_DIR" ]]; then
+    dsh_changed="$(git -C "$DSH_SKILLS_DIR" status --short --untracked-files=all -- . 2>/dev/null || true)"
+    if [[ -n "$dsh_changed" ]]; then
+      if [[ -n "$changed" ]]; then changed+=$'\n'; fi
+      changed+="$dsh_changed"
+    fi
+  fi
   if [[ -n "$changed" ]]; then
     printf '\033[33m─────────────────────────────────────────\033[0m\n'
     printf '\033[33m  ob-harness 有变更尚未提交：\033[0m\n'
