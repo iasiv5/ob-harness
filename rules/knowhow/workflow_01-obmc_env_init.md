@@ -8,6 +8,7 @@
 - **编译固件镜像** → `./ob build`（交互选已 init 的 machine，跑 `bitbake obmc-phosphor-image`）
 - **重试失败的 bare mirror** → `./ob init <machine> -s`（跳过依赖解析，只重填 mirror）
 - **预览副作用** → `./ob init <machine> -d`（仅对**已 init 过的** machine 有意义）
+- **恢复已移动 harness 根目录** → 按 `ob init` 的 stale-path 报告修正 machine 配置中的旧绝对路径；已有 `bblayers.conf` 不会自动重建。若 BitBake 报 `TMPDIR has changed location`，先确认处理方式并保留旧 `tmp` 到备份，再重跑 init/build（见故障排除 4b）。
 
 两条最该先知道的：(1) BitBake 赋值操作符优先级 `??=` < `?=` < `=`——`.inc` 覆盖 OE-core 默认值用 `?=`/`=`，别用最弱的 `??=`（会被 OE-core 的 `?=` 覆盖）；(2) 冷启动（主仓未克隆）首次 init **不要**用 `-d`——machine 列表来自克隆后的 setup 输出，主仓没落地时 machine 校验无效、会给"通过"的误导。第三条高发坑：数据中心 IP 被 sourceware/codeberg/salsa/savannah 封禁时 mirror 失败是**确定性**的，重试无解——按 403/429/timeout 签名路由到 rewrite 表或 git2 tarball 种子（详见故障排除 #2b/#2c），入表前必验 pinned SRCREV。详细踩坑见尾部 §已知陷阱 / §故障排除 / §已知限制。
 
@@ -16,7 +17,7 @@
 - **类型**: Workflow
 - **适用场景**: 初始化 OpenBMC 开发环境（bare mirror 填充、构建配置生成）和编译固件镜像
 - **创建日期**: 2026-05-31
-- **最后更新**: 2026-08-28
+- **最后更新**: 2026-10-16
 
 ---
 
@@ -257,6 +258,18 @@ cp -r /tmp/seed workspace/downloads/git2/<gitsrcname>       # 装完 init 即视
 **症状**：`A harness may only bind to one OpenBMC main repository source`
 **原因**：`openbmc-source.manifest` 绑定的源与请求的 URL 不一致
 **处理**：复制 ob-harness 到新目录，在新目录中 `ob init` 使用不同 URL
+
+#### 4b. 移动 harness 根目录后旧绝对路径 / TMPDIR 失效
+
+**症状**：整体移动或重命名 harness 根后，既有 machine 的 `build/<machine>/conf` 仍保留旧 root 的绝对路径。`ob init <machine>` 报 `Stale absolute paths`；继续到 `bitbake -g` 时，旧 `BBLAYERS` 指向不存在的 layer，报 `The following layer directories do not exist`。`ob init` 的增量流程不会重建已有 `bblayers.conf`；`build_env_stale_conf_paths` 只诊断、不自动修改（见 [`lib/build_env.sh`](../../lib/build_env.sh)）。
+
+**恢复**：
+
+1. 用 `pwd` 确认当前 harness 根，并核对 `./ob status` 的 `Local path` 指向该根下的 `workspace/openbmc`。按 `ob` 给出的 stale-path 清单修正目标 machine 配置中的旧 root 字面路径：先修 `bblayers.conf` 的 `BBLAYERS`，再检查 `local.conf` 和 `conf/*.inc` 中的缓存目录等绝对路径。保留 `${TOPDIR}` 等 BitBake 变量及有意使用的外部路径。成功的 `ob init` 会在 Step 7 重生成 externalsrc `.inc`；若当前运行尚未到达该步且 `.inc` 仍含旧路径，只改清单列出的条目，再让 init 重生成。
+2. 若随后 BitBake 报 `TMPDIR has changed location`，它拒绝复用随工程搬迁的 `build/<machine>/tmp`。旧 `tmp` 可能含镜像和数十 GB 中间态；先核实绝对路径并与用户确认，优先同级改名为 `tmp.pre-move-<date>` 保留，再运行 `ob init <machine>` 和 `ob build <machine>`。只有用户明确选择时才删除旧目录；新镜像验证前保留备份。
+3. 验收：`ob init` exit 0，`./ob status` 显示 machine initialized；`./ob build <machine>` exit 0，镜像位于当前 build 目录的 `tmp/deploy/images/<machine>/`。
+
+**ob 待补项**：提供显式、可审阅的 root relocation repair/preflight（至少在 `bitbake -g` 前对 stale `BBLAYERS` fail-fast，并提示 `TMPDIR has changed location` 的保留方案）；不应静默重写用户配置或删除 TMPDIR。
 
 ### ob build 阶段
 
