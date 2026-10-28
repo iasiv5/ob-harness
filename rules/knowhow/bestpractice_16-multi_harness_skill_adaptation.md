@@ -65,4 +65,4 @@
 
 - 目录路由与维护命令速查见 `rules/03_WORKSPACE.md` 的 `.dsh/skills/` 条目（本文件讲 why 与机制，那边讲 where）。
 - know-how 编号不回收不重排（[ADR-0018](../../docs/adr/0018-knowhow-numbering-stability.md)）；本文件为 bestpractice_16。
-- 沉淀流程本身走 `workflow_04`（判所有权 → 判层 → 写 → 收口），本文件即其手动通道产物。
+- 沉淀流程本身走 `workflow_04`（判所有权 → 判轨道（知识 + 基建）→ 写 → 收口），本文件即其手动通道产物。

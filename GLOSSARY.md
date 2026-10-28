@@ -249,3 +249,15 @@ _Avoid_: 自动化上限 / automation cap（口语化变体，术语统一用"�
 **contexts/knowhow（user 载体）**:
 `user know-how` 的物理落点，`contexts/` 下与 `contexts/memory/`（L1/L2 动态观测）平级。`.gitignore` 排除其内容、保留 `.gitkeep` 作骨架。区别于 `contexts/memory/OBSERVATIONS.md`：后者是动态观测（reflector 会 GC、内容骨架随上游分发），前者是 user 定制经验（reflector 不碰、不回上游）。
 _Avoid_: 把 contexts/knowhow 与 contexts/memory 混为一谈（前者 user 沉淀 / 不回上游 / reflector 不碰；后者动态观测 / 随上游分发 / reflector 会 GC）
+
+**知识轨（knowledge track）**:
+双轨判定中处理知识经验的轨道：判定收获要不要写成文档、写到哪层（product 走 bestpractice_12 三问路由，user 落 `contexts/knowhow/`）。产出是 know-how 文档，agent **读**。与基建轨并行判定、互不替代。
+_Avoid_: 文档轨（非术语）, 把知识轨当默认轨（双轨判定要求两轨都过）
+
+**基建轨（infrastructure track）**:
+双轨判定中处理 agent 环境基建的轨道：按七类判定面（导航 / 自动化检查 / 编码标准 / steering 瘦身 / no-op 指令 / 工具经济 / 信息可达）判定收获暴露的基建缺口并直接修复。产出默认随上游分发（product）；产出是环境变更（指针 / guardrail / steering 瘦身 / 工具），agent **天然生效**、不依赖阅读。适合落盘为 harness skill 的内容按 ob-harness 原生语义以 know-how 代替（归知识轨）。
+_Avoid_: 环境轨（非术语）, 在基建轨里新建 harness skill（原生语义用 know-how 代替）
+
+**双轨判定（dual-track triage）**:
+`/sediment` 沉淀流程的判定结构：知识轨与基建轨**每次都必须各判一遍**，结论独立（仅知识 / 仅基建 / 双轨并行），跳过任一轨即不合格。基建轨七类判定面与 `/retro` 同源（全覆盖）；`/sediment` 单条沉淀内嵌全量判定，不依赖、不修改 `/retro`。
+_Avoid_: 把双轨当二选一分流（判完知识就跳过基建）, 轨道分流（同前，是并行判定不是分流）

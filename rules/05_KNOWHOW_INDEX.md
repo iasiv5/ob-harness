@@ -21,7 +21,7 @@
 
 - [OpenBMC 开发环境初始化](knowhow/workflow_01-obmc_env_init.md) — 首次 `ob init` 或重建 OpenBMC 开发环境时使用；含 `ob build`/`ob test-qemu --suite smoke` 故障排除、harness 根目录迁移后的旧绝对路径/TMPDIR 恢复（如 romulus smoke SMOKE-03 FirmwareVersion 缺失、QEMU boot lockup）。
 - [OpenBMC recipe 源码开发（ob dev modify）](knowhow/workflow_02-obmc_dev_modify.md) — 改 recipe 源码时用 `ob dev modify`/`list`/`refresh`/`build`/`reset`/`finish` 等子命令，而非手动 devtool。
-- [手动经验沉淀（ob 沉淀四步）](knowhow/workflow_04-manual_sedimentation.md) — 踩坑/学到经验后，走"判所有权 → 判层 → 写 → 收口"四步，把它沉淀到正确的层（product/user）与子层，落盘即收口。
+- [手动经验沉淀（ob 沉淀四步）](knowhow/workflow_04-manual_sedimentation.md) — 踩坑/学到经验后，走"判所有权 → 判轨道（知识 + 基建双轨）→ 写 → 收口"：知识经验沉淀到正确的所有权层与子层；暴露的 agent 环境基建缺口按七类判定面（导航 / 自动化检查 / 编码标准 / steering 瘦身 / no-op 指令 / 工具经济 / 信息可达）同步判定修复，落盘即收口。
 
 ### BestPractice（最佳实践）
 
