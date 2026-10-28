@@ -7,7 +7,7 @@
 1. **先判 product/user，再判子层**。判错代价大——把 user 经验塞进 `rules/` 会污染上游、推给所有用户；把 product 经验塞进 `contexts/knowhow/` 则下个用户照踩。
 2. **每次必须双轨都判**。知识轨问"这条经验写到哪层"；基建轨按七类判定面问"哪些 agent 环境基建需要更新"。两轨独立出结论：仅知识 / 仅基建 / 双轨并行。跳过任一轨的判定即不合格。
 3. **本文件的增量 = 第 0 步（判所有权）+ 第 1 步的基建轨**。知识轨三问引用 bestpractice_12，写作细则引用 bestpractice_01，不重复。
-4. **自动化天花板在"判所有权 + 写"**。沉淀四环节中只有"触发 + 机械收口"可自动化；判所有权和写作永远 manual-in-the-loop（ADR-0017 D5）。
+4. **自动化天花板在"判所有权 + 判轨道 + 写"**。沉淀四环节中只有"触发 + 机械收口"可自动化；判所有权、判轨道（双轨的轨道结论）和写作永远 manual-in-the-loop（ADR-0017 D5 枚举"判所有权 + 写"，判轨道为本文件扩轨新增的判定环节，ADR 修订时补枚举）。
 
 ---
 
@@ -83,7 +83,7 @@
 
 ### 第 3 步：收口（分轨）
 
-- **知识轨**：走 [`bestpractice_12`](bestpractice_12-knowledge_layering.md) "落盘即收口"三件套——覆盖检查 → 写入 → 更新入口 → terminal 直读磁盘核实。**入口分两处**：product 经验更新 `rules/05_KNOWHOW_INDEX.md`；**user 经验必须更新 `contexts/knowhow/07_USER_KNOWHOW_INDEX.md`**（本地 INDEX，格式同 product 的 05、不回上游；新环境首次沉淀时按下方骨架自建）——否则 agent 按需检索时找不到，等于没沉淀。
+- **知识轨**：走 [`bestpractice_12`](bestpractice_12-knowledge_layering.md) "落盘即收口"三件套——覆盖检查 → 写入 → 更新入口 → terminal 直读磁盘核实。**入口分两处**：product 经验更新 `rules/05_KNOWHOW_INDEX.md`；**user 经验必须更新 `contexts/knowhow/07_USER_KNOWHOW_INDEX.md`**（本地 INDEX，格式同 product 的 05、不回上游；新环境首次沉淀时按下方骨架自建）——否则 agent 按需检索时找不到，等于没沉淀。**子仓库收口**：部分环境的 `contexts/knowhow/` 是独立 git 子仓库（探测：`git -C contexts/knowhow rev-parse --git-dir`）——此时 user 沉淀须在**子仓库内 commit** 才算收口，否则经验滞留本地、外层仓库看不到任何待办痕迹。
 
   **`user INDEX 最小骨架`**（新环境首次沉淀 user know-how 时，照此建 `contexts/knowhow/07_USER_KNOWHOW_INDEX.md`）：
   ```markdown
@@ -116,7 +116,7 @@
 | 把 user 经验塞进 rules | 已 commit 的内容 gitignore 挡不住，污染推给所有用户 | user 经验一律落 `contexts/knowhow/`；提交前确认不在 `rules/` |
 | **只沉知识、不判基建** | know-how 写了，但下个 agent 没读到，错误照样复发 | 第 1 步双轨硬规则：基建轨七类每次必过；能建 guardrail 就别只写文档 |
 | **把双轨当二选一分流** | 判定"这是知识经验"后就跳过基建轨（或反之） | 两轨独立判定、可同时命中；"无需变更"是结论，跳过不是 |
-| 期望自动化越界 | 想让 reflector 自动判 product/user 并晋升 user 内容 | 判所有权 + 写作永远 manual-in-the-loop（ADR-0017 D5）；reflector 只产 product |
+| 期望自动化越界 | 想让 reflector 自动判 product/user / 判轨道并自动改基建 | 判所有权、判轨道 + 写作永远 manual-in-the-loop（判轨道为扩轨新增，ADR-0017 D5 枚举待修订）；reflector 只产 product |
 | 把编排层当 SOP 逐行执行 | 把四步当机械清单照抄 | 四步是判定顺序 + 边界；知识轨判层细则在 bestpractice_12，写作细则在 bestpractice_01 |
 
 ## 与现有体系的关系

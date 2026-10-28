@@ -243,7 +243,7 @@ know-how 随产品上游 git 分发的属性（`product know-how` 的动作面�
 _Avoid_: 分发（仓库里"分发" = command dispatch，如 `dev_dispatch_subcmd` 分发子命令——与 know-how 随上游无关）, 内置（含糊）
 
 **自动化天花板**:
-经验沉淀中自动化通道（ai-heartbeat）不可越过的边界。两层（[ADR-0017](docs/adr/0017-knowhow-distribution-boundary.md) D5）：① 内容天花板 = product/user 边界，自动化只产 `product know-how`、绝不碰 `contexts/knowhow/`（user）；② 环节天花板 = 沉淀四环节中仅"触发 + 机械收口"可自动化，"判所有权 + 写作"永远 manual-in-the-loop。
+经验沉淀中自动化通道（ai-heartbeat）不可越过的边界。两层（[ADR-0017](docs/adr/0017-knowhow-distribution-boundary.md) D5）：① 内容天花板 = product/user 边界，自动化只产 `product know-how`、绝不碰 `contexts/knowhow/`（user）；② 环节天花板 = 沉淀四环节中仅"触发 + 机械收口"可自动化，"判所有权 + 写作"永远 manual-in-the-loop；双轨扩轨后"判轨道"（轨道结论）同为判定环节、同属天花板（workflow_04 扩展，ADR-0017 枚举待修订补齐）。
 _Avoid_: 自动化上限 / automation cap（口语化变体，术语统一用"自动化天花板"）
 
 **contexts/knowhow（user 载体）**:
