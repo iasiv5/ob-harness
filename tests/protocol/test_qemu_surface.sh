@@ -222,10 +222,13 @@ assert_true "auth.redfish 解析: OB_TQ_USER=redfish_user" grep -q '^OB_TQ_USER=
 assert_false "ipmi/console 未配置 → 不 export(八行下标不串位)" \
     grep -qE '^OB_TQ_(IPMI|CONSOLE)_USER=web_user$' "$_tq_auth_root/env_out"
 # env-wins: 外部 OB_TQ_WEB_* 已设 → YAML 不覆盖
+#   显式 export 后调用(bash 5.3/ ubuntu-26.04 runner 兼容): bash 5.3 起 prefix 赋值帧
+#   在函数返回后严格回收, 函数内 export 不再越帧存活, 旧 `VAR=x func` 写法在 5.3 下
+#   调用后 env 抓不到值; export 写法对齐 cmd_test_qemu 生产路径(env 已设优先), 5.2/5.3 双过。
 (
     source "${_repo_root:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}/lib/qemu_commands.sh" 2>/dev/null
-    MACHINE=fake-m OB_TQ_WEB_USER=env_wins OB_TQ_WEB_PASSWORD=env_wins \
-        test_qemu_export_auth "$_tq_auth_root"
+    export MACHINE=fake-m OB_TQ_WEB_USER=env_wins OB_TQ_WEB_PASSWORD=env_wins
+    test_qemu_export_auth "$_tq_auth_root"
     env | grep -E '^OB_TQ_WEB_' | sort
 ) > "$_tq_auth_root/env_out2" 2>&1
 assert_true "OB_TQ_WEB_USER env 胜出 YAML" grep -q '^OB_TQ_WEB_USER=env_wins$' "$_tq_auth_root/env_out2"
